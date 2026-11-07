@@ -51,7 +51,7 @@ export function BattleArena({
         ref={svgRef}
         viewBox="0 0 100 100"
         className={cn(
-          "aspect-square w-full touch-none select-none rounded-sm border border-border bg-land/40",
+          "mx-auto aspect-square w-full max-h-[58vh] touch-none select-none rounded-sm border border-border bg-land/40 sm:max-h-[70vh]",
           pendingCardId ? "cursor-crosshair" : "cursor-default",
         )}
         onPointerDown={handlePointer}

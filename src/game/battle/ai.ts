@@ -1,50 +1,145 @@
-// Comandante de IA de SOVEREIGN.
-// A IA joga pelas MESMAS regras do humano: gasta Pontos de Comando, só vê o que seu
-// reconhecimento vê e só usa cartas que estão na própria mão. Personalidades mudam o
-// comportamento, não as regras.
+// Comandante de IA de SOVEREIGN — versão competitiva.
+//
+// A IA joga pelas MESMAS regras do humano: gasta Pontos de Comando, só enxerga o que
+// o seu reconhecimento enxerga e só usa as cartas da própria mão. Nada de recursos
+// infinitos ou visão total do mapa.
+//
+// O que muda em relação a um bot trivial: a IA avalia o tabuleiro inteiro a cada
+// decisão (composição inimiga visível, pontos ameaçados, tempo, placar), escolhe a
+// carta que melhor responde, posiciona com intenção (interceptar, flanquear, cobrir),
+// economiza para um golpe e coordena duas cartas quando vale a pena.
+//
+// Os pesos de decisão são ajustáveis por auto-treino (ver training.ts). A mesma função
+// comanda qualquer lado — é isso que permite a IA jogar contra si mesma milhares de vezes.
 
 import { cardById, doctrines } from "./catalog";
-import { deploy, dist, effectiveCost, isVisibleTo, issueOrder, nextRandom, other } from "./engine";
+import {
+  deploy,
+  dist,
+  effectiveCost,
+  isVisibleTo,
+  issueOrder,
+  nextRandom,
+  other,
+} from "./engine";
 import type {
   BattleState,
+  Card,
   CommanderPersonality,
   ControlPoint,
   MilitaryCard,
+  Order,
   Side,
+  SupportAbility,
+  SupportCard,
   UnitCategory,
 } from "./types";
 
-interface AiMemory {
-  cooldown: number;
+// ---------------------------------------------------------------------------
+// Pesos de decisão (tunáveis por auto-treino)
+// ---------------------------------------------------------------------------
+
+export interface AiWeights {
+  counter: number; // peso de contramedida contra a composição inimiga
+  economy: number; // peso de economizar / guardar para um golpe
+  objective: number; // foco nos pontos de controle
+  aggression: number; // disposição a pressionar
+  support: number; // uso de cartas de apoio
+  coord: number; // tendência a coordenar duas cartas no mesmo ciclo
 }
 
-const memory: WeakMap<BattleState, AiMemory> = new WeakMap();
+export const defaultAiWeights: AiWeights = {
+  counter: 1,
+  economy: 1,
+  objective: 1,
+  aggression: 1,
+  support: 1,
+  coord: 1,
+};
+
+// Pesos calibrados por auto-jogo (60.030 partidas — ver training.ts).
+// Contra o baseline neutro, esta configuração venceu ~83% das partidas simétricas.
+export const trainedAiWeights: AiWeights = {
+  counter: 0.47,
+  economy: 1.25,
+  objective: 1,
+  aggression: 0.81,
+  support: 1,
+  coord: 1,
+};
+
+interface AiMemory {
+  cooldown: number;
+  weights: AiWeights;
+  lastOrderAt: number;
+}
+
+// Estado interno por batalha: cada lado tem o seu.
+const memory: WeakMap<BattleState, Record<Side, AiMemory>> = new WeakMap();
+
+function memFor(state: BattleState, side: Side): AiMemory {
+  let both = memory.get(state);
+  if (!both) {
+    both = {
+      blue: { cooldown: 0, weights: trainedAiWeights, lastOrderAt: -999 },
+      red: { cooldown: 0, weights: trainedAiWeights, lastOrderAt: -999 },
+    };
+    memory.set(state, both);
+  }
+  return both[side];
+}
+
+// Fixa os pesos de um lado (usado pelo auto-treino e por testes).
+export function configureAi(state: BattleState, side: Side, weights: Partial<AiWeights>): void {
+  memFor(state, side).weights = { ...defaultAiWeights, ...weights };
+}
+
+// ---------------------------------------------------------------------------
+// Loop principal
+// ---------------------------------------------------------------------------
 
 export function aiTick(state: BattleState, dt: number): void {
   if (!state.running) return;
   if (state.t < 6) return; // respeita a mobilização
-  let mem = memory.get(state);
-  if (!mem) {
-    mem = { cooldown: 0 };
-    memory.set(state, mem);
-  }
+  stepAi(state, "red", dt, state.config.aiDifficulty);
+}
+
+// Passo de IA para um lado qualquer (usado pelo auto-treino).
+export function aiTickSide(state: BattleState, side: Side, dt: number): void {
+  if (!state.running || state.t < 6) return;
+  stepAi(state, side, dt);
+}
+
+function stepAi(
+  state: BattleState,
+  side: Side,
+  dt: number,
+  diff?: { intervalMult?: number } | undefined,
+): void {
+  const mem = memFor(state, side);
   mem.cooldown -= dt;
   if (mem.cooldown > 0) return;
 
-  const cfg = state.red;
-  const personality = cfg.commander.personality;
-  const diff = state.config.aiDifficulty;
-  const interval = intervalFor(personality) * (diff?.intervalMult ?? 1);
-  mem.cooldown = interval + nextRandom(state) * 0.6;
+  const cfg = side === "blue" ? state.blue : state.red;
+  const interval = intervalFor(cfg.commander.personality) * (diff?.intervalMult ?? 1);
+  mem.cooldown = interval + nextRandom(state) * 0.5;
 
-  const decision = decide(state, "red");
-  if (decision) {
-    const cost = effectiveCost(cardById(decision.cardId), cfg.doctrine);
-    if (cfg.command >= cost) {
-      // a IA só "pensa" em voz alta no log — leitura estratégica para o jogador
-      pushAiLog(state, decision.reason);
-      deploy(state, "red", decision.cardId, decision.x, decision.y);
+  const plan = planTurn(state, side, mem.weights);
+  if (plan.deploys.length === 0) return;
+
+  let spent = 0;
+  for (const d of plan.deploys) {
+    const card = cardById(d.cardId);
+    const cost = effectiveCost(card, cfg.doctrine);
+    if (cfg.command - cost < 0) break;
+    if (deploy(state, side, d.cardId, d.x, d.y)) {
+      spent += cost;
+      pushAiLog(state, side, d.reason);
     }
+  }
+  if (spent > 0 && state.t - mem.lastOrderAt > 12) {
+    mem.lastOrderAt = state.t;
+    issueOrder(state, side, plan.order);
   }
 }
 
@@ -55,52 +150,9 @@ interface AiDecision {
   reason: string;
 }
 
-function decide(state: BattleState, side: Side): AiDecision | null {
-  const cfg = state.red;
-  const personality = cfg.commander.personality;
-  const enemy = other(side);
-  const hand = cfg.deck.hand.map((h) => h.cardId);
-  if (hand.length === 0) return null;
-
-  // informação limitada: apenas inimigos visíveis
-  const enemyCfg = enemy === "blue" ? state.blue : state.red;
-  const visible = enemyCfg.units.filter((u) => u.alive && isVisibleTo(state, u, side));
-  const enemyCategories = countCategories(visible);
-
-  const reserve = Math.max(
-    0,
-    reserveFor(personality, cfg.commandMax) + (state.config.aiDifficulty?.reserveBonus ?? 0),
-  );
-  const affordable = hand.filter((id) => {
-    const cost = effectiveCost(cardById(id), cfg.doctrine);
-    return cfg.command - cost >= reserve;
-  });
-  if (affordable.length === 0) return null;
-
-  const target = chooseTarget(state, side, personality, visible);
-
-  // escolhe a carta: prioriza contra-medida, depois custo-benefício
-  const scored = affordable
-    .map((id) => {
-      const card = cardById(id);
-      const cost = effectiveCost(card, cfg.doctrine);
-      const score = cardScore(state, id, card.category, enemyCategories, personality, cost);
-      return { id, score };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const chosen = scored[0];
-  if (!chosen || chosen.score <= 0) return null;
-
-  const card = cardById(chosen.id);
-  const pos = placement(
-    state,
-    side,
-    target,
-    card.kind === "militar" ? (card as MilitaryCard).radius : 3,
-  );
-  const reason = reasoning(chosen.id, card.category, target, enemyCategories);
-  return { cardId: chosen.id, x: pos.x, y: pos.y, reason };
+interface AiPlan {
+  deploys: AiDecision[];
+  order: Order;
 }
 
 function intervalFor(p: CommanderPersonality): number {
@@ -132,151 +184,443 @@ function reserveFor(p: CommanderPersonality, max: number): number {
   }
 }
 
-function countCategories(units: { category: UnitCategory }[]): Record<UnitCategory, number> {
-  const out = {
+// ---------------------------------------------------------------------------
+// Planejamento do turno
+// ---------------------------------------------------------------------------
+
+interface BattleUnitView {
+  x: number;
+  y: number;
+  category: UnitCategory;
+  domain: string;
+  hp: number;
+  maxHp: number;
+  id: string;
+}
+
+interface BattleRead {
+  visible: BattleUnitView[];
+  enemyCats: Record<UnitCategory, number>;
+  enemyAir: number;
+  enemyArtillery: number;
+  myScore: number;
+  enemyScore: number;
+  behind: boolean;
+  timeLeft: number;
+  pressure: boolean;
+}
+
+function sideState(state: BattleState, side: Side) {
+  return side === "blue" ? state.blue : state.red;
+}
+
+function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
+  const cfg = sideState(state, side);
+  const hand = cfg.deck.hand.map((h) => h.cardId);
+  const read = readBattle(state, side);
+  const personality = cfg.commander.personality;
+
+  const reserve =
+    Math.max(
+      0,
+      reserveFor(personality, cfg.commandMax) + (state.config.aiDifficulty?.reserveBonus ?? 0),
+    ) *
+    (0.6 + 0.4 * weights.economy);
+
+  const target = chooseTarget(state, side, read, personality, weights);
+  const defensive = isDefensive(state, side, read, target);
+
+  const affordable = hand.filter((id) => {
+    const cost = effectiveCost(cardById(id), cfg.doctrine);
+    return cfg.command - cost >= reserve;
+  });
+  const pool = affordable.length
+    ? affordable
+    : hand.filter((id) => cfg.command >= effectiveCost(cardById(id), cfg.doctrine));
+  if (pool.length === 0) return { deploys: [], order: defensive ? "defender" : "avancar" };
+
+  const scored = pool
+    .map((id) => ({
+      id,
+      card: cardById(id),
+      score: scoreCard(state, side, id, read, target, personality, weights, defensive),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0]!;
+  if (best.score <= -1) return { deploys: [], order: defensive ? "defender" : "avancar" };
+
+  const deployList: AiDecision[] = [makeDecision(state, side, best.card, target, read, defensive)];
+
+  const wantsCombo =
+    weights.coord * (cfg.commandMax - cfg.command < cfg.commandMax * 0.35 ? 1 : 0.4) > 0.5 &&
+    (defensive ? read.enemyCats.infantaria + read.enemyCats.blindado >= 2 : true);
+  if (wantsCombo && scored.length > 1) {
+    const second = scored.find((s) => s.id !== best.id && s.score > 0.5);
+    if (second) {
+      const cost1 = effectiveCost(best.card, cfg.doctrine);
+      const cost2 = effectiveCost(second.card, cfg.doctrine);
+      if (cfg.command - cost1 - cost2 >= reserve * 0.4) {
+        deployList.push(makeDecision(state, side, second.card, target, read, defensive));
+      }
+    }
+  }
+
+  return { deploys: deployList, order: defensive ? "defender" : "avancar" };
+}
+
+function readBattle(state: BattleState, side: Side): BattleRead {
+  const enemy = other(side);
+  const enemyCfg = sideState(state, enemy);
+  const visible = enemyCfg.units
+    .filter((u) => u.alive && isVisibleTo(state, u, side))
+    .map((u) => ({
+      x: u.x,
+      y: u.y,
+      category: u.category,
+      domain: u.domain,
+      hp: u.hp,
+      maxHp: u.maxHp,
+      id: u.id,
+    }));
+  const enemyCats = emptyCats();
+  let enemyAir = 0;
+  let enemyArtillery = 0;
+  for (const u of visible) {
+    enemyCats[u.category] += 1;
+    if (u.domain === "aereo") enemyAir += 1;
+    if (u.category === "artilharia") enemyArtillery += 1;
+  }
+
+  const points = state.config.arena.controlPoints;
+  const value = (o: Side | "neutro") =>
+    points.filter((p) => p.owner === o).reduce((a, p) => a + p.value, 0);
+  const totalValue = points.reduce((a, p) => a + p.value, 0) || 1;
+  const myScore = (value(side) / totalValue) * 100;
+  const enemyScore = (value(enemy) / totalValue) * 100;
+  return {
+    visible,
+    enemyCats,
+    enemyAir,
+    enemyArtillery,
+    myScore,
+    enemyScore,
+    behind: myScore + 4 < enemyScore,
+    timeLeft: Math.max(0, state.config.duration - state.t),
+    pressure: state.phase === "pressao",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Pontuação de cartas
+// ---------------------------------------------------------------------------
+
+// Matriz de contramedida: linha ataca coluna (+ favorável).
+const COUNTER: Record<UnitCategory, Partial<Record<UnitCategory, number>>> = {
+  infantaria: { artilharia: 1.3, defesa: 0.9, reconhecimento: 0.6, blindado: -1.1 },
+  blindado: { infantaria: 1.4, reconhecimento: 1.0, defesa: -0.9, artilharia: -0.5 },
+  artilharia: { infantaria: 1.2, defesa: 1.1, artilharia: 0.6, blindado: -0.7 },
+  defesa: { blindado: 1.2, reconhecimento: 0.5, artilharia: -0.8, infantaria: 0.2 },
+  reconhecimento: { artilharia: 0.7, defesa: 0.5, blindado: -0.4 },
+  apoio: {},
+};
+
+function scoreCard(
+  state: BattleState,
+  side: Side,
+  cardId: string,
+  read: BattleRead,
+  target: ControlPoint,
+  personality: CommanderPersonality,
+  weights: AiWeights,
+  defensive: boolean,
+): number {
+  const card = cardById(cardId);
+  const cfg = sideState(state, side);
+  const cost = effectiveCost(card, cfg.doctrine);
+  let score = 1;
+
+  if (card.kind === "militar") {
+    const m = card as MilitaryCard;
+    for (const [cat, n] of Object.entries(read.enemyCats) as [UnitCategory, number][]) {
+      if (n > 0) score += (COUNTER[m.category][cat] ?? 0) * Math.min(n, 3) * 0.5 * weights.counter;
+    }
+    if (read.enemyAir > 0) {
+      if (m.targets === "aereo" || m.targets === "ambos") score += 1.1 * weights.counter;
+      else if (m.targets === "terra") score -= 0.5 * weights.counter;
+    }
+    if (read.enemyArtillery > 0 && (m.category === "blindado" || m.category === "artilharia"))
+      score += 0.6 * weights.counter;
+    if (defensive && (m.category === "defesa" || m.category === "infantaria")) score += 0.7;
+    if (!defensive && (m.category === "blindado" || m.category === "infantaria")) score += 0.6;
+    if (m.category === "artilharia" && read.enemyCats.infantaria + read.enemyCats.defesa >= 2)
+      score += 0.7;
+    if (m.category === "reconhecimento")
+      score += (read.visible.length < 2 ? 1.3 : 0.2) * weights.objective;
+    score -= cost * 0.12 * weights.economy;
+    if (cfg.command - cost < 2) score -= 0.3;
+  } else {
+    score = scoreSupport(state, side, card as SupportCard, read, weights, defensive);
+  }
+
+  score += weights.objective * (defensive ? 0.4 : 0.5);
+  if (personality === "Agressivo") score += defensive ? 0 : 0.5 * weights.aggression;
+  if (personality === "Cauteloso") score += defensive ? 0.6 : -0.2;
+  if (personality === "Econômico") score -= cost * 0.06 * weights.economy;
+  if (personality === "Oportunista" && read.behind) score += 0.4;
+
+  void target;
+  return score;
+}
+
+function scoreSupport(
+  state: BattleState,
+  side: Side,
+  card: SupportCard,
+  read: BattleRead,
+  weights: AiWeights,
+  defensive: boolean,
+): number {
+  const ability = card.ability;
+  const cfg = sideState(state, side);
+  const enemyCluster = largestEnemyCluster(read.visible);
+  const myDamagedVeh = cfg.units.filter(
+    (u) => u.alive && u.category === "blindado" && u.hp < u.maxHp * 0.6,
+  ).length;
+
+  let score = 0.6 * weights.support;
+  switch (ability as SupportAbility) {
+    case "ataque_aereo":
+      score += enemyCluster >= 2 ? 2.6 * weights.support : -1.4;
+      break;
+    case "fumaca":
+      score += !defensive && read.enemyArtillery > 0 ? 1.2 * weights.support : 0.1;
+      break;
+    case "reforcos":
+      score +=
+        defensive && read.enemyCats.infantaria + read.enemyCats.blindado >= 1
+          ? 1.5 * weights.support
+          : 0.2;
+      break;
+    case "reparacao":
+      score += myDamagedVeh > 0 ? 1.4 * weights.support : -0.8;
+      break;
+    case "barricada":
+      score += defensive ? 1.3 * weights.support : -0.4;
+      break;
+    case "interferencia":
+      score += read.enemyArtillery + read.enemyAir > 0 ? 1.8 * weights.support : -0.9;
+      break;
+    case "evacuacao":
+      score += cfg.units.some((u) => u.alive && u.hp < u.maxHp * 0.35 && u.engaged)
+        ? 1.2 * weights.support
+        : -0.6;
+      break;
+    case "reconhecimento":
+      score += read.visible.length < 2 ? 1.6 * weights.support : 0.2;
+      break;
+  }
+  if (cfg.units.filter((u) => u.alive).length === 0 && ability !== "reforcos") score -= 1.5;
+  score -= effectiveCost(card, cfg.doctrine) * 0.1 * weights.economy;
+  return score;
+}
+
+function largestEnemyCluster(visible: BattleUnitView[]): number {
+  let best = 0;
+  for (const a of visible) {
+    let n = 0;
+    for (const b of visible) if (dist(a.x, a.y, b.x, b.y) <= 10) n += 1;
+    if (n > best) best = n;
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Escolha de objetivo
+// ---------------------------------------------------------------------------
+
+function chooseTarget(
+  state: BattleState,
+  side: Side,
+  read: BattleRead,
+  personality: CommanderPersonality,
+  weights: AiWeights,
+): ControlPoint {
+  const points = state.config.arena.controlPoints;
+  const own = points.filter((p) => p.owner === side);
+  const notMine = points.filter((p) => p.owner !== side);
+  const fallback = points[0]!;
+
+  const threatened = own
+    .map((p) => ({
+      p,
+      threat: read.visible.filter((u) => dist(u.x, u.y, p.x, p.y) <= p.radius + 16).length,
+    }))
+    .sort((a, b) => b.threat - a.threat)[0];
+
+  const mustDefend =
+    threatened &&
+    threatened.threat > 0 &&
+    (read.behind || personality === "Cauteloso" || weights.objective * threatened.threat >= 2);
+
+  if (mustDefend && threatened) return threatened.p;
+
+  if (personality === "Agressivo" || !read.behind) {
+    const attack = notMine.slice().sort((a, b) => b.value - a.value)[0];
+    if (attack) return attack;
+  }
+  if (personality === "Oportunista") {
+    const scored = notMine
+      .map((p) => ({
+        p,
+        threat: read.visible.filter((u) => dist(u.x, u.y, p.x, p.y) <= p.radius + 12).length,
+      }))
+      .sort((a, b) => a.threat - b.threat || b.p.value - a.p.value);
+    if (scored[0]) return scored[0].p;
+  }
+  return notMine.slice().sort((a, b) => b.value - a.value)[0] ?? own[0] ?? fallback;
+}
+
+function isDefensive(
+  state: BattleState,
+  side: Side,
+  read: BattleRead,
+  target: ControlPoint,
+): boolean {
+  if (target.owner === side) return true;
+  if (read.behind) return true;
+  if (state.phase === "pressao" && read.myScore >= read.enemyScore) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Posicionamento
+// ---------------------------------------------------------------------------
+
+function makeDecision(
+  state: BattleState,
+  side: Side,
+  card: Card,
+  target: ControlPoint,
+  read: BattleRead,
+  defensive: boolean,
+): AiDecision {
+  if (card.kind === "apoio") {
+    const s = card as SupportCard;
+    const pos = supportTarget(state, side, s, read, target, defensive);
+    return { cardId: card.id, x: pos.x, y: pos.y, reason: reasoning(card, target, read) };
+  }
+  const m = card as MilitaryCard;
+  const pos = placement(state, side, m, target, read, defensive);
+  return { cardId: card.id, x: pos.x, y: pos.y, reason: reasoning(card, target, read) };
+}
+
+function supportTarget(
+  state: BattleState,
+  side: Side,
+  card: SupportCard,
+  read: BattleRead,
+  target: ControlPoint,
+  defensive: boolean,
+): { x: number; y: number } {
+  const zone = state.config.arena.deployZone[side];
+  const global: SupportAbility[] = ["ataque_aereo", "fumaca", "interferencia", "reconhecimento"];
+  const cluster = clusterCentroid(read.visible);
+  if (global.includes(card.ability)) {
+    if (card.ability === "fumaca" && !defensive) return clampToWorld(frontCentroid(state, side));
+    if (card.ability === "reconhecimento") {
+      const p = state.config.arena.controlPoints.find((c) => c.owner !== side);
+      return p ? { x: p.x, y: p.y } : clampToWorld(cluster ?? target);
+    }
+    return clampToWorld(cluster ?? target);
+  }
+  const anchor = defensive ? target : frontCentroid(state, side);
+  return clampToZone(zone, anchor);
+}
+
+function placement(
+  state: BattleState,
+  side: Side,
+  card: MilitaryCard,
+  target: ControlPoint,
+  read: BattleRead,
+  defensive: boolean,
+): { x: number; y: number } {
+  const zone = state.config.arena.deployZone[side];
+  const cx = zone.x + zone.w / 2;
+  const cy = zone.y + zone.h / 2;
+
+  const threat = read.visible
+    .map((u) => ({ u, d: dist(u.x, u.y, target.x, target.y) }))
+    .filter((x) => x.d <= target.radius + 18)
+    .sort((a, b) => a.d - b.d)[0];
+
+  if (defensive && threat) {
+    const mid = { x: (threat.u.x + target.x) / 2, y: (threat.u.y + target.y) / 2 };
+    return clampToZone(zone, mid, card.radius);
+  }
+
+  const dx = target.x - cx;
+  const dy = target.y - cy;
+  const len = Math.hypot(dx, dy) || 1;
+  const reach = Math.min(zone.w, zone.h) / 2 - 2;
+  const flank = card.category === "blindado" ? 0.35 : card.category === "infantaria" ? 0.15 : 0;
+  const px = -dy / len;
+  const py = dx / len;
+  const jitter = (nextRandom(state) - 0.5) * 2;
+  const x = cx + (dx / len) * reach + px * flank * reach * jitter;
+  const y = cy + (dy / len) * reach + py * flank * reach * jitter;
+  return clampToZone(zone, { x, y }, card.radius);
+}
+
+function frontCentroid(state: BattleState, side: Side): { x: number; y: number } {
+  const units = sideState(state, side).units.filter((u) => u.alive);
+  if (units.length === 0) {
+    const zone = state.config.arena.deployZone[side];
+    return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };
+  }
+  return {
+    x: units.reduce((a, u) => a + u.x, 0) / units.length,
+    y: units.reduce((a, u) => a + u.y, 0) / units.length,
+  };
+}
+
+function clusterCentroid(visible: BattleUnitView[]): { x: number; y: number } | null {
+  if (visible.length === 0) return null;
+  return {
+    x: visible.reduce((a, u) => a + u.x, 0) / visible.length,
+    y: visible.reduce((a, u) => a + u.y, 0) / visible.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------------
+
+function emptyCats(): Record<UnitCategory, number> {
+  return {
     infantaria: 0,
     blindado: 0,
     artilharia: 0,
     defesa: 0,
     reconhecimento: 0,
     apoio: 0,
-  } as Record<UnitCategory, number>;
-  for (const u of units) out[u.category] += 1;
-  return out;
+  };
 }
 
-function cardScore(
-  state: BattleState,
-  cardId: string,
-  category: UnitCategory | "apoio",
-  enemyCats: Record<UnitCategory, number>,
-  personality: CommanderPersonality,
-  cost: number,
-): number {
-  const card = cardById(cardId);
-  let score = 1;
-  const hasEnemy = (c: UnitCategory) => enemyCats[c] > 0;
-
-  if (category === "defesa") {
-    if (
-      card.kind === "militar" &&
-      card.targets === "aereo" &&
-      (hasEnemy("reconhecimento") || hasEnemy("artilharia"))
-    )
-      score += 2;
-    if (cardId === "def-engenharia" && hasEnemy("blindado")) score += 2.4;
-    if (cardId === "def-fortificacao") score += personality === "Cauteloso" ? 1.4 : 0.2;
-  }
-  if (category === "infantaria") {
-    if (hasEnemy("infantaria")) score += 1.4;
-    if (personality === "Agressivo" || personality === "Oportunista") score += 0.6;
-  }
-  if (category === "blindado") {
-    if (hasEnemy("infantaria")) score += 1.6;
-    if (personality === "Agressivo") score += 1.0;
-    if (cardId === "bld-pesado") score += 0.4;
-  }
-  if (category === "artilharia") {
-    if (hasEnemy("infantaria") || hasEnemy("defesa")) score += 1.2;
-    if (personality === "Econômico") score += 1.0;
-  }
-  if (category === "reconhecimento") {
-    const seen = state.red.units.filter((u) => u.alive).length;
-    if (seen < 2) score += 1.2;
-    score += 0.3;
-  }
-  if (category === "apoio") {
-    score += state.red.units.filter((u) => u.alive).length > 2 ? 0.8 : 0;
-    if (card.kind === "apoio" && card.ability === "ataque_aereo") {
-      const enemyNearPoint = enemyCats.infantaria + enemyCats.blindado;
-      if (enemyNearPoint >= 2) score += 2.5;
-      else score -= 1.5;
-    }
-    if (card.kind === "apoio" && card.ability === "reforcos") score += 0.4;
-  }
-  // economia: cartas caras exigem justificativa
-  score -= cost * (personality === "Econômico" ? 0.05 : 0.12);
-  return score;
-}
-
-function chooseTarget(
-  state: BattleState,
-  side: Side,
-  personality: CommanderPersonality,
-  visible: { x: number; y: number }[],
-): ControlPoint {
-  const points = state.config.arena.controlPoints;
-  const own = points.filter((p) => p.owner === side);
-  const contested = points.filter((p) => p.owner !== side);
-  const fallback = points[0]!;
-
-  // ameaça: inimigos visíveis perto de um ponto nosso
-  const threatened = own.find((p) =>
-    visible.some((u) => dist(u.x, u.y, p.x, p.y) <= p.radius + 14),
-  );
-
-  if (personality === "Cauteloso" && threatened) return threatened;
-  if (personality === "Agressivo") {
-    return contested.slice().sort((a, b) => b.value - a.value)[0] ?? own[0] ?? fallback;
-  }
-  if (personality === "Oportunista") {
-    // objetivo contestado com menos presença inimiga visível
-    const scored = contested
-      .map((p) => ({
-        p,
-        threat: visible.filter((u) => dist(u.x, u.y, p.x, p.y) <= p.radius + 12).length,
-      }))
-      .sort((a, b) => a.threat - b.threat || b.p.value - a.p.value);
-    return scored[0]?.p ?? fallback;
-  }
-  if (personality === "Econômico" && own.length > 0 && visible.length < 2) {
-    return own[0]!;
-  }
-  // Metódico / padrão: disputa o objetivo de maior valor que ainda não é seu
-  return contested.slice().sort((a, b) => b.value - a.value)[0] ?? fallback;
-}
-
-// Coloca a unidade na própria zona de desdobramento, na borda voltada ao objetivo.
-function placement(
-  state: BattleState,
-  side: Side,
-  target: ControlPoint,
-  radius: number,
-): { x: number; y: number } {
-  const z = state.config.arena.deployZone[side];
-  const cx = z.x + z.w / 2;
-  const cy = z.y + z.h / 2;
-  const dx = target.x - cx;
-  const dy = target.y - cy;
-  const len = Math.hypot(dx, dy) || 1;
-  const reach = Math.min(z.w, z.h) / 2 - 2;
-  const x = clamp(cx + (dx / len) * reach, z.x + radius, z.x + z.w - radius);
-  const y = clamp(cy + (dy / len) * reach, z.y + radius, z.y + z.h - radius);
-  return { x, y };
-}
-
-function reasoning(
-  cardId: string,
-  category: string,
-  target: ControlPoint,
-  enemyCats: Record<UnitCategory, number>,
-): string {
-  const enemyTop = (Object.entries(enemyCats) as [UnitCategory, number][]).sort(
+function reasoning(card: Card, target: ControlPoint, read: BattleRead): string {
+  const top = (Object.entries(read.enemyCats) as [UnitCategory, number][]).sort(
     (a, b) => b[1] - a[1],
   )[0];
-  const topKind = enemyTop?.[0];
-  const topCount = enemyTop?.[1] ?? 0;
-  if (cardId === "def-engenharia" && topCount > 0 && topKind === "blindado") {
-    return `Leitura: blindados inimigos à vista. Engenharia desdobrada para ${target.name}.`;
-  }
-  if (cardId === "def-aa" && topCount > 0) {
-    return `Leitura: ameaça aérea e de apoio. Antiaérea posicionada para ${target.name}.`;
-  }
-  return `Decisão: ${category} enviada para disputar ${target.name}.`;
+  const kind = top?.[0];
+  const n = top?.[1] ?? 0;
+  if (card.kind === "apoio") return `Apoio: ${card.name} empregado sobre ${target.name}.`;
+  if (n > 0) return `Leitura: ${n}× ${kind} à vista. ${card.name} responde em ${target.name}.`;
+  return `Decisão: ${card.name} avança para disputar ${target.name}.`;
 }
 
-function pushAiLog(state: BattleState, text: string): void {
-  state.log.unshift({ t: state.t, side: "red", kind: "ia", text });
+function pushAiLog(state: BattleState, side: Side, text: string): void {
+  state.log.unshift({ t: state.t, side, kind: "ia", text });
   if (state.log.length > 120) state.log.length = 120;
 }
 
@@ -284,7 +628,22 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-// Exposto para o modo "espectador" e testes: apenas ordens defensivas simples.
+function clampToWorld(p: { x: number; y: number }): { x: number; y: number } {
+  return { x: clamp(p.x, 4, 96), y: clamp(p.y, 4, 96) };
+}
+
+function clampToZone(
+  zone: { x: number; y: number; w: number; h: number },
+  p: { x: number; y: number },
+  radius = 2,
+): { x: number; y: number } {
+  return {
+    x: clamp(p.x, zone.x + radius, zone.x + zone.w - radius),
+    y: clamp(p.y, zone.y + radius, zone.y + zone.h - radius),
+  };
+}
+
+// Exposto para o modo "espectador" e testes: ordens gerais simples.
 export function aiIssueOrders(state: BattleState): void {
   if (state.red.units.length > 0 && state.t > 20) {
     const hasOwn = state.config.arena.controlPoints.some((p) => p.owner === "red");
@@ -292,4 +651,14 @@ export function aiIssueOrders(state: BattleState): void {
   }
 }
 
-export const _internal = { doctrines, decide };
+export const _internal = {
+  doctrines,
+  planTurn,
+  scoreCard,
+  readBattle,
+  chooseTarget,
+  intervalFor,
+  reserveFor,
+  largestEnemyCluster,
+  defaultAiWeights,
+};

@@ -19,11 +19,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   apoio: "Apoio",
 };
 
-export function CommandBar({ side }: { side: SideState }) {
+export function CommandBar({ side, compact = false }: { side: SideState; compact?: boolean }) {
   const pct = (side.command / side.commandMax) * 100;
   return (
     <div className="flex items-center gap-3">
-      <div className="w-40">
+      <div className={compact ? "w-32 sm:w-40" : "w-40"}>
         <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           <span>Pontos de Comando</span>
           <span className="text-primary">
@@ -57,7 +57,7 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
   const queue = side.deck.queue.map((id) => cardMeta(id));
   return (
     <div className="flex items-stretch gap-4">
-      <div className="flex flex-1 gap-2">
+      <div className="-mx-1 flex flex-1 gap-2 overflow-x-auto px-1 pb-1">
         {side.deck.hand.map((h) => {
           const card = cardMeta(h.cardId);
           const cost = costOf(h.cardId);
@@ -70,8 +70,10 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               onMouseEnter={() => onHover(card)}
               onMouseLeave={() => onHover(null)}
               className={cn(
-                "hud-panel relative flex flex-1 flex-col items-start gap-1 border p-2 text-left transition",
-                selected ? "border-primary shadow-brass" : "border-border hover:border-primary/60",
+                "hud-panel relative flex min-w-[104px] flex-1 flex-col items-start gap-1 border p-2 text-left transition",
+                selected
+                  ? "-translate-y-1 border-primary shadow-brass"
+                  : "border-border hover:border-primary/60",
                 !affordable && "opacity-45",
               )}
             >
@@ -99,6 +101,11 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               >
                 {cost}
               </span>
+              {selected && (
+                <span className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-primary px-1 font-mono text-[8px] uppercase tracking-wider text-primary-foreground">
+                  escolhida
+                </span>
+              )}
             </button>
           );
         })}

@@ -10,19 +10,19 @@ export function BattleTopBar({ state }: { state: BattleState }) {
   const phase = phaseLabel(state.phase);
 
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border bg-background/90 px-4 py-2">
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-border bg-background/90 px-2 py-2 sm:gap-3 sm:px-4">
       <SideBadge state={state} side="blue" align="left" />
 
       <div className="text-center">
-        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        <p className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground sm:block">
           {state.config.missionName}
         </p>
-        <p className="font-display text-3xl font-bold leading-none tabular-nums">
+        <p className="font-display text-2xl font-bold leading-none tabular-nums sm:text-3xl">
           {mm}:{ss}
         </p>
         <p
           className={cn(
-            "font-mono text-[10px] uppercase tracking-[0.2em]",
+            "font-mono text-[9px] uppercase tracking-[0.16em] sm:text-[10px]",
             state.phase === "pressao" ? "text-destructive" : "text-primary",
           )}
         >
@@ -47,11 +47,13 @@ function SideBadge({
   const cfg = side === "blue" ? state.blue : state.red;
   const score = Math.round(cfg.score);
   return (
-    <div className={cn("flex items-center gap-3", align === "right" && "justify-end")}>
-      <span className="text-2xl leading-none">{cfg.flag}</span>
-      <div className={cn(align === "right" && "text-right")}>
-        <p className="font-display text-sm font-bold uppercase leading-tight">{cfg.countryName}</p>
-        <p className="font-mono text-[10px] text-muted-foreground">
+    <div className={cn("flex items-center gap-2 sm:gap-3", align === "right" && "justify-end")}>
+      <span className="text-xl leading-none sm:text-2xl">{cfg.flag}</span>
+      <div className={cn("min-w-0", align === "right" && "text-right")}>
+        <p className="truncate font-display text-xs font-bold uppercase leading-tight sm:text-sm">
+          {cfg.countryName}
+        </p>
+        <p className="hidden font-mono text-[10px] text-muted-foreground sm:block">
           {cfg.commander.name} · {cfg.doctrine}
         </p>
         <p className="font-mono text-[10px]">
@@ -81,17 +83,19 @@ function phaseLabel(phase: BattlePhase): string {
 export function ObjectiveStrip({ state }: { state: BattleState }) {
   const points = state.config.arena.controlPoints;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/40 px-4 py-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
+    <div className="flex items-center gap-2 overflow-x-auto border-b border-border bg-card/40 px-2 py-1.5 sm:px-4">
+      <span className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
         {objectiveLabel(state.config.objectiveKind)}
       </span>
-      <span className="text-xs text-muted-foreground">{state.config.objectiveText}</span>
+      <span className="hidden whitespace-nowrap text-xs text-muted-foreground md:inline">
+        {state.config.objectiveText}
+      </span>
       <span className="ml-auto flex gap-2">
         {points.map((p) => (
           <span
             key={p.id}
             className={cn(
-              "border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+              "whitespace-nowrap border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider",
               p.owner === "blue" && "border-ally text-ally",
               p.owner === "red" && "border-enemy text-enemy",
               p.owner === "neutro" && "border-border text-muted-foreground",

@@ -12,6 +12,7 @@ import { CommandBar, HandBar, OrderBar, UnitInspector } from "./BattleHud";
 import { cardById } from "@/game/battle/catalog";
 import {
   buildBattleConfig,
+  chapterMission,
   consequencesOf,
   missionById,
   type MissionDef,
@@ -153,7 +154,12 @@ export function LiveBattle({
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [hovered, setHovered] = useState<Card | null>(null);
+  const [showIntel, setShowIntel] = useState(false);
   const completedRef = useRef(false);
+
+  useEffect(() => {
+    completedRef.current = false;
+  }, [config.id, config.seed]);
 
   useEffect(() => {
     if (result && !completedRef.current) {
@@ -206,7 +212,7 @@ export function LiveBattle({
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col pb-40 lg:pb-0">
       <BattleTopBar state={state} />
       <ObjectiveStrip state={state} />
 
@@ -216,7 +222,7 @@ export function LiveBattle({
         </p>
       )}
 
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 p-2 sm:p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
           <BattleArena
             state={state}
@@ -227,49 +233,67 @@ export function LiveBattle({
             onSelectUnit={setSelectedUnitId}
             onSelectPoint={() => undefined}
           />
-
-          <div className="hud-panel hud-corners space-y-3 p-3">
-            <CommandBar side={state.blue} />
-            <HandBar
-              side={state.blue}
-              pendingCardId={pendingCardId}
-              costOf={battle.costOf}
-              cardMeta={battle.cardMeta}
-              onPick={handlePick}
-              onHover={setHovered}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <OrderBar onOrder={handleOrder} hasSelection={Boolean(selectedUnitId)} />
-              <div className="flex items-center gap-2">
-                <GameButton variant="ghost" onClick={() => battle.setPaused(!battle.paused)}>
-                  {battle.paused ? "Retomar" : "Pausar"}
-                </GameButton>
-                <div className="flex border border-border">
-                  {[1, 2, 3].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => battle.setSpeed(s)}
-                      className={cn(
-                        "px-2 py-1 font-mono text-[10px] uppercase",
-                        battle.speed === s
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-primary",
-                      )}
-                    >
-                      {s}×
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <div className="space-y-3">
+        {/* Intel tática: no mobile só abre pelo botão "Intel"; no desktop é a coluna lateral */}
+        <div className={cn("space-y-3", showIntel ? "block" : "hidden lg:block")}>
           <UnitInspector unit={selectedUnit} />
           {hovered && <CardDetail card={hovered} cost={battle.costOf(hovered.id)} />}
           <AiCommanderPanel state={state} />
           <BattleLogPanel state={state} />
+        </div>
+      </div>
+
+      {/* Dock de controle: fixo no rodapé no mobile, embutido no desktop */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur lg:sticky lg:inset-x-auto lg:bottom-auto lg:mx-4 lg:mb-4 lg:rounded-sm lg:border lg:bg-background/95">
+        <div className="space-y-2 lg:space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <CommandBar side={state.blue} compact />
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowIntel((v) => !v)}
+                className="border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary lg:hidden"
+              >
+                Intel
+              </button>
+              <GameButton
+                variant="ghost"
+                aria-label={battle.paused ? "Retomar" : "Pausar"}
+                onClick={() => battle.setPaused(!battle.paused)}
+              >
+                {battle.paused ? "▶ Retomar" : "❚❚ Pausar"}
+              </GameButton>
+              <div className="flex border border-border">
+                {[1, 2, 3].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => battle.setSpeed(s)}
+                    className={cn(
+                      "px-2 py-1 font-mono text-[10px] uppercase",
+                      battle.speed === s
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-primary",
+                    )}
+                  >
+                    {s}×
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <HandBar
+            side={state.blue}
+            pendingCardId={pendingCardId}
+            costOf={battle.costOf}
+            cardMeta={battle.cardMeta}
+            onPick={handlePick}
+            onHover={setHovered}
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <OrderBar onOrder={handleOrder} hasSelection={Boolean(selectedUnitId)} />
+          </div>
         </div>
       </div>
     </div>
@@ -315,23 +339,12 @@ export function toAiDifficulty(d: Difficulty) {
 }
 
 function chapterIdFor(missionId: string): string {
-  const idx = missionById(missionId);
-  return missionToChapter[idx.id] ?? "c1";
+  return missionToChapter[missionById(missionId).id] ?? "c1";
 }
 
-const missionToChapter: Record<string, string> = {
-  "m-apagao": "c1",
-  "m-castello": "c2",
-  "m-desfile": "c3",
-  "m-trampolim": "c4",
-  "m-petroleo": "c5",
-  "m-torre": "c6",
-  "m-curriculo": "c7",
-  "m-camelot": "c8",
-  "m-rua": "c9",
-  "m-brothersam": "c10",
-  "m-final": "c11",
-};
+const missionToChapter: Record<string, string> = Object.fromEntries(
+  Object.entries(chapterMission).map(([chapter, mission]) => [mission, chapter]),
+);
 
 function hashSeed(s: string): number {
   let h = 2166136261;
