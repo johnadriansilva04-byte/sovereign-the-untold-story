@@ -10,33 +10,180 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BatalhaRouteImport } from './routes/batalha'
+import { Route as CampanhaRouteImport } from './routes/campanha'
+import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as CreditosRouteImport } from './routes/creditos'
+import { Route as DossieRouteImport } from './routes/dossie'
+import { Route as EventosRouteImport } from './routes/eventos'
+import { Route as IaRouteImport } from './routes/ia'
+import { Route as MapaRouteImport } from './routes/mapa'
+import { Route as MultiplayerRouteImport } from './routes/multiplayer'
+import { Route as NacaoRouteImport } from './routes/nacao'
+import { Route as PerfilRouteImport } from './routes/perfil'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BatalhaRoute = BatalhaRouteImport.update({
+  id: '/batalha',
+  path: '/batalha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CampanhaRoute = CampanhaRouteImport.update({
+  id: '/campanha',
+  path: '/campanha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreditosRoute = CreditosRouteImport.update({
+  id: '/creditos',
+  path: '/creditos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DossieRoute = DossieRouteImport.update({
+  id: '/dossie',
+  path: '/dossie',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventosRoute = EventosRouteImport.update({
+  id: '/eventos',
+  path: '/eventos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IaRoute = IaRouteImport.update({
+  id: '/ia',
+  path: '/ia',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MapaRoute = MapaRouteImport.update({
+  id: '/mapa',
+  path: '/mapa',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MultiplayerRoute = MultiplayerRouteImport.update({
+  id: '/multiplayer',
+  path: '/multiplayer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NacaoRoute = NacaoRouteImport.update({
+  id: '/nacao',
+  path: '/nacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/batalha': typeof BatalhaRoute
+  '/campanha': typeof CampanhaRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/creditos': typeof CreditosRoute
+  '/dossie': typeof DossieRoute
+  '/eventos': typeof EventosRoute
+  '/ia': typeof IaRoute
+  '/mapa': typeof MapaRoute
+  '/multiplayer': typeof MultiplayerRoute
+  '/nacao': typeof NacaoRoute
+  '/perfil': typeof PerfilRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/batalha': typeof BatalhaRoute
+  '/campanha': typeof CampanhaRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/creditos': typeof CreditosRoute
+  '/dossie': typeof DossieRoute
+  '/eventos': typeof EventosRoute
+  '/ia': typeof IaRoute
+  '/mapa': typeof MapaRoute
+  '/multiplayer': typeof MultiplayerRoute
+  '/nacao': typeof NacaoRoute
+  '/perfil': typeof PerfilRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/batalha': typeof BatalhaRoute
+  '/campanha': typeof CampanhaRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/creditos': typeof CreditosRoute
+  '/dossie': typeof DossieRoute
+  '/eventos': typeof EventosRoute
+  '/ia': typeof IaRoute
+  '/mapa': typeof MapaRoute
+  '/multiplayer': typeof MultiplayerRoute
+  '/nacao': typeof NacaoRoute
+  '/perfil': typeof PerfilRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/batalha'
+    | '/campanha'
+    | '/configuracoes'
+    | '/creditos'
+    | '/dossie'
+    | '/eventos'
+    | '/ia'
+    | '/mapa'
+    | '/multiplayer'
+    | '/nacao'
+    | '/perfil'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/batalha'
+    | '/campanha'
+    | '/configuracoes'
+    | '/creditos'
+    | '/dossie'
+    | '/eventos'
+    | '/ia'
+    | '/mapa'
+    | '/multiplayer'
+    | '/nacao'
+    | '/perfil'
+  id:
+    | '__root__'
+    | '/'
+    | '/batalha'
+    | '/campanha'
+    | '/configuracoes'
+    | '/creditos'
+    | '/dossie'
+    | '/eventos'
+    | '/ia'
+    | '/mapa'
+    | '/multiplayer'
+    | '/nacao'
+    | '/perfil'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BatalhaRoute: typeof BatalhaRoute
+  CampanhaRoute: typeof CampanhaRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRoute
+  CreditosRoute: typeof CreditosRoute
+  DossieRoute: typeof DossieRoute
+  EventosRoute: typeof EventosRoute
+  IaRoute: typeof IaRoute
+  MapaRoute: typeof MapaRoute
+  MultiplayerRoute: typeof MultiplayerRoute
+  NacaoRoute: typeof NacaoRoute
+  PerfilRoute: typeof PerfilRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +195,99 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/batalha': {
+      id: '/batalha'
+      path: '/batalha'
+      fullPath: '/batalha'
+      preLoaderRoute: typeof BatalhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/campanha': {
+      id: '/campanha'
+      path: '/campanha'
+      fullPath: '/campanha'
+      preLoaderRoute: typeof CampanhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes': {
+      id: '/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/creditos': {
+      id: '/creditos'
+      path: '/creditos'
+      fullPath: '/creditos'
+      preLoaderRoute: typeof CreditosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dossie': {
+      id: '/dossie'
+      path: '/dossie'
+      fullPath: '/dossie'
+      preLoaderRoute: typeof DossieRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/eventos': {
+      id: '/eventos'
+      path: '/eventos'
+      fullPath: '/eventos'
+      preLoaderRoute: typeof EventosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ia': {
+      id: '/ia'
+      path: '/ia'
+      fullPath: '/ia'
+      preLoaderRoute: typeof IaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mapa': {
+      id: '/mapa'
+      path: '/mapa'
+      fullPath: '/mapa'
+      preLoaderRoute: typeof MapaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/multiplayer': {
+      id: '/multiplayer'
+      path: '/multiplayer'
+      fullPath: '/multiplayer'
+      preLoaderRoute: typeof MultiplayerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nacao': {
+      id: '/nacao'
+      path: '/nacao'
+      fullPath: '/nacao'
+      preLoaderRoute: typeof NacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BatalhaRoute: BatalhaRoute,
+  CampanhaRoute: CampanhaRoute,
+  ConfiguracoesRoute: ConfiguracoesRoute,
+  CreditosRoute: CreditosRoute,
+  DossieRoute: DossieRoute,
+  EventosRoute: EventosRoute,
+  IaRoute: IaRoute,
+  MapaRoute: MapaRoute,
+  MultiplayerRoute: MultiplayerRoute,
+  NacaoRoute: NacaoRoute,
+  PerfilRoute: PerfilRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
