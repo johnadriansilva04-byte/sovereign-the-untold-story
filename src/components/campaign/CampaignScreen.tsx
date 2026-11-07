@@ -98,12 +98,43 @@ export function CampaignScreen() {
   const completed = chapterMeta.filter(
     (m) => profile.chapters[m.id]?.status === "concluido",
   ).length;
+  const pct = Math.round((completed / totalChapters) * 100);
+  // progressão sequencial: só o próximo capítulo não concluído fica liberado
+  const nextMeta = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
+
+  // agrupa os capítulos por ato, mantendo a ordem narrativa
+  const actGroups: { act: string; metas: typeof chapterMeta }[] = [];
+  for (const meta of chapterMeta) {
+    const act = chapters.find((c) => c.id === meta.id)!.act;
+    const last = actGroups[actGroups.length - 1];
+    if (last && last.act === act) last.metas.push(meta);
+    else actGroups.push({ act, metas: [meta] });
+  }
+
   return (
     <GameShell>
       <PageTitle kicker="Campanha · A história que não te contaram" title="Campanha">
         A guerra nunca acabou. Só trocou de uniforme. Cada capítulo ensina uma ideia nova de combate
         — e devolve a você o que conquistou no campo.
       </PageTitle>
+
+      <div className="hud-panel hud-corners mb-6 p-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="label-mono text-primary">Progresso da campanha</p>
+            <p className="font-display text-4xl font-black leading-none">
+              {completed}
+              <span className="text-muted-foreground">/{totalChapters}</span>
+            </p>
+          </div>
+          <p className="font-mono text-[11px] text-muted-foreground">
+            {pct}% · {totalChapters - completed} capítulo(s) por vir
+          </p>
+        </div>
+        <div className="mt-3 h-2 w-full overflow-hidden border border-border bg-muted">
+          <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MiniStat label="Capítulos" value={`${completed}/${totalChapters}`} />
@@ -112,76 +143,113 @@ export function CampaignScreen() {
         <MiniStat label="Cartas" value={Object.keys(profile.inventory.cards).length} />
       </div>
 
-      <div className="space-y-3">
-        {chapterMeta.map((meta) => {
-          const chapter = chapters.find((c) => c.id === meta.id)!;
-          const state = profile.chapters[meta.id];
-          const locked = state?.status === "bloqueado";
-          const done = state?.status === "concluido";
-          const mission = missionById(meta.missionId);
-          const diff = difficultyById(meta.difficulty);
+      <div className="space-y-8">
+        {actGroups.map((group) => {
+          const actDone = group.metas.filter(
+            (m) => profile.chapters[m.id]?.status === "concluido",
+          ).length;
           return (
-            <div
-              key={meta.id}
-              className={cn(
-                "hud-panel hud-corners grid gap-4 p-5 md:grid-cols-[auto_1fr_auto]",
-                locked && "opacity-50",
-                done && "border-fact/40",
-              )}
-            >
-              <div className="flex items-center gap-4">
-                <span className="font-display text-5xl font-black text-muted-foreground/40">
-                  {String(meta.number).padStart(2, "0")}
-                </span>
-                <span
-                  className={cn(
-                    "border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider",
-                    done
-                      ? "border-fact text-fact"
-                      : locked
-                        ? "border-border text-muted-foreground"
-                        : "border-primary text-primary",
-                  )}
-                >
-                  {done ? "Concluído" : locked ? "Bloqueado" : "Disponível"}
+            <section key={group.act}>
+              <div className="mb-3 flex items-center gap-3">
+                <h2 className="font-display text-lg font-bold uppercase tracking-wide">
+                  {group.act}
+                </h2>
+                <span className="h-px flex-1 bg-border" />
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {actDone}/{group.metas.length}
                 </span>
               </div>
 
-              <div>
-                <p className="label-mono">{chapter.act}</p>
-                <h3 className="font-display text-2xl font-bold uppercase">{chapter.title}</h3>
-                <p className="font-mono text-[11px] text-muted-foreground">
-                  {chapter.era} · {chapter.place} · {mission.terrain}
-                </p>
-                <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{chapter.summary}</p>
-                <p className="mt-2 font-mono text-[11px] text-doc">
-                  {terrainHint[mission.terrain]}
-                </p>
-              </div>
+              <div className="space-y-3">
+                {group.metas.map((meta) => {
+                  const chapter = chapters.find((c) => c.id === meta.id)!;
+                  const state = profile.chapters[meta.id];
+                  const done = state?.status === "concluido";
+                  const isNext = meta.id === nextMeta?.id;
+                  const locked = !done && !isNext;
+                  const mission = missionById(meta.missionId);
+                  const diff = difficultyById(meta.difficulty);
 
-              <div className="flex flex-col items-stretch justify-center gap-2 md:items-end">
-                <span className="border border-ai px-2 py-0.5 text-center font-mono text-[9px] uppercase text-ai">
-                  {diff.name}
-                </span>
-                {done && state?.outcome && (
-                  <span className="font-mono text-[10px] text-muted-foreground">
-                    melhor {state.bestScore}% · {state.attempts} tentativa(s)
-                  </span>
-                )}
-                <button
-                  disabled={locked}
-                  onClick={() => setView({ kind: "brief", chapterId: meta.id })}
-                  className={cn(
-                    "px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition",
-                    locked
-                      ? "cursor-not-allowed border border-border text-muted-foreground"
-                      : "bg-primary text-primary-foreground hover:brightness-110",
-                  )}
-                >
-                  {done ? "Rejogar" : locked ? "Bloqueado" : "Iniciar"}
-                </button>
+                  if (locked) {
+                    return (
+                      <div
+                        key={meta.id}
+                        className="hud-panel flex items-center gap-4 p-4 opacity-60"
+                      >
+                        <span className="font-display text-3xl font-black text-muted-foreground/30">
+                          {String(meta.number).padStart(2, "0")}
+                        </span>
+                        <span className="border border-border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                          🔒 Classificado
+                        </span>
+                        <span className="h-px flex-1 bg-border" />
+                        <span className="hidden font-mono text-[10px] text-muted-foreground sm:block">
+                          Conclua o capítulo anterior para liberar
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={meta.id}
+                      className={cn(
+                        "hud-panel hud-corners grid gap-4 p-5 md:grid-cols-[auto_1fr_auto]",
+                        done && "border-fact/40",
+                        isNext && "border-primary/60",
+                      )}
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="font-display text-5xl font-black text-muted-foreground/40">
+                          {String(meta.number).padStart(2, "0")}
+                        </span>
+                        <span
+                          className={cn(
+                            "border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+                            done ? "border-fact text-fact" : "border-primary text-primary",
+                          )}
+                        >
+                          {done ? "Concluído" : "Em curso"}
+                        </span>
+                      </div>
+
+                      <div>
+                        <p className="label-mono">{chapter.act}</p>
+                        <h3 className="font-display text-2xl font-bold uppercase">
+                          {chapter.title}
+                        </h3>
+                        <p className="font-mono text-[11px] text-muted-foreground">
+                          {chapter.era} · {chapter.place} · {mission.terrain}
+                        </p>
+                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                          {chapter.summary}
+                        </p>
+                        <p className="mt-2 font-mono text-[11px] text-doc">
+                          {terrainHint[mission.terrain]}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col items-stretch justify-center gap-2 md:items-end">
+                        <span className="border border-ai px-2 py-0.5 text-center font-mono text-[9px] uppercase text-ai">
+                          {diff.name}
+                        </span>
+                        {done && state?.outcome && (
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            melhor {state.bestScore}% · {state.attempts} tentativa(s)
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setView({ kind: "brief", chapterId: meta.id })}
+                          className="bg-primary px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-primary-foreground transition hover:brightness-110"
+                        >
+                          {done ? "Rejogar" : "Iniciar"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            </section>
           );
         })}
       </div>
