@@ -1,16 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GameShell, PageTitle, Panel, pageHead } from "@/components/game/shell";
+
+import { SettingsScreen } from "@/components/game/SettingsScreen";
+import { pageHead } from "@/components/game/shell";
 
 export const Route = createFileRoute("/configuracoes")({
-  head: () => pageHead("Configurações", "Configurações — SOVEREIGN"),
-  component: Page,
+  head: () =>
+    pageHead(
+      "Configurações",
+      "Preferências de SOVEREIGN: velocidade da batalha, áudio, animações e gestão dos dados locais.",
+    ),
+  component: SettingsScreen,
 });
-
-function Page() {
-  return (
-    <GameShell>
-      <PageTitle kicker="SOVEREIGN" title="Configurações" />
-      <Panel title="Em construção"><p className="text-muted-foreground">Esta tela será construída na próxima etapa.</p></Panel>
-    </GameShell>
-  );
-}

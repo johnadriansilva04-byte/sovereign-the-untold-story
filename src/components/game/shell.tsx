@@ -8,9 +8,9 @@ const nav = [
   { to: "/nacao", label: "Nação" },
   { to: "/ia", label: "Agentes IA" },
   { to: "/batalha", label: "Batalha" },
-  { to: "/eventos", label: "Eventos" },
   { to: "/campanha", label: "Campanha" },
   { to: "/multiplayer", label: "Multiplayer" },
+  { to: "/colecao", label: "Coleção" },
 ] as const;
 
 export function pageHead(title: string, description: string) {
@@ -28,7 +28,10 @@ export function pageHead(title: string, description: string) {
 
 export function Logo({ className }: { className?: string }) {
   return (
-    <Link to="/" className={cn("font-display text-xl font-black tracking-[0.25em] text-foreground", className)}>
+    <Link
+      to="/"
+      className={cn("font-display text-xl font-black tracking-[0.25em] text-foreground", className)}
+    >
       SOVEREIGN<span className="text-primary">.</span>
     </Link>
   );
@@ -53,14 +56,22 @@ export function GameShell({ children, full }: { children: ReactNode; full?: bool
             ))}
           </nav>
           <div className="hidden items-center gap-4 font-mono text-[11px] text-muted-foreground lg:flex">
-            <span>TURNO <b className="text-foreground">14</b></span>
+            <span>
+              TURNO <b className="text-foreground">14</b>
+            </span>
             <span>🇧🇷 BRASIL</span>
-            <Link to="/perfil" className="hover:text-primary">PERFIL</Link>
-            <Link to="/configuracoes" className="hover:text-primary">⚙</Link>
+            <Link to="/perfil" className="hover:text-primary">
+              PERFIL
+            </Link>
+            <Link to="/configuracoes" className="hover:text-primary">
+              ⚙
+            </Link>
           </div>
         </div>
       </header>
-      <main className={cn("flex-1", !full && "mx-auto w-full max-w-7xl px-5 py-8")}>{children}</main>
+      <main className={cn("flex-1", !full && "mx-auto w-full max-w-7xl px-5 py-8")}>
+        {children}
+      </main>
       <Footer />
     </div>
   );
@@ -70,13 +81,28 @@ export function Footer() {
   return (
     <footer className="border-t border-border px-5 py-3 text-center font-mono text-[10px] tracking-[0.2em] text-muted-foreground/60">
       UM JOGO VARIANT · EM HOMENAGEM À FORÇA EXPEDICIONÁRIA BRASILEIRA ·{" "}
-      <Link to="/dossie" className="hover:text-primary">DOSSIÊ DO PROJETO</Link>{" "}·{" "}
-      <Link to="/creditos" className="hover:text-primary">CRÉDITOS</Link>
+      <Link to="/dossie" className="hover:text-primary">
+        DOSSIÊ DO PROJETO
+      </Link>{" "}
+      ·{" "}
+      <Link to="/creditos" className="hover:text-primary">
+        CRÉDITOS
+      </Link>
     </footer>
   );
 }
 
-export function Panel({ title, children, className, action }: { title?: string; children: ReactNode; className?: string; action?: ReactNode }) {
+export function Panel({
+  title,
+  children,
+  className,
+  action,
+}: {
+  title?: string;
+  children: ReactNode;
+  className?: string;
+  action?: ReactNode;
+}) {
   return (
     <section className={cn("hud-panel hud-corners p-5", className)}>
       {title && (
@@ -90,7 +116,15 @@ export function Panel({ title, children, className, action }: { title?: string; 
   );
 }
 
-export function PageTitle({ kicker, title, children }: { kicker: string; title: string; children?: ReactNode }) {
+export function PageTitle({
+  kicker,
+  title,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  children?: ReactNode;
+}) {
   return (
     <div className="mb-8 animate-rise">
       <p className="label-mono text-primary">{kicker}</p>
@@ -100,16 +134,36 @@ export function PageTitle({ kicker, title, children }: { kicker: string; title: 
   );
 }
 
-export function Meter({ value, tone = "primary", label }: { value: number; tone?: "primary" | "feb" | "enemy" | "ai" | "ally"; label?: string }) {
-  const bg = { primary: "bg-primary", feb: "bg-feb", enemy: "bg-enemy", ai: "bg-ai", ally: "bg-ally" }[tone];
+export function Meter({
+  value,
+  tone = "primary",
+  label,
+}: {
+  value: number;
+  tone?: "primary" | "feb" | "enemy" | "ai" | "ally";
+  label?: string;
+}) {
+  const bg = {
+    primary: "bg-primary",
+    feb: "bg-feb",
+    enemy: "bg-enemy",
+    ai: "bg-ai",
+    ally: "bg-ally",
+  }[tone];
   return (
     <div>
       {label && (
         <div className="mb-1 flex justify-between font-mono text-[11px] text-muted-foreground">
-          <span>{label}</span><span className="text-foreground">{Math.round(value)}</span>
+          <span>{label}</span>
+          <span className="text-foreground">{Math.round(value)}</span>
         </div>
       )}
-      <div className="h-1.5 w-full bg-muted"><div className={cn("h-full transition-all", bg)} style={{ width: `${Math.min(100, value)}%` }} /></div>
+      <div className="h-1.5 w-full bg-muted">
+        <div
+          className={cn("h-full transition-all", bg)}
+          style={{ width: `${Math.min(100, value)}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -131,17 +185,39 @@ const evidence: Record<EvidenceKind, { label: string; cls: string }> = {
 };
 export function EvidenceBadge({ kind }: { kind: EvidenceKind }) {
   const e = evidence[kind];
-  return <span className={cn("inline-block border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider", e.cls)}>{e.label}</span>;
+  return (
+    <span
+      className={cn(
+        "inline-block border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+        e.cls,
+      )}
+    >
+      {e.label}
+    </span>
+  );
 }
 
-export function GameButton({ children, variant = "primary", className, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
+export function GameButton({
+  children,
+  variant = "primary",
+  className,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
   const v = {
     primary: "bg-primary text-primary-foreground hover:brightness-110 shadow-brass",
     ghost: "border border-border text-foreground hover:border-primary hover:text-primary",
-    danger: "border border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground",
+    danger:
+      "border border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground",
   }[variant];
   return (
-    <button {...rest} className={cn("px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] transition disabled:opacity-40", v, className)}>
+    <button
+      {...rest}
+      className={cn(
+        "px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] transition disabled:opacity-40",
+        v,
+        className,
+      )}
+    >
       {children}
     </button>
   );

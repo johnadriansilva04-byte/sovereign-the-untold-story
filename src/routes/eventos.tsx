@@ -1,16 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GameShell, PageTitle, Panel, pageHead } from "@/components/game/shell";
+
+import { EventsScreen } from "@/components/game/EventsScreen";
+import { pageHead } from "@/components/game/shell";
 
 export const Route = createFileRoute("/eventos")({
-  head: () => pageHead("Eventos", "Eventos — SOVEREIGN"),
-  component: Page,
+  head: () =>
+    pageHead(
+      "Eventos e histórico",
+      "Sala de situação de SOVEREIGN: eventos da guerra e o histórico das suas batalhas.",
+    ),
+  component: EventsScreen,
 });
-
-function Page() {
-  return (
-    <GameShell>
-      <PageTitle kicker="SOVEREIGN" title="Eventos" />
-      <Panel title="Em construção"><p className="text-muted-foreground">Esta tela será construída na próxima etapa.</p></Panel>
-    </GameShell>
-  );
-}

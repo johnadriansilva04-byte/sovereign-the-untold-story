@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BatalhaRouteImport } from './routes/batalha'
 import { Route as CampanhaRouteImport } from './routes/campanha'
+import { Route as ColecaoRouteImport } from './routes/colecao'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as CreditosRouteImport } from './routes/creditos'
 import { Route as DossieRouteImport } from './routes/dossie'
@@ -35,6 +36,11 @@ const BatalhaRoute = BatalhaRouteImport.update({
 const CampanhaRoute = CampanhaRouteImport.update({
   id: '/campanha',
   path: '/campanha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ColecaoRoute = ColecaoRouteImport.update({
+  id: '/colecao',
+  path: '/colecao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/batalha': typeof BatalhaRoute
   '/campanha': typeof CampanhaRoute
+  '/colecao': typeof ColecaoRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/creditos': typeof CreditosRoute
   '/dossie': typeof DossieRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/batalha': typeof BatalhaRoute
   '/campanha': typeof CampanhaRoute
+  '/colecao': typeof ColecaoRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/creditos': typeof CreditosRoute
   '/dossie': typeof DossieRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/batalha': typeof BatalhaRoute
   '/campanha': typeof CampanhaRoute
+  '/colecao': typeof ColecaoRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/creditos': typeof CreditosRoute
   '/dossie': typeof DossieRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/batalha'
     | '/campanha'
+    | '/colecao'
     | '/configuracoes'
     | '/creditos'
     | '/dossie'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/batalha'
     | '/campanha'
+    | '/colecao'
     | '/configuracoes'
     | '/creditos'
     | '/dossie'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/batalha'
     | '/campanha'
+    | '/colecao'
     | '/configuracoes'
     | '/creditos'
     | '/dossie'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BatalhaRoute: typeof BatalhaRoute
   CampanhaRoute: typeof CampanhaRoute
+  ColecaoRoute: typeof ColecaoRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   CreditosRoute: typeof CreditosRoute
   DossieRoute: typeof DossieRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/campanha'
       fullPath: '/campanha'
       preLoaderRoute: typeof CampanhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/colecao': {
+      id: '/colecao'
+      path: '/colecao'
+      fullPath: '/colecao'
+      preLoaderRoute: typeof ColecaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BatalhaRoute: BatalhaRoute,
   CampanhaRoute: CampanhaRoute,
+  ColecaoRoute: ColecaoRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   CreditosRoute: CreditosRoute,
   DossieRoute: DossieRoute,

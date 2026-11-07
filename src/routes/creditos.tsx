@@ -1,16 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GameShell, PageTitle, Panel, pageHead } from "@/components/game/shell";
+
+import { CreditsScreen } from "@/components/game/CreditsScreen";
+import { pageHead } from "@/components/game/shell";
 
 export const Route = createFileRoute("/creditos")({
-  head: () => pageHead("Créditos", "Créditos — SOVEREIGN"),
-  component: Page,
+  head: () =>
+    pageHead(
+      "Créditos",
+      "Créditos de SOVEREIGN: Variant, a homenagem à Força Expedicionária Brasileira e as fontes históricas da campanha.",
+    ),
+  component: CreditsScreen,
 });
-
-function Page() {
-  return (
-    <GameShell>
-      <PageTitle kicker="SOVEREIGN" title="Créditos" />
-      <Panel title="Em construção"><p className="text-muted-foreground">Esta tela será construída na próxima etapa.</p></Panel>
-    </GameShell>
-  );
-}

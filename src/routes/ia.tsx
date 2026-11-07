@@ -1,16 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GameShell, PageTitle, Panel, pageHead } from "@/components/game/shell";
+
+import { AiScreen } from "@/components/game/AiScreen";
+import { pageHead } from "@/components/game/shell";
 
 export const Route = createFileRoute("/ia")({
-  head: () => pageHead("Agentes IA", "Agentes IA — SOVEREIGN"),
-  component: Page,
+  head: () =>
+    pageHead(
+      "Agentes IA",
+      "Comandantes e países controlados por IA em SOVEREIGN: personalidades, doutrinas e níveis de ameaça.",
+    ),
+  component: AiScreen,
 });
-
-function Page() {
-  return (
-    <GameShell>
-      <PageTitle kicker="SOVEREIGN" title="Agentes IA" />
-      <Panel title="Em construção"><p className="text-muted-foreground">Esta tela será construída na próxima etapa.</p></Panel>
-    </GameShell>
-  );
-}

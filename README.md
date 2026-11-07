@@ -26,3 +26,48 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Como jogar (solo, offline)
+
+O SOVEREIGN roda inteiro no front-end. Você pode jogar a campanha hoje, sem servidor e sem
+rede:
+
+```sh
+npm i
+npm run dev
+```
+
+Depois abra `/campanha`:
+
+1. **Capítulo 1 — Operação Apagão**: briefing, dossiê e "Entrar no teatro".
+2. **Preparação**: escolha missão, baralho (8 cartas do seu inventário), comandante, doutrina e
+   dificuldade (Recruta → Soberano → Comandante IA/LLM).
+3. **Batalha**: selecione cartas na mão, posicione na sua zona, dê ordens e dispute os pontos de
+   controle. Partidas de 4–6 min, com fase final de comando acelerado.
+4. **Recompensa**: vencer concede cartas, acessórios, pesquisa e Sovereigns, e desbloqueia o
+   próximo capítulo.
+
+Outras telas: `/mapa` (mapa-múndi interativo e dossiês de país), `/eventos` (feed da guerra e
+histórico de batalhas), `/ia` (comandantes e níveis de ameaça), `/multiplayer` (PvP com apostas
+de cartas), `/colecao` (cartas, acessórios, baralhos), `/nacao` (árvore tecnológica), `/perfil`
+(progresso e sincronização), `/configuracoes` (preferências locais) e `/creditos` (autoria e
+fontes históricas).
+
+**Sincronização (opcional).** Crie um `.env` com as chaves públicas do Supabase para ativar o
+login anônimo e o salvamento em nuvem. Sem elas, o jogo é 100% local (localStorage).
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
+```
+
+**Comandante LLM (opcional).** A dificuldade "Comandante IA (LLM)" usa um modelo quando estas
+variáveis existem no servidor; sem elas, cai automaticamente para a IA tática local.
+
+```
+SOVEREIGN_LLM_BASE_URL=...
+SOVEREIGN_LLM_API_KEY=...
+SOVEREIGN_LLM_MODEL=...
+```
+
+Documentos de design: `docs/batalha.md` e `docs/progressao-e-multiplayer.md`.
