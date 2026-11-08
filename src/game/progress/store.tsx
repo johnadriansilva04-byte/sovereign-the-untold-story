@@ -35,6 +35,16 @@ import { ensureSession, pushBattleRecord, pushProfile } from "./sync";
 // Mensagem usada quando o Supabase não está configurado — offline normal, não é falha.
 const OFFLINE_MESSAGE = "Supabase não configurado.";
 
+// Falhas que não merecem aparecer para o jogador: jogo offline, rede instável ou
+// limite temporário de requisições do Supabase. O perfil local segue válido.
+function isTransientSyncError(message: string | null): boolean {
+  if (!message) return true;
+  return (
+    message === OFFLINE_MESSAGE ||
+    /rate limit|429|fetch|network|failed to fetch|timeout|temporar/i.test(message)
+  );
+}
+
 export interface ProfileContextValue {
   ready: boolean;
   profile: ProfileState;
@@ -81,8 +91,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     saveProfile(loaded);
     void (async () => {
       const { userId, error } = await ensureSession();
-      // Offline (sem Supabase configurado) não é erro: o jogo roda local.
-      setLastError(userId ? null : error && error !== OFFLINE_MESSAGE ? error : null);
+      // Offline ou limitação temporária (rede/rate limit) não é erro visível:
+      // o jogo roda local e tenta sincronizar de novo depois.
+      setLastError(userId || isTransientSyncError(error) ? null : error);
       setSignedIn(Boolean(userId));
       if (userId) await pushProfile(loaded);
     })();
@@ -269,7 +280,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     const { userId } = await ensureSession();
     setSignedIn(Boolean(userId));
     const res = await pushProfile(current);
-    if (!res.ok && res.error) setLastError(res.error);
+    if (!res.ok && res.error && !isTransientSyncError(res.error)) setLastError(res.error);
     else setLastError(null);
   }, []);
 

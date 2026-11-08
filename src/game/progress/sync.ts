@@ -23,10 +23,18 @@ export async function ensureSession(): Promise<{ userId: string | null; error: s
   try {
     const { data } = await sb.auth.getSession();
     if (data.session?.user) return { userId: data.session.user.id, error: null };
-    // login anônimo: jogador começa a jogar sem cadastro
-    const { data: signIn, error } = await sb.auth.signInAnonymously();
-    if (error) return { userId: null, error: error.message };
-    return { userId: signIn.user?.id ?? null, error: null };
+    // login anônimo: jogador começa a jogar sem cadastro.
+    // O Supabase limita a taxa de signups anônimos (429); tentamos algumas vezes
+    // com recuo antes de desistir — o jogo continua offline nesse meio-tempo.
+    let last = "Falha de sessão.";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: signIn, error } = await sb.auth.signInAnonymously();
+      if (!error) return { userId: signIn.user?.id ?? null, error: null };
+      last = error.message;
+      if (!/rate limit|429/i.test(error.message)) break;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+    return { userId: null, error: last };
   } catch (e) {
     return { userId: null, error: e instanceof Error ? e.message : "Falha de sessão." };
   }
@@ -65,8 +73,8 @@ export async function pushProfile(profile: ProfileState): Promise<{ ok: boolean;
       industry: profile.nation.industry,
       logistics: profile.nation.logistics,
     };
-    await sb.from("nation_state").upsert(nation, { onConflict: "user_id" });
-
+    const first = await sb.from("nation_state").upsert(nation, { onConflict: "user_id" });
+    if (first.error) return { ok: false, error: first.error.message };
     const progress = Object.entries(profile.chapters).map(([chapterId, c]) => ({
       user_id: userId,
       chapter_id: chapterId,
@@ -77,7 +85,10 @@ export async function pushProfile(profile: ProfileState): Promise<{ ok: boolean;
       completed_at: c.completedAt ?? null,
     }));
     if (progress.length) {
-      await sb.from("campaign_progress").upsert(progress, { onConflict: "user_id,chapter_id" });
+      const r = await sb
+        .from("campaign_progress")
+        .upsert(progress, { onConflict: "user_id,chapter_id" });
+      if (r.error) return { ok: false, error: r.error.message };
     }
 
     const items = [
@@ -97,7 +108,10 @@ export async function pushProfile(profile: ProfileState): Promise<{ ok: boolean;
       })),
     ];
     if (items.length) {
-      await sb.from("inventory").upsert(items, { onConflict: "user_id,item_kind,item_id" });
+      const r = await sb
+        .from("inventory")
+        .upsert(items, { onConflict: "user_id,item_kind,item_id" });
+      if (r.error) return { ok: false, error: r.error.message };
     }
 
     const decks = profile.decks.map((d) => ({
@@ -112,7 +126,8 @@ export async function pushProfile(profile: ProfileState): Promise<{ ok: boolean;
     if (decks.length) {
       // evita duplicar a cada sync: apaga e reinsere o conjunto do jogador
       await sb.from("decks").delete().eq("user_id", userId);
-      await sb.from("decks").insert(decks);
+      const r = await sb.from("decks").insert(decks);
+      if (r.error) return { ok: false, error: r.error.message };
     }
 
     return { ok: true };
