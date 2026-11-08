@@ -432,18 +432,28 @@ consumido automaticamente.
 
 ## 14. Interface: padrão de uma tela, sem rolagem
 
-Regra de UX do projeto: **cada tela principal cabe inteira na altura da janela**
-(`h-[calc(100dvh-3.5rem)]`, cabeçalho fixo de 3,5 rem). Não existe rolagem vertical da
-página; listas longas são recortadas por painéis com rolagem própria e o detalhe abre numa
-tela nova (diálogo).
+Regra de UX do projeto: **nenhuma tela rola a página**. `GameShell` fixa a altura em
+`h-[100dvh]` com `overflow-hidden`; o `<main>` é a única área rolável (e as telas `full`,
+como a batalha, nem isso). Cabeçalho nunca some, página nunca rola. Listas longas são
+recortadas por painéis com rolagem própria e o detalhe abre numa tela nova (diálogo).
 
 | Tela                                | Padrão aplicado                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------- |
+| Home (`/`)                          | Hero + menu em uma tela (`h-[calc(100dvh-3.5rem)]`).                       |
 | Campanha (`CampaignScreen`)         | Atos em abas; capítulos em cartões; "Expandir" abre o briefing em diálogo. |
 | Coleção (`CollectionScreen`)        | Abas cartas/acessórios/baralhos; cartão abre detalhe em diálogo.           |
 | Batalha · preparação (`BattlePrep`) | Baralho/dificuldade/comandante/doutrina numa tela; missão em diálogo.      |
 | Multiplayer (`MultiplayerScreen`)   | Modos em abas; adversários em cartões; apostas em tela própria.            |
 | Batalha em si (`BattleArena`)       | Arena + HUD fixos; `overflow-hidden`, sem rolagem de página.               |
+| Mapa/Nacão/IA/Perfil/Config         | Cabeçalho compacto + métricas fixas; painéis internos com rolagem contida. |
+
+**Armadilha da arena (já corrigida):** um SVG inline com apenas `viewBox` não tem largura
+intrínseca — `w-auto`/`max-h-full` colapsa a arena para ~2×2 px e a tela fica preta. A arena
+é dimensionada por **container query** na célula flex (`[container-type:size]` +
+`h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)]`), garantindo um quadrado em qualquer tela,
+com ou sem letterbox. O toque→arena usa `svg.getScreenCTM()` (correto com
+`preserveAspectRatio`), com fallback por `getBoundingClientRect()` só para ambientes sem CTM
+(jsdom). Não reintroduzir `w-auto` nem remover o fallback.
 
 ---
 
