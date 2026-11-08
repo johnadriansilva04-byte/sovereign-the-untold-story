@@ -22,12 +22,12 @@ import type { BattleConfig } from "@/game/battle/types";
 
 const TEST_DECK = [
   "inf-fuzileiros",
-  "inf-mecanizada",
-  "bld-leve",
-  "art-morteiro",
+  "inf-assalto",
+  "bld-vbld",
+  "art-canhao",
   "def-aa",
-  "def-engenharia",
-  "rec-patrulha",
+  "inf-engenheiro",
+  "rec-drone",
   "sup-fumaca",
 ];
 
@@ -57,7 +57,7 @@ describe("motor de batalha", () => {
     expect(state.running).toBe(true);
   });
 
-  it("consome Pontos de Comando ao desdobrar e recicla a carta para a fila", () => {
+  it("consome Energia ao desdobrar e recicla a carta para a fila", () => {
     const state = createBattle(testConfig());
     const cardId = state.blue.deck.hand[0]!.cardId;
     const cost = effectiveCost(cardById(cardId), state.blue.doctrine);

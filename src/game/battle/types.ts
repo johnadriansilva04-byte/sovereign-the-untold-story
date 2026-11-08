@@ -30,9 +30,49 @@ export type BattlePhase = "preparacao" | "mobilizacao" | "combate" | "pressao" |
 
 export type BattleOutcome = "vitoria" | "derrota" | "empate";
 
+// Silhuetas distintas por unidade — o renderizador desenha cada modelo de forma própria.
+export type UnitModel =
+  | "soldado-fuzil"
+  | "soldado-assalto"
+  | "soldado-antitanque"
+  | "engenheiro"
+  | "canhao"
+  | "artilharia-pesada"
+  | "lmf"
+  | "tanque"
+  | "vbld"
+  | "lancador-missil"
+  | "drone-recon"
+  | "drone-combate"
+  | "aa"
+  | "fortificacao"
+  | "posto"
+  | "paraquedista";
+
 // ---------------------------------------------------------------------------
-// Cartas
+// Armas e projéteis
 // ---------------------------------------------------------------------------
+
+export type WeaponKind =
+  | "fuzil" // raycast rápido com traçante
+  | "automatica" // rajada rápida
+  | "atgm" // foguete guiado antitanque
+  | "canhao" // projétil direto com recuo
+  | "obus" // tiro em arco, explosão em área
+  | "lmf" // saturação de foguetes
+  | "missil" // míssil guiado de longo alcance
+  | "antiaereo" // tiro rápido guiado contra alvos aéreos
+  | "drone"; // armamento leve de drone
+
+export interface WeaponSpec {
+  kind: WeaponKind;
+  projectileSpeed: number; // unidades de mundo por segundo
+  splash: number; // raio de dano em área (0 = alvo único)
+  arc: boolean; // trajetória balística (morteiro/obus)
+  homing: boolean; // persegue o alvo em movimento
+  muzzle: number; // deslocamento do ponto de origem do disparo
+  tracer?: boolean; // raio instantâneo (fuzil/automática)
+}
 
 export interface MilitaryCard {
   id: string;
@@ -40,7 +80,7 @@ export interface MilitaryCard {
   name: string;
   short: string;
   category: UnitCategory;
-  cost: number; // Pontos de Comando
+  cost: number; // Energia
   hp: number;
   dmg: number;
   speed: number; // unidades de mundo por segundo
@@ -49,6 +89,12 @@ export interface MilitaryCard {
   targets: TargetProfile;
   domain: Domain; // como a própria unidade é atingida
   radius: number; // raio de colisão / captura
+  model: UnitModel;
+  weapon: WeaponSpec;
+  // engenharia: constrói/repara bases avançadas
+  builder?: boolean;
+  // alvos preferenciais (IA) — ex.: antitanque prioriza blindados
+  priority?: UnitCategory[];
   ability?: string;
   role: string;
   unlocksTech?: string[]; // ids de tecnologia necessária (ponte com a campanha)
@@ -77,7 +123,9 @@ export type SupportAbility =
   | "barricada"
   | "interferencia"
   | "evacuacao"
-  | "reconhecimento";
+  | "reconhecimento"
+  | "paraquedistas"
+  | "bombardeiro";
 
 export type Card = MilitaryCard | SupportCard;
 
@@ -109,12 +157,71 @@ export interface Obstacle {
   side?: Side; // barricadas pertencem a um lado
 }
 
+// Ponto de expansão territorial: círculo branco luminoso que pode ser conquistado
+// e, em seguida, receber uma base avançada construída por engenheiros.
+export interface Territory {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  radius: number;
+  owner: Side | "neutro";
+  progress: Record<Side, number>; // 0-100
+}
+
+// Estrutura fixa do motor (base principal, torre defensiva ou base avançada).
+export type StructureKind = "base-principal" | "torre" | "base-avancada";
+
+export interface StructureSpec {
+  id: string;
+  kind: StructureKind;
+  side: Side;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  dmg: number; // dano por disparo (0 = estrutura passiva)
+  range: number;
+  cooldown: number;
+  targets: TargetProfile;
+  name: string;
+  // tempo de construção de uma base avançada (segundos). 0 = já construída.
+  buildTime?: number;
+}
+
+export interface Structure {
+  id: string;
+  kind: StructureKind;
+  side: Side;
+  name: string;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  dmg: number;
+  range: number;
+  cooldown: number;
+  readyIn: number;
+  targets: TargetProfile;
+  alive: boolean;
+  // construção progressiva de bases avançadas
+  underConstruction: boolean;
+  buildTime: number;
+  buildProgress: number; // 0-100
+  territoryId?: string;
+  aim: number; // ângulo da torre/canhão (radianos)
+  recoil: number; // recuo visual restante
+}
+
 export interface Arena {
   id: string;
   name: string;
   terrain: TerrainKind;
   description: string;
   controlPoints: ControlPoint[];
+  territories: Territory[];
+  structures: StructureSpec[];
   obstacles: Obstacle[];
   // rotas sugeridas (linhas de deslocamento) — usadas só para desenho e IA
   routes: { from: [number, number]; to: [number, number] }[];
@@ -165,6 +272,9 @@ export interface BattleUnit {
   name: string;
   short: string;
   category: UnitCategory;
+  model: UnitModel;
+  weapon: WeaponSpec;
+  builder: boolean;
   x: number;
   y: number;
   hp: number;
@@ -179,6 +289,11 @@ export interface BattleUnit {
   domain: Domain;
   order: Order;
   objectiveId?: string;
+  targetId?: string; // alvo atual (unidade)
+  targetStructureId?: string; // alvo atual (estrutura)
+  buildTerritoryId?: string; // território onde o engenheiro constrói
+  aim: number; // ângulo de mira (radianos)
+  recoil: number; // recuo visual após disparo
   alive: boolean;
   engaged: boolean;
   // efeitos temporários
@@ -186,6 +301,53 @@ export interface BattleUnit {
   jammed: number; // segundos restantes de interferência (não ataca)
   revealed: number; // segundos de revelação forçada
   seen: Record<Side, boolean>; // visibilidade calculada por lado (fog of war)
+  // suporte: cura por pulso (0 = unidade de combate comum)
+  heal: number;
+  // nível da carta que originou a unidade (1-15)
+  level: number;
+}
+
+export type ProjectileKind = "tracer" | "shell" | "rocket" | "missile";
+
+export interface Projectile {
+  id: string;
+  side: Side;
+  kind: ProjectileKind;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  vx: number;
+  vy: number;
+  speed: number;
+  dmg: number;
+  splash: number;
+  arc: boolean;
+  homing: boolean;
+  targetId?: string;
+  targetKind?: "unit" | "structure";
+  targetX: number;
+  targetY: number;
+  travelled: number; // para progresso visual do arco
+  totalDistance: number;
+  remaining: number; // tempo de vida restante
+  alive: boolean;
+}
+
+export type EffectKind =
+  "muzzle" | "tracer" | "impact" | "explosion" | "smoke" | "fire" | "spark" | "build";
+
+export interface VisualEffect {
+  id: string;
+  kind: EffectKind;
+  x: number;
+  y: number;
+  x2?: number; // traçante
+  y2?: number;
+  radius: number;
+  remaining: number;
+  ttl: number;
+  side?: Side;
 }
 
 export interface EffectZone {
@@ -221,10 +383,12 @@ export interface SideState {
   commandMax: number;
   regen: number; // por segundo
   mods?: SideModifiers | undefined; // bônus de acessórios equipados
+  cardLevels: Record<string, number>; // nível por carta (1-15)
   deck: DeckState;
   units: BattleUnit[];
   kills: number;
   losses: number;
+  structuresDestroyed: number;
   deployed: number;
   score: number;
 }
@@ -232,7 +396,16 @@ export interface SideState {
 export interface BattleLogEntry {
   t: number;
   side: Side | "sistema";
-  kind: "deploy" | "apoio" | "captura" | "baixa" | "ordem" | "evento" | "ia";
+  kind:
+    | "deploy"
+    | "apoio"
+    | "captura"
+    | "baixa"
+    | "ordem"
+    | "evento"
+    | "ia"
+    | "construcao"
+    | "destruicao";
   text: string;
 }
 
@@ -273,6 +446,8 @@ export interface SideConfig {
   economyBonus: number; // ex.: 0.05 => +5% de regeneração
   // acessórios equipados (bônus de unidade)
   mods?: SideModifiers;
+  // nível de cada carta no baralho (1-15). Vida/dano/cura escalam por nível.
+  cardLevels?: Record<string, number>;
 }
 
 export interface SideModifiers {
@@ -292,6 +467,10 @@ export interface BattleState {
   blue: SideState;
   red: SideState;
   zones: EffectZone[];
+  structures: Structure[];
+  territories: Territory[];
+  projectiles: Projectile[];
+  effects: VisualEffect[];
   log: BattleLogEntry[];
   outcome: BattleOutcome | null;
   reason: string;
@@ -309,6 +488,8 @@ export interface BattleResult {
   duration: number;
   territorialScore: Record<Side, number>;
   controlPoints: Record<Side, number>;
+  territories: Record<Side, number>;
+  structuresDestroyed: Record<Side, number>;
   kills: Record<Side, number>;
   losses: Record<Side, number>;
   remainingCommand: Record<Side, number>;

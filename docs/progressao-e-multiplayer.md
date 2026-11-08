@@ -81,11 +81,11 @@ logística) e desbloqueia cartas.
 
 Três modos (`src/game/progress/pvp.ts`):
 
-| Modo | Risco | Regra |
-| ---- | ----- | ----- |
-| Confronto equilibrado | nenhum | Partida justa; ganha experiência e Sovereigns. |
-| Cenário histórico | 1 carta | Terreno e doutrinas fixos; aposta leve. |
-| Aposta de guerra | 3 cartas | Venceu, leva as cartas do adversário. Perdeu, perde as suas. |
+| Modo                  | Risco    | Regra                                                        |
+| --------------------- | -------- | ------------------------------------------------------------ |
+| Confronto equilibrado | nenhum   | Partida justa; ganha experiência e Sovereigns.               |
+| Cenário histórico     | 1 carta  | Terreno e doutrinas fixos; aposta leve.                      |
+| Aposta de guerra      | 3 cartas | Venceu, leva as cartas do adversário. Perdeu, perde as suas. |
 
 `resolveStakes` é determinístico e testado: vitória transfere as cartas do adversário, derrota
 transfere as suas, empate não transfere nada. O adversário pode ser local (offline) ou o
@@ -131,14 +131,14 @@ O LLM é um extra: `SOVEREIGN_LLM_BASE_URL`, `SOVEREIGN_LLM_API_KEY` e `SOVEREIG
 Além de campanha, batalha, PvP, coleção e nação, o jogo tem as telas que amarram a
 narrativa ao mundo:
 
-| Rota              | Tela                    | O que faz                                                                 |
-| ----------------- | ----------------------- | ------------------------------------------------------------------------- |
-| `/mapa`           | Mapa-múndi              | Mapa interativo com países, províncias estratégicas, relações e feed. Cada país abre um dossiê e leva à operação. |
-| `/eventos`        | Eventos e histórico     | Feed da guerra (eventos por turno) e o histórico das suas batalhas.        |
-| `/ia`             | Agentes IA              | Comandantes, doutrinas, níveis de ameaça e países controlados por IA; inicia um treino. |
-| `/configuracoes`  | Configurações           | Preferências locais (velocidade, som, animações), sincronização e reset.   |
-| `/creditos`       | Créditos                | Autoria (Variant), homenagem à FEB e as fontes históricas citadas.         |
-| `/dossie`         | Dossiê do projeto       | Índice da documentação de design.                                          |
+| Rota             | Tela                | O que faz                                                                                                         |
+| ---------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `/mapa`          | Mapa-múndi          | Mapa interativo com países, províncias estratégicas, relações e feed. Cada país abre um dossiê e leva à operação. |
+| `/eventos`       | Eventos e histórico | Feed da guerra (eventos por turno) e o histórico das suas batalhas.                                               |
+| `/ia`            | Agentes IA          | Comandantes, doutrinas, níveis de ameaça e países controlados por IA; inicia um treino.                           |
+| `/configuracoes` | Configurações       | Preferências locais (velocidade, som, animações), sincronização e reset.                                          |
+| `/creditos`      | Créditos            | Autoria (Variant), homenagem à FEB e as fontes históricas citadas.                                                |
+| `/dossie`        | Dossiê do projeto   | Índice da documentação de design.                                                                                 |
 
 O mapa-múndi e os eventos usam dados de `src/game/data.ts`; os comandantes, doutrinas e níveis
 vêm de `src/game/battle/catalog.ts` e `src/game/progress/catalog.ts`. O mapa lê o progresso do

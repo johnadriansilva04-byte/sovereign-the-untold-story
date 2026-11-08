@@ -47,7 +47,7 @@ describe("IA: curva de dificuldade", () => {
     const games = 12;
     const recruta = winRateVs("recruta", games, 1000);
     const soberano = winRateVs("soberano", games, 1000);
-    // eslint-disable-next-line no-unused-expressions
+
     expect(soberano).toBeLessThanOrEqual(recruta);
   });
 

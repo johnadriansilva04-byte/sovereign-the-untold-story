@@ -13,15 +13,7 @@
 // comanda qualquer lado — é isso que permite a IA jogar contra si mesma milhares de vezes.
 
 import { cardById, doctrines } from "./catalog";
-import {
-  deploy,
-  dist,
-  effectiveCost,
-  isVisibleTo,
-  issueOrder,
-  nextRandom,
-  other,
-} from "./engine";
+import { deploy, dist, effectiveCost, isVisibleTo, issueOrder, nextRandom, other } from "./engine";
 import type {
   BattleState,
   Card,
@@ -32,6 +24,7 @@ import type {
   Side,
   SupportAbility,
   SupportCard,
+  Territory,
   UnitCategory,
 } from "./types";
 
@@ -203,6 +196,9 @@ interface BattleRead {
   enemyCats: Record<UnitCategory, number>;
   enemyAir: number;
   enemyArtillery: number;
+  enemyStructures: number;
+  myTerritories: number;
+  freeTerritories: number;
   myScore: number;
   enemyScore: number;
   behind: boolean;
@@ -303,6 +299,9 @@ function readBattle(state: BattleState, side: Side): BattleRead {
     enemyCats,
     enemyAir,
     enemyArtillery,
+    enemyStructures: state.structures.filter((s) => s.alive && s.side === enemy).length,
+    myTerritories: state.territories.filter((t) => t.owner === side).length,
+    freeTerritories: state.territories.filter((t) => t.owner !== side).length,
     myScore,
     enemyScore,
     behind: myScore + 4 < enemyScore,
@@ -357,6 +356,12 @@ function scoreCard(
       score += 0.7;
     if (m.category === "reconhecimento")
       score += (read.visible.length < 2 ? 1.3 : 0.2) * weights.objective;
+    // engenheiros valem mais quando há território livre para expandir
+    if (m.builder) {
+      const expand = read.freeTerritories > 0 && read.myTerritories < 3 ? 1.6 : -0.4;
+      score += expand * weights.objective;
+    }
+    if (read.enemyStructures > 1 && m.priority && m.priority.includes("blindado")) score += 0.5;
     score -= cost * 0.12 * weights.economy;
     if (cfg.command - cost < 2) score -= 0.3;
   } else {
@@ -368,9 +373,28 @@ function scoreCard(
   if (personality === "Cauteloso") score += defensive ? 0.6 : -0.2;
   if (personality === "Econômico") score -= cost * 0.06 * weights.economy;
   if (personality === "Oportunista" && read.behind) score += 0.4;
+  score += commanderBias(card, personality, defensive);
 
   void target;
   return score;
+}
+
+// Cada comandante tem preferências táticas reais (não só um rótulo): o viés abaixo
+// muda materialmente a escolha de cartas da IA.
+function commanderBias(card: Card, personality: CommanderPersonality, defensive: boolean): number {
+  const cat = card.kind === "militar" ? card.category : "apoio";
+  switch (personality) {
+    case "Agressivo": // Sarmiento — mecanizada: empurra blindados cedo
+      return cat === "blindado" ? 1.0 : cat === "infantaria" ? 0.3 : 0;
+    case "Econômico": // Orlov — poder de fogo: artilharia de longo alcance
+      return cat === "artilharia" ? 1.0 : cat === "defesa" ? 0.4 : -0.15;
+    case "Cauteloso": // Lima — defesa territorial: fortifica e protege
+      return cat === "defesa" ? 1.1 : defensive ? 0.3 : -0.3;
+    case "Oportunista": // Duarte — mobilidade: drones, reconhecimento e flancos
+      return cat === "reconhecimento" ? 0.9 : cat === "infantaria" ? 0.35 : 0;
+    case "Metódico": // Varela — operações combinadas: completa a composição
+      return cat === "apoio" ? 0.3 : 0.25;
+  }
 }
 
 function scoreSupport(
@@ -418,6 +442,13 @@ function scoreSupport(
       break;
     case "reconhecimento":
       score += read.visible.length < 2 ? 1.6 * weights.support : 0.2;
+      break;
+    case "paraquedistas":
+      // infiltração vale quando há retaguarda inimiga para pressionar
+      score += !defensive && read.enemyStructures >= 1 ? 1.6 * weights.support : -0.6;
+      break;
+    case "bombardeiro":
+      score += enemyCluster >= 3 ? 2.8 * weights.support : -1.6;
       break;
   }
   if (cfg.units.filter((u) => u.alive).length === 0 && ability !== "reforcos") score -= 1.5;
@@ -515,6 +546,20 @@ function makeDecision(
   return { cardId: card.id, x: pos.x, y: pos.y, reason: reasoning(card, target, read) };
 }
 
+// Território neutro/inimigo mais próximo que ainda não tem base avançada do lado.
+function buildTerritory(state: BattleState, side: Side): Territory | null {
+  const list = state.territories.filter((t) => t.owner !== side);
+  if (list.length === 0) return null;
+  return list.sort((a, b) => a.y - b.y)[0]!;
+}
+
+function enemyStructurePressure(state: BattleState, side: Side): number {
+  const enemy = other(side);
+  return state.structures.filter((s) => s.alive && s.side === enemy && s.kind !== "base-principal")
+    .length;
+}
+void enemyStructurePressure;
+
 function supportTarget(
   state: BattleState,
   side: Side,
@@ -524,13 +569,31 @@ function supportTarget(
   defensive: boolean,
 ): { x: number; y: number } {
   const zone = state.config.arena.deployZone[side];
-  const global: SupportAbility[] = ["ataque_aereo", "fumaca", "interferencia", "reconhecimento"];
+  const global: SupportAbility[] = [
+    "ataque_aereo",
+    "fumaca",
+    "interferencia",
+    "reconhecimento",
+    "paraquedistas",
+    "bombardeiro",
+  ];
   const cluster = clusterCentroid(read.visible);
   if (global.includes(card.ability)) {
     if (card.ability === "fumaca" && !defensive) return clampToWorld(frontCentroid(state, side));
     if (card.ability === "reconhecimento") {
       const p = state.config.arena.controlPoints.find((c) => c.owner !== side);
       return p ? { x: p.x, y: p.y } : clampToWorld(cluster ?? target);
+    }
+    if (card.ability === "paraquedistas" || card.ability === "bombardeiro") {
+      // projeção atrás das linhas: além do centro, na direção do objetivo
+      const front = frontCentroid(state, side);
+      const dir = Math.sign(target.y - front.y) || (side === "blue" ? 1 : -1);
+      const depth =
+        side === "blue" ? Math.min(96, target.y + 10 * dir) : Math.max(4, target.y + 10 * dir);
+      const anchor = cluster
+        ? { x: (cluster.x + target.x) / 2, y: depth }
+        : { x: target.x, y: depth };
+      return clampToWorld(anchor);
     }
     return clampToWorld(cluster ?? target);
   }
@@ -549,6 +612,21 @@ function placement(
   const zone = state.config.arena.deployZone[side];
   const cx = zone.x + zone.w / 2;
   const cy = zone.y + zone.h / 2;
+
+  // engenheiros: posicionar na direção do território a conquistar
+  if (card.builder) {
+    const terr = buildTerritory(state, side);
+    const anchor = terr ? { x: terr.x, y: terr.y } : { x: target.x, y: target.y };
+    const dx = anchor.x - cx;
+    const dy = anchor.y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    const reach = Math.min(zone.w, zone.h) / 2 - 2;
+    return clampToZone(
+      zone,
+      { x: cx + (dx / len) * reach, y: cy + (dy / len) * reach },
+      card.radius,
+    );
+  }
 
   const threat = read.visible
     .map((u) => ({ u, d: dist(u.x, u.y, target.x, target.y) }))

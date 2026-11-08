@@ -76,12 +76,21 @@ export interface BuildPvpOptions {
   difficulty: Difficulty;
   terrain: TerrainKind;
   seed: number;
+  cardLevels?: Record<string, number>;
+  opponentCardLevels?: Record<string, number>;
 }
 
 export function buildPvpConfig(opts: BuildPvpOptions): BattleConfig {
   const arena = cloneArena(arenaByTerrain(opts.terrain));
   const mods = modsFromAccessories(opts.accessories);
-  const blue = sideFromProfile(opts.profile.nation, opts.deck, opts.commander, opts.doctrine, mods);
+  const blue = sideFromProfile(
+    opts.profile.nation,
+    opts.deck,
+    opts.commander,
+    opts.doctrine,
+    mods,
+    opts.cardLevels,
+  );
   const red: SideConfig = {
     countryId: "pvp",
     countryName: opts.opponentName,
@@ -93,6 +102,7 @@ export function buildPvpConfig(opts: BuildPvpOptions): BattleConfig {
     regen: regenRate(opts.profile.nation),
     economyBonus: economyBonus(opts.profile.nation),
   };
+  if (opts.opponentCardLevels) red.cardLevels = opts.opponentCardLevels;
   const def = difficultyById(opts.difficulty);
   const aiDifficulty: AiDifficulty = {
     intervalMult: def.aiIntervalMult,
@@ -120,6 +130,7 @@ function sideFromProfile(
   commander: Commander,
   doctrine: Doctrine,
   mods: ReturnType<typeof modsFromAccessories>,
+  cardLevels?: Record<string, number>,
 ): SideConfig {
   const cfg: SideConfig = {
     countryId: nation.countryId,
@@ -133,6 +144,7 @@ function sideFromProfile(
     economyBonus: economyBonus(nation),
   };
   if (Object.keys(mods).length) cfg.mods = mods;
+  if (cardLevels) cfg.cardLevels = cardLevels;
   return cfg;
 }
 
@@ -166,29 +178,29 @@ export interface PvpOpponent {
 const MIRROR_DECKS: string[][] = [
   [
     "inf-fuzileiros",
-    "inf-mecanizada",
-    "bld-leve",
-    "art-morteiro",
+    "inf-assalto",
+    "bld-vbld",
+    "art-canhao",
     "def-aa",
-    "def-engenharia",
-    "rec-patrulha",
+    "inf-engenheiro",
+    "rec-drone",
     "sup-fumaca",
   ],
   [
     "inf-fuzileiros",
-    "bld-leve",
-    "bld-pesado",
+    "bld-vbld",
+    "bld-tanque",
     "art-obus",
     "def-fortificacao",
-    "rec-blindado",
+    "inf-antitanque",
     "sup-reforcos",
     "sup-barricada",
   ],
   [
-    "inf-montanha",
-    "inf-mecanizada",
+    "inf-assalto",
+    "inf-antitanque",
     "rec-drone",
-    "art-foguete",
+    "mss-lmf",
     "def-aa",
     "sup-interferencia",
     "sup-recon-avancado",

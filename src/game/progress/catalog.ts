@@ -74,7 +74,7 @@ export const techs: TechDef[] = [
     summary: "Carros de combate de primeira linha.",
     cost: 3,
     requires: ["t2"],
-    unlocksCards: ["bld-pesado"],
+    unlocksCards: ["bld-tanque"],
     effect: { industry: 5 },
   },
   {
@@ -84,7 +84,7 @@ export const techs: TechDef[] = [
     summary: "Saturação de área e alcance estendido.",
     cost: 3,
     requires: ["t4"],
-    unlocksCards: ["art-foguete"],
+    unlocksCards: ["mss-lmf"],
   },
   {
     id: "t10",
@@ -92,7 +92,7 @@ export const techs: TechDef[] = [
     name: "Tropa de Montanha",
     summary: "Especialistas em terreno acidentado.",
     cost: 2,
-    unlocksCards: ["inf-montanha"],
+    unlocksCards: ["inf-assalto"],
   },
   {
     id: "t11",
@@ -101,7 +101,7 @@ export const techs: TechDef[] = [
     summary: "Travessia de rios e desembarque.",
     cost: 3,
     requires: ["t3"],
-    unlocksCards: ["bld-anfibio"],
+    unlocksCards: ["bld-vbld"],
   },
   // Aérea
   {
@@ -165,6 +165,78 @@ export const techsByBranch = (branch: TechDef["branch"]): TechDef[] =>
 export function canResearch(tech: TechDef, owned: string[]): boolean {
   if (owned.includes(tech.id)) return false;
   return (tech.requires ?? []).every((r) => owned.includes(r));
+}
+
+// ---------------------------------------------------------------------------
+// Faixas de desbloqueio de cartas (progressão permanente)
+// ---------------------------------------------------------------------------
+
+export interface UnlockTier {
+  id: string;
+  name: string;
+  summary: string;
+  level: number; // nível de comandante exigido
+  cards: string[];
+}
+
+export const unlockTiers: UnlockTier[] = [
+  {
+    id: "faixa-1",
+    name: "Recrutamento",
+    summary: "Movimentação, captura, reconhecimento e defesa.",
+    level: 1,
+    cards: [
+      "inf-fuzileiros",
+      "inf-engenheiro",
+      "bld-vbld",
+      "rec-drone",
+      "sup-fumaca",
+      "sup-barricada",
+      "sup-recon-avancado",
+    ],
+  },
+  {
+    id: "faixa-2",
+    name: "Operações táticas",
+    summary: "Combate próximo, fogo direto e sustentação.",
+    level: 3,
+    cards: [
+      "inf-assalto",
+      "inf-antitanque",
+      "art-canhao",
+      "apo-posto",
+      "def-aa",
+      "rec-drone-combate",
+      "sup-reparo",
+      "sup-reforcos",
+      "sup-evacuacao",
+    ],
+  },
+  {
+    id: "faixa-3",
+    name: "Guerra mecanizada",
+    summary: "Blindados pesados, mísseis e guerra eletrônica.",
+    level: 6,
+    cards: [
+      "bld-tanque",
+      "mss-lancador",
+      "def-fortificacao",
+      "art-obus",
+      "mss-lmf",
+      "sup-interferencia",
+    ],
+  },
+  {
+    id: "faixa-4",
+    name: "Operações especiais",
+    summary: "Apoio aéreo pesado e infiltração.",
+    level: 10,
+    cards: ["sup-aereo", "sup-paraquedistas", "sup-bombardeiro"],
+  },
+];
+
+export function unlockTierForCard(cardId: string): UnlockTier | undefined {
+  return unlockTiers.find((t) => t.cards.includes(cardId));
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +588,6 @@ export const missionDifficulty: Record<string, Difficulty> = {
   "m-brics": "soberano",
   "m-tabuleiro": "soberano",
   "m-final": "llm",
-
 };
 
 export const terrainHint: Record<TerrainKind, string> = {

@@ -10,6 +10,7 @@ import { BattleResultScreen } from "./BattleResult";
 import { BattleTopBar, ObjectiveStrip } from "./BattleTopBar";
 import { CommandBar, HandBar, OrderBar, UnitInspector } from "./BattleHud";
 import { cardById } from "@/game/battle/catalog";
+import { GLOBAL_SUPPORT } from "@/game/battle/engine";
 import {
   buildBattleConfig,
   chapterMission,
@@ -170,8 +171,7 @@ export function LiveBattle({
 
   const pendingCard = pendingCardId ? cardById(pendingCardId) : null;
   const pendingIsGlobal =
-    pendingCard?.kind === "apoio" &&
-    ["ataque_aereo", "fumaca", "interferencia", "reconhecimento"].includes(pendingCard.ability);
+    pendingCard?.kind === "apoio" && GLOBAL_SUPPORT.includes(pendingCard.ability);
 
   const handlePlace = useCallback(
     (x: number, y: number) => {
@@ -212,7 +212,7 @@ export function LiveBattle({
   }
 
   return (
-    <div className="flex flex-col pb-40 lg:pb-0">
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden">
       <BattleTopBar state={state} />
       <ObjectiveStrip state={state} />
 
@@ -222,8 +222,8 @@ export function LiveBattle({
         </p>
       )}
 
-      <div className="grid gap-4 p-2 sm:p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-3">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex min-h-0 items-center justify-center overflow-hidden">
           <BattleArena
             state={state}
             pendingCardId={pendingCardId}
@@ -236,7 +236,12 @@ export function LiveBattle({
         </div>
 
         {/* Intel tática: no mobile só abre pelo botão "Intel"; no desktop é a coluna lateral */}
-        <div className={cn("space-y-3", showIntel ? "block" : "hidden lg:block")}>
+        <div
+          className={cn(
+            "min-h-0 space-y-3 overflow-y-auto pr-1",
+            showIntel ? "block" : "hidden lg:block",
+          )}
+        >
           <UnitInspector unit={selectedUnit} />
           {hovered && <CardDetail card={hovered} cost={battle.costOf(hovered.id)} />}
           <AiCommanderPanel state={state} />
@@ -244,9 +249,9 @@ export function LiveBattle({
         </div>
       </div>
 
-      {/* Dock de controle: fixo no rodapé no mobile, embutido no desktop */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur lg:sticky lg:inset-x-auto lg:bottom-auto lg:mx-4 lg:mb-4 lg:rounded-sm lg:border lg:bg-background/95">
-        <div className="space-y-2 lg:space-y-3">
+      {/* Dock de controle: sempre visível dentro da tela, sem rolagem */}
+      <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
+        <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <CommandBar side={state.blue} compact />
             <div className="flex items-center gap-1.5">

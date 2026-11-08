@@ -65,9 +65,17 @@ export function BattleResultScreen({
               label="Pontos controlados"
               value={`${result.controlPoints.blue} / ${result.controlPoints.red}`}
             />
+            <Line
+              label="Territórios conquistados"
+              value={`${result.territories.blue} / ${result.territories.red}`}
+            />
+            <Line
+              label="Estruturas destruídas"
+              value={`${result.structuresDestroyed.blue} / ${result.structuresDestroyed.red}`}
+            />
             <Line label="Baixas inimigas" value={result.kills.blue} />
             <Line label="Suas baixas" value={result.losses.blue} />
-            <Line label="Comando não gasto" value={Math.floor(result.remainingCommand.blue)} />
+            <Line label="Energia não gasta" value={Math.floor(result.remainingCommand.blue)} />
           </dl>
           <div className="mt-3 space-y-1">
             {result.pointsHeld.map((p) => (

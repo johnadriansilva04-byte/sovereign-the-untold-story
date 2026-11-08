@@ -8,7 +8,7 @@ import { defaultNation } from "@/game/battle/missions";
 import type { BattleResult, Doctrine } from "@/game/battle/types";
 import { chapterMeta, chapterMetaById } from "./campaign";
 import type { Difficulty, Inventory, Reward } from "./catalog";
-import { addAccessory, addCard, emptyInventory } from "./catalog";
+import { addAccessory, addCard, emptyInventory, unlockTierForCard } from "./catalog";
 
 export interface ChapterState {
   status: "bloqueado" | "disponivel" | "concluido";
@@ -55,6 +55,8 @@ export interface ProfileState {
   sovereigns: number;
   research: number;
   xp: number;
+  // nível de cada carta (1-15). Ausente = nível 1.
+  cardLevels: Record<string, number>;
   createdAt: string;
 }
 
@@ -82,6 +84,7 @@ export function createProfile(displayName = "Comandante"): ProfileState {
     sovereigns: 150,
     research: 2,
     xp: 0,
+    cardLevels: {},
     createdAt: now,
   };
   // capítulo 1 sempre disponível; o resto bloqueado até vencer o anterior
@@ -164,6 +167,7 @@ function ensureShape(p: ProfileState): ProfileState {
     decks: p.decks?.length ? p.decks : base.decks,
     activeDeckId: p.activeDeckId || base.activeDeckId,
     records: p.records ?? [],
+    cardLevels: p.cardLevels ?? {},
   };
 }
 
@@ -272,6 +276,45 @@ export function effectiveDeck(profile: ProfileState): string[] {
 export function activeAccessories(profile: ProfileState): string[] {
   const deck = profile.decks.find((d) => d.id === profile.activeDeckId) ?? profile.decks[0];
   return deck?.accessories ?? [];
+}
+
+// Nível de cada carta do baralho ativo (padrão 1). Alimenta o motor de batalha.
+export function cardLevelsForDeck(profile: ProfileState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const id of effectiveDeck(profile)) out[id] = profile.cardLevels[id] ?? 1;
+  return out;
+}
+
+// Desbloqueio por faixa de comandante + requisito tecnológico. Uma carta sem faixa
+// (não listada) cai no fallback de tecnologia, mantendo compatibilidade.
+export function isCardUnlocked(profile: ProfileState, cardId: string): boolean {
+  const card = allCards.find((c) => c.id === cardId);
+  if (!card) return false;
+  const techOk =
+    !card.unlocksTech || card.unlocksTech.every((t) => profile.nation.techs.includes(t));
+  const tier = unlockTierForCard(cardId);
+  if (!tier) return techOk;
+  const level = totalXpForLevel(profile.xp).level;
+  return level >= tier.level && techOk;
+}
+
+export function unlockedCardIds(profile: ProfileState): string[] {
+  return allCards.filter((c) => isCardUnlocked(profile, c.id)).map((c) => c.id);
+}
+
+// Concede à coleção as cartas cujo requisito (faixa de comandante + tecnologia) já foi
+// alcançado. Não coloca nada no baralho: o jogador escolhe quando usar.
+export function syncUnlocks(profile: ProfileState): ProfileState {
+  const cards = { ...profile.inventory.cards };
+  let changed = false;
+  for (const card of allCards) {
+    if ((cards[card.id] ?? 0) > 0) continue;
+    if (!isCardUnlocked(profile, card.id)) continue;
+    cards[card.id] = 1;
+    changed = true;
+  }
+  if (!changed) return profile;
+  return { ...profile, inventory: { ...profile.inventory, cards } };
 }
 
 export function totalXpForLevel(xp: number): { level: number; into: number; need: number } {

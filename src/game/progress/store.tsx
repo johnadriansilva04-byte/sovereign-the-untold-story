@@ -17,6 +17,7 @@ import type { NationState } from "@/game/battle/missions";
 import { applyConsequences, consequencesOf, missionById } from "@/game/battle/missions";
 import type { BattleResult } from "@/game/battle/types";
 import type { Difficulty, Reward, TechDef } from "./catalog";
+import { copiesToLevel } from "@/game/battle/catalog";
 import {
   applyChapterResult,
   createProfile,
@@ -24,6 +25,7 @@ import {
   loadProfile,
   saveProfile,
   resetProfile,
+  syncUnlocks,
   type BattleRecord,
   type ProfileState,
   type SavedDeck,
@@ -52,6 +54,8 @@ export interface ProfileContextValue {
   setDisplayName: (name: string) => void;
   /** Remove cartas do inventário (usado quando se perde uma aposta no PvP). */
   removeCards: (cardIds: string[]) => void;
+  /** Evolui uma carta para o próximo nível, consumindo cópias. */
+  levelUpCard: (cardId: string) => boolean;
   hardReset: () => void;
   syncNow: () => Promise<void>;
 }
@@ -68,9 +72,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   profileRef.current = profile;
 
   useEffect(() => {
-    const loaded = loadProfile();
+    const loaded = syncUnlocks(loadProfile());
     setProfile(loaded);
     profileRef.current = loaded;
+    saveProfile(loaded);
     void (async () => {
       const { userId, error } = await ensureSession();
       if (error) setLastError(error);
@@ -80,10 +85,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persist = useCallback((next: ProfileState) => {
-    saveProfile(next);
-    profileRef.current = next;
-    setProfile(next);
-    void pushProfile(next);
+    const synced = syncUnlocks(next);
+    saveProfile(synced);
+    profileRef.current = synced;
+    setProfile(synced);
+    void pushProfile(synced);
   }, []);
 
   const completeChapter = useCallback<ProfileContextValue["completeChapter"]>(
@@ -229,6 +235,23 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
+  const levelUpCard = useCallback<ProfileContextValue["levelUpCard"]>(
+    (cardId) => {
+      const current = profileRef.current;
+      if (!current) return false;
+      const level = current.cardLevels[cardId] ?? 1;
+      const need = copiesToLevel(level);
+      const owned = current.inventory.cards[cardId] ?? 0;
+      if (need <= 0 || owned < need) return false;
+      persist({
+        ...current,
+        cardLevels: { ...current.cardLevels, [cardId]: level + 1 },
+      });
+      return true;
+    },
+    [persist],
+  );
+
   const hardReset = useCallback(() => {
     const fresh = resetProfile();
     profileRef.current = fresh;
@@ -260,6 +283,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setActiveDeck,
       setDisplayName,
       removeCards,
+      levelUpCard,
       hardReset,
       syncNow,
     };
@@ -275,6 +299,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setActiveDeck,
     setDisplayName,
     removeCards,
+    levelUpCard,
     hardReset,
     syncNow,
   ]);

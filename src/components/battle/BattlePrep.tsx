@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cardById, commanders, doctrineList, doctrines } from "@/game/battle/catalog";
 import { TERRAIN_LABEL } from "@/game/battle/labels";
 import {
@@ -73,6 +74,7 @@ export function BattlePrep({
   const [difficulty, setDifficulty] = useState<Difficulty>(
     initialDifficulty ?? missionDifficulty[mission.id] ?? "veterano",
   );
+  const [showMissions, setShowMissions] = useState(false);
 
   const locked = deck.length !== 8;
 
@@ -90,86 +92,50 @@ export function BattlePrep({
   };
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.4fr_1fr]">
-      <div className="space-y-4">
-        <section className="hud-panel hud-corners p-5">
+    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-3">
+      {/* Cabeçalho compacto — sem rolagem de página */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
+        <div>
           <p className="label-mono text-primary">Preparação para a batalha</p>
-          <h2 className="mt-1 font-display text-3xl font-black uppercase">Mobilização</h2>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            O que o país construiu define o que você pode levar. A disponibilidade de unidades
-            depende do seu inventário — nada de levar um exército que você não tem.
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Comando máx." value={commandCapacity(nation) + (mods.commandMax ?? 0)} />
-            <Stat label="Regeneração" value={`+${regenRate(nation).toFixed(2)}/s`} />
-            <Stat label="Bônus econômico" value={`+${(economyBonus(nation) * 100).toFixed(1)}%`} />
-            <Stat label="Cartas possuídas" value={available.length} />
-          </div>
-        </section>
+          <h2 className="font-display text-2xl font-black uppercase leading-none">Mobilização</h2>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+          <span>
+            COMANDO MÁX.{" "}
+            <b className="text-foreground">{commandCapacity(nation) + (mods.commandMax ?? 0)}</b>
+          </span>
+          <span>
+            REGEN <b className="text-foreground">+{regenRate(nation).toFixed(2)}/s</b>
+          </span>
+          <span>
+            ECONOMIA <b className="text-foreground">+{(economyBonus(nation) * 100).toFixed(1)}%</b>
+          </span>
+          <span>
+            CARTAS <b className="text-foreground">{available.length}</b>
+          </span>
+        </div>
+        <button
+          onClick={() => setShowMissions(true)}
+          className="ml-auto border border-border px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary"
+        >
+          Missão · {mission.terrain} · {mission.name} ›
+        </button>
+      </div>
 
-        <section className="hud-panel hud-corners p-5">
-          <p className="label-mono mb-3">Missão</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {missions.map((m) => {
-              const d = difficultyById(missionDifficulty[m.id] ?? "veterano");
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    setMissionId(m.id);
-                    setDifficulty(missionDifficulty[m.id] ?? "veterano");
-                  }}
-                  className={cn(
-                    "border p-3 text-left transition",
-                    m.id === missionId
-                      ? "border-primary bg-accent"
-                      : "border-border hover:border-primary/60",
-                  )}
-                >
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-                    {m.act}
-                  </span>
-                  <p className="font-display text-sm font-bold uppercase">{m.name}</p>
-                  <p className="font-mono text-[10px] text-muted-foreground">
-                    {m.terrain} · {Math.round(m.duration / 60)} min · {d.name}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 border-t border-border pt-3">
-            <p className="font-display text-lg font-bold uppercase">{mission.name}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{mission.brief}</p>
-            <p className="mt-2 font-mono text-[11px] text-doc">
-              Terreno: {TERRAIN_LABEL[mission.terrain] ?? mission.terrain}
-            </p>
-            <p className="mt-2 font-mono text-[11px] text-primary">
-              Objetivo: {mission.objectiveText}
-            </p>
-            <p className="mt-1 font-mono text-[11px] italic text-muted-foreground">
-              {mission.missionNote}
-            </p>
-            <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-              Adversário: {mission.enemyCountry.flag} {mission.enemyCountry.name} · doutrina{" "}
-              {mission.enemyCountry.doctrine}
-            </p>
-          </div>
-        </section>
-
-        <section className="hud-panel hud-corners p-5">
+      <div className="mt-2.5 grid min-h-0 flex-1 gap-2.5 lg:grid-cols-[1.5fr_1fr]">
+        <section className="hud-panel hud-corners flex min-h-0 flex-col p-3">
           <div className="flex items-center justify-between">
             <p className="label-mono">Baralho de composição militar</p>
             <span
               className={cn("font-mono text-[11px]", locked ? "text-destructive" : "text-fact")}
             >
-              {deck.length}/8 cartas
+              {deck.length}/8
             </span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Quatro cartas ficam na mão; quatro aguardam na fila. Só entram cartas que você possui.
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Quatro cartas na mão, quatro na fila. Só entram cartas que você possui.
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
             {available.map((id) => {
               const card = cardById(id);
               const on = deck.includes(id);
@@ -178,129 +144,113 @@ export function BattlePrep({
                   key={id}
                   onClick={() => toggleCard(id)}
                   className={cn(
-                    "border p-2 text-left transition",
+                    "border p-1.5 text-left transition",
                     on ? "border-primary bg-accent" : "border-border hover:border-primary/50",
                   )}
                 >
                   <span
                     className={cn(
-                      "border px-1 font-mono text-[9px] uppercase",
+                      "border px-1 font-mono text-[8px] uppercase",
                       CATEGORY_TONE[card.category],
                     )}
                   >
                     {card.short}
                   </span>
-                  <p className="mt-1 font-display text-xs font-bold uppercase leading-tight">
+                  <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
                     {card.name}
                   </p>
-                  <p className="font-mono text-[9px] text-muted-foreground">
-                    {card.category} · custo {card.cost}
-                  </p>
+                  <p className="font-mono text-[9px] text-muted-foreground">custo {card.cost}</p>
                 </button>
               );
             })}
           </div>
         </section>
-      </div>
 
-      <div className="space-y-4">
-        <section className="hud-panel hud-corners p-5">
-          <p className="label-mono mb-3">Dificuldade</p>
-          <div className="grid gap-2">
-            {difficulties.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setDifficulty(d.id)}
-                className={cn(
-                  "border p-3 text-left transition",
-                  d.id === difficulty
-                    ? "border-primary bg-accent"
-                    : "border-border hover:border-primary/50",
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="font-display text-sm font-bold uppercase">{d.name}</p>
-                  <span className="font-mono text-[9px] uppercase text-muted-foreground">
-                    recompensa ×{d.rewardMult}
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">{d.summary}</p>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {equipped.length > 0 && (
-          <section className="hud-panel hud-corners p-5">
-            <p className="label-mono mb-2">Acessórios equipados</p>
-            <div className="flex flex-wrap gap-2">
-              {equipped.map((id) => (
-                <span
-                  key={id}
-                  className="border border-doc px-2 py-1 font-mono text-[10px] uppercase text-doc"
+        <div className="grid min-h-0 grid-rows-[auto_auto_1fr] gap-2.5">
+          <section className="hud-panel hud-corners p-3">
+            <p className="label-mono mb-1.5">Dificuldade</p>
+            <div className="flex flex-wrap gap-1.5">
+              {difficulties.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => setDifficulty(d.id)}
+                  className={cn(
+                    "border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition",
+                    d.id === difficulty
+                      ? "border-primary bg-accent text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
+                  )}
                 >
-                  {id.replace("acc-", "")}
-                </span>
+                  {d.name} <span className="text-muted-foreground">×{d.rewardMult}</span>
+                </button>
               ))}
             </div>
           </section>
-        )}
 
-        <section className="hud-panel hud-corners p-5">
-          <p className="label-mono mb-3">Comandante</p>
-          <div className="space-y-2">
-            {commanders.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => pickCommander(c)}
-                className={cn(
-                  "w-full border p-3 text-left transition",
-                  c.id === commanderId
-                    ? "border-primary bg-accent"
-                    : "border-border hover:border-primary/50",
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="font-display text-sm font-bold uppercase">{c.name}</p>
-                  <span className="border border-ai px-1 font-mono text-[9px] uppercase text-ai">
-                    {c.personality}
-                  </span>
+          <section className="hud-panel hud-corners p-3">
+            <p className="label-mono mb-1.5">Comandante</p>
+            <div className="flex flex-wrap gap-1.5">
+              {commanders.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => pickCommander(c)}
+                  className={cn(
+                    "border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition",
+                    c.id === commanderId
+                      ? "border-primary bg-accent text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
+                  )}
+                >
+                  {c.name} <span className="text-ai">{c.personality}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="hud-panel hud-corners flex min-h-0 flex-col p-3">
+            <p className="label-mono mb-1.5">Doutrina militar</p>
+            <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto pr-1">
+              {doctrineList.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDoctrine(d)}
+                  className={cn(
+                    "border p-2 text-left transition",
+                    d === doctrine
+                      ? "border-primary bg-accent"
+                      : "border-border hover:border-primary/50",
+                  )}
+                >
+                  <p className="font-display text-xs font-bold uppercase">{d}</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">{doctrines[d].summary}</p>
+                </button>
+              ))}
+            </div>
+            {equipped.length > 0 && (
+              <div className="mt-2 border-t border-border pt-2">
+                <p className="label-mono mb-1">Acessórios</p>
+                <div className="flex flex-wrap gap-1">
+                  {equipped.map((id) => (
+                    <span
+                      key={id}
+                      className="border border-doc px-1.5 py-0.5 font-mono text-[9px] uppercase text-doc"
+                    >
+                      {id.replace("acc-", "")}
+                    </span>
+                  ))}
                 </div>
-                <p className="font-mono text-[10px] text-muted-foreground">
-                  Doutrina: {c.doctrine}
-                </p>
-                <p className="mt-1 text-xs italic text-muted-foreground">{c.note}</p>
-              </button>
-            ))}
-          </div>
-        </section>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
 
-        <section className="hud-panel hud-corners p-5">
-          <p className="label-mono mb-3">Doutrina militar</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {doctrineList.map((d) => (
-              <button
-                key={d}
-                onClick={() => setDoctrine(d)}
-                className={cn(
-                  "border p-2 text-left transition",
-                  d === doctrine
-                    ? "border-primary bg-accent"
-                    : "border-border hover:border-primary/50",
-                )}
-              >
-                <p className="font-display text-xs font-bold uppercase">{d}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">{doctrines[d].summary}</p>
-              </button>
-            ))}
-          </div>
-        </section>
-
+      <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5">
         <button
           disabled={locked}
           onClick={() => onStart({ mission, deck, commander, doctrine, difficulty })}
           className={cn(
-            "w-full px-4 py-3 font-mono text-sm uppercase tracking-[0.2em] transition",
+            "px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] transition",
             locked
               ? "cursor-not-allowed border border-border text-muted-foreground"
               : "bg-primary text-primary-foreground shadow-brass hover:brightness-110",
@@ -308,24 +258,79 @@ export function BattlePrep({
         >
           {locked ? `Selecione ${8 - deck.length} carta(s)` : "Iniciar operação"}
         </button>
+        <p className="font-mono text-[11px] text-muted-foreground">
+          {mission.name} · {TERRAIN_LABEL[mission.terrain] ?? mission.terrain} ·{" "}
+          {difficultyById(difficulty).name}
+        </p>
         {onExit && (
           <button
             onClick={onExit}
-            className="w-full border border-border px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground"
+            className="ml-auto border border-border px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground"
           >
             Voltar
           </button>
         )}
       </div>
-    </div>
-  );
-}
 
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="border border-border p-2">
-      <p className="label-mono text-[9px]">{label}</p>
-      <p className="font-display text-xl font-bold">{value}</p>
+      {showMissions && (
+        <Dialog open onOpenChange={(v) => !v && setShowMissions(false)}>
+          <DialogContent className="max-h-[86vh] max-w-4xl overflow-hidden border-primary/40 bg-background">
+            <DialogHeader>
+              <DialogTitle className="text-left">
+                <span className="label-mono text-primary">
+                  Teatro de operações · {missions.length} missões
+                </span>
+                <span className="mt-1 block font-display text-2xl font-black uppercase leading-none">
+                  Selecionar missão
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {missions.map((m) => {
+                  const d = difficultyById(missionDifficulty[m.id] ?? "veterano");
+                  const active = m.id === missionId;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        setMissionId(m.id);
+                        setDifficulty(missionDifficulty[m.id] ?? "veterano");
+                        setShowMissions(false);
+                      }}
+                      className={cn(
+                        "border p-2.5 text-left transition",
+                        active
+                          ? "border-primary bg-accent"
+                          : "border-border hover:border-primary/60",
+                      )}
+                    >
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+                        {m.act}
+                      </span>
+                      <p className="font-display text-sm font-bold uppercase">{m.name}</p>
+                      <p className="font-mono text-[10px] text-muted-foreground">
+                        {m.terrain} · {Math.round(m.duration / 60)} min · {d.name}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-1 border-t border-border pt-3">
+              <p className="font-display text-base font-bold uppercase">{mission.name}</p>
+              <p className="text-sm text-muted-foreground">{mission.brief}</p>
+              <p className="font-mono text-[11px] text-primary">
+                Objetivo: {mission.objectiveText}
+              </p>
+              <p className="font-mono text-[11px] text-muted-foreground">
+                Adversário: {mission.enemyCountry.flag} {mission.enemyCountry.name} · doutrina{" "}
+                {mission.enemyCountry.doctrine}
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

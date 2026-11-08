@@ -8,10 +8,7 @@ const DIFFICULTIES = ["recruta", "veterano", "elite", "soberano", "llm"] as cons
 
 export const Route = createFileRoute("/batalha")({
   head: () =>
-    pageHead(
-      "Batalha",
-      "Batalha tática — arena, cartas, Pontos de Comando e consequências na guerra.",
-    ),
+    pageHead("Batalha", "Batalha tática — arena, cartas, Energia e consequências na guerra."),
   validateSearch: (
     search: Record<string, unknown>,
   ): { missao?: string; dificuldade?: Difficulty } => {

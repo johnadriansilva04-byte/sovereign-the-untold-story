@@ -1,12 +1,17 @@
 import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { GameShell, PageTitle, Panel } from "@/components/game/shell";
+import { GameShell, Panel } from "@/components/game/shell";
 import { BattleScreen } from "@/components/battle/BattleScreen";
 import { commanders } from "@/game/battle/catalog";
 import type { BattleConfig, BattleResult } from "@/game/battle/types";
 import { difficultyById } from "@/game/progress/catalog";
-import { activeAccessories, effectiveDeck, ownedCardIds } from "@/game/progress/profile";
+import {
+  activeAccessories,
+  cardLevelsForDeck,
+  effectiveDeck,
+  ownedCardIds,
+} from "@/game/progress/profile";
 import {
   buildPvpConfig,
   localOpponents,
@@ -56,6 +61,8 @@ export function MultiplayerScreen() {
       difficulty: opponent.difficulty,
       terrain: modeDef.terrain,
       seed: (Date.now() ^ (mode.length * 7919)) >>> 0,
+      cardLevels: cardLevelsForDeck(profile),
+      opponentCardLevels: Object.fromEntries(opponent.deck.map((id) => [id, 1])),
     });
     (config as BattleConfig & { __oppStakes?: string[] }).__oppStakes = opponentStakes;
     setView({ kind: "battle", config });
@@ -162,13 +169,19 @@ export function MultiplayerScreen() {
 
   if (view.kind === "stakes") {
     return (
-      <GameShell>
-        <div className="mx-auto max-w-3xl space-y-5">
-          <PageTitle kicker={`PvP · ${modeDef.name}`} title="Apostas">
-            {modeDef.summary}
-          </PageTitle>
-          <Panel title={`Escolha ${modeDef.stakeCards} carta(s) para arriscar`}>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <GameShell full>
+        <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-5xl flex-col px-4 py-3">
+          <div className="border-b border-border pb-2.5">
+            <p className="label-mono text-primary">PvP · {modeDef.name} · Risco de cartas</p>
+            <h1 className="font-display text-2xl font-black uppercase leading-none">
+              Apostas · {stakes.length}/{modeDef.stakeCards}
+            </h1>
+          </div>
+
+          <p className="mt-2 text-[12px] text-muted-foreground">{modeDef.summary}</p>
+
+          <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 content-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {owned.map((id) => {
                 const card = cardById(id);
                 const on = stakes.includes(id);
@@ -191,19 +204,22 @@ export function MultiplayerScreen() {
                         : "border-border hover:border-destructive/50",
                     )}
                   >
-                    <p className="font-display text-xs font-bold uppercase">{card.name}</p>
+                    <p className="font-display text-xs font-bold uppercase leading-tight">
+                      {card.name}
+                    </p>
                     <p className="font-mono text-[9px] text-muted-foreground">{card.category}</p>
                   </button>
                 );
               })}
             </div>
-          </Panel>
-          <div className="flex gap-3">
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap gap-3 border-t border-border pt-2.5">
             <button
               disabled={stakes.length !== modeDef.stakeCards}
               onClick={startBattle}
               className={cn(
-                "px-6 py-3 font-mono text-sm uppercase tracking-[0.2em]",
+                "px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em]",
                 stakes.length === modeDef.stakeCards
                   ? "bg-destructive text-destructive-foreground hover:brightness-110"
                   : "cursor-not-allowed border border-border text-muted-foreground",
@@ -213,7 +229,7 @@ export function MultiplayerScreen() {
             </button>
             <button
               onClick={() => setView({ kind: "lobby" })}
-              className="border border-border px-6 py-3 font-mono text-sm uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+              className="border border-border px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
             >
               Voltar
             </button>
@@ -224,77 +240,104 @@ export function MultiplayerScreen() {
   }
 
   return (
-    <GameShell>
-      <PageTitle kicker="PvP" title="Multiplayer">
-        Partidas rápidas contra comandantes. No modo aposta, as cartas que você conquistou na
-        campanha entram em risco — vencer traz as do adversário, perder dói.
-      </PageTitle>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Modo de partida">
-          <div className="space-y-2">
-            {pvpModes.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  setMode(m.id);
-                  setStakes([]);
-                }}
-                className={cn(
-                  "w-full border p-3 text-left transition",
-                  m.id === mode
-                    ? "border-primary bg-accent"
-                    : "border-border hover:border-primary/50",
-                )}
-              >
-                <p className="font-display text-sm font-bold uppercase">{m.name}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{m.summary}</p>
-              </button>
-            ))}
+    <GameShell full>
+      <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-3">
+        {/* Cabeçalho compacto — recursos numa linha, sem rolagem */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
+          <div>
+            <p className="label-mono text-primary">PvP · Teatro de operações</p>
+            <h1 className="font-display text-2xl font-black uppercase leading-none">Multiplayer</h1>
           </div>
-        </Panel>
+          <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+            <span>
+              BARALHO <b className="text-foreground">{effectiveDeck(profile).length}</b>/8
+            </span>
+            <span>
+              CARTAS <b className="text-foreground">{owned.length}</b>
+            </span>
+            <span>
+              MODO <b className="text-foreground">{modeDef.name}</b>
+            </span>
+          </div>
+        </div>
 
-        <Panel title="Adversário">
-          <div className="space-y-2">
+        {/* Seletor de modo */}
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {pvpModes.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                setMode(m.id);
+                setStakes([]);
+              }}
+              className={cn(
+                "border px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition",
+                m.id === mode
+                  ? "border-primary bg-accent text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
+              )}
+            >
+              {m.name}
+              {m.stakeCards > 0 && (
+                <span className="ml-1.5 text-destructive">aposta {m.stakeCards}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Adversários — cartões compactos; clicar abre o dossiê sem rolar a página */}
+        <div className="mt-2.5 min-h-0 flex-1">
+          <div className="grid h-full grid-cols-2 content-start gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
             {opponents.map((o) => (
               <button
                 key={o.id}
                 onClick={() => setOpponentId(o.id)}
                 className={cn(
-                  "w-full border p-3 text-left transition",
-                  o.id === opponentId
-                    ? "border-primary bg-accent"
-                    : "border-border hover:border-primary/50",
+                  "hud-panel hud-corners flex flex-col justify-between p-3 text-left transition",
+                  o.id === opponentId ? "border-primary/70" : "hover:border-primary/40",
                 )}
               >
-                <div className="flex items-center justify-between">
-                  <p className="font-display text-sm font-bold uppercase">
-                    {o.flag} {o.name}
-                  </p>
-                  <span className="border border-ai px-1 font-mono text-[9px] uppercase text-ai">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-2xl">{o.flag}</span>
+                  <span
+                    className={cn(
+                      "border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+                      o.id === opponentId
+                        ? "border-primary text-primary"
+                        : "border-border text-muted-foreground",
+                    )}
+                  >
                     {difficultyById(o.difficulty).name}
                   </span>
                 </div>
-                <p className="font-mono text-[10px] text-muted-foreground">
-                  {o.commander.name} · {o.commander.doctrine}
+                <div className="mt-1 min-h-0">
+                  <h3 className="line-clamp-2 font-display text-sm font-bold uppercase leading-tight">
+                    {o.name}
+                  </h3>
+                  <p className="mt-0.5 line-clamp-2 font-mono text-[9px] text-muted-foreground">
+                    {o.commander.name} · {o.commander.doctrine}
+                  </p>
+                </div>
+                <p className="mt-1 font-mono text-[9px] text-ai">
+                  {o.deck.length} cartas · {o.commander.personality}
                 </p>
               </button>
             ))}
           </div>
-        </Panel>
-      </div>
+        </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-4">
-        <button
-          onClick={() => (modeDef.stakeCards > 0 ? setView({ kind: "stakes" }) : startBattle())}
-          className="bg-primary px-6 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"
-        >
-          {modeDef.stakeCards > 0 ? "Definir apostas" : "Iniciar partida"}
-        </button>
-        <p className="font-mono text-[11px] text-muted-foreground">
-          Baralho ativo: {effectiveDeck(profile).length} cartas ·{" "}
-          {Object.keys(profile.inventory.cards).length} possuídas
-        </p>
+        {/* Ação principal fixa no rodapé da tela */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5">
+          <button
+            onClick={() => (modeDef.stakeCards > 0 ? setView({ kind: "stakes" }) : startBattle())}
+            className="bg-primary px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"
+          >
+            {modeDef.stakeCards > 0 ? "Definir apostas" : "Iniciar partida"}
+          </button>
+          <p className="font-mono text-[11px] text-muted-foreground">
+            {opponent.flag} {opponent.name} · {modeDef.summary}
+          </p>
+        </div>
       </div>
     </GameShell>
   );

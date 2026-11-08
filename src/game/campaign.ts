@@ -554,15 +554,23 @@ export const chapters: Chapter[] = [
     title: "Ruído",
     era: "Hoje",
     place: "São Paulo",
-    summary: "Um apagão coordenado, boatos virais e um protesto que ninguém convocou transformam a cidade em zona de conflito. Davi luta sem saber contra quem.",
+    summary:
+      "Um apagão coordenado, boatos virais e um protesto que ninguém convocou transformam a cidade em zona de conflito. Davi luta sem saber contra quem.",
     mission: {
       title: "Operação Apagão",
       objective: "Proteja o centro de distribuição e sobreviva à pressão urbana.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Davi", text: "Sem sinal, sem luz, e o grupo da família diz que é golpe, invasão, fim do mundo. Tudo ao mesmo tempo." },
-      { speaker: "Voz no rádio", text: "Não confiem nas mensagens. Metade delas não foi escrita por gente.", kind: "ficcao" },
+      {
+        speaker: "Davi",
+        text: "Sem sinal, sem luz, e o grupo da família diz que é golpe, invasão, fim do mundo. Tudo ao mesmo tempo.",
+      },
+      {
+        speaker: "Voz no rádio",
+        text: "Não confiem nas mensagens. Metade delas não foi escrita por gente.",
+        kind: "ficcao",
+      },
       { speaker: "Davi", text: "Se isso é uma guerra... quem declarou?" },
     ],
     archives: ["a-gerasimov"],
@@ -574,7 +582,8 @@ export const chapters: Chapter[] = [
     title: "O Blecaute de Dados",
     era: "Hoje",
     place: "São Paulo",
-    summary: "O apagão não foi só de energia. Servidores, hospitais e semáforos param ao mesmo tempo — alguém testou a espinha dorsal digital do país.",
+    summary:
+      "O apagão não foi só de energia. Servidores, hospitais e semáforos param ao mesmo tempo — alguém testou a espinha dorsal digital do país.",
     mission: {
       title: "Nó Cego",
       objective: "Defenda o centro de dados e restabeleça as comunicações.",
@@ -593,7 +602,8 @@ export const chapters: Chapter[] = [
     title: "Vozes na Rede",
     era: "Hoje",
     place: "Brasília",
-    summary: "Contas falsas inflamam as ruas em tempo real. Ninguém empunha arma: a batalha é por atenção, medo e verdade.",
+    summary:
+      "Contas falsas inflamam as ruas em tempo real. Ninguém empunha arma: a batalha é por atenção, medo e verdade.",
     mission: {
       title: "Cortina de Fumaça Digital",
       objective: "Neutralize a capacidade de combate adversária — os núcleos de desinformação.",
@@ -612,7 +622,8 @@ export const chapters: Chapter[] = [
     title: "A Fronteira Sem Mapa",
     era: "Hoje",
     place: "Amazônia",
-    summary: "Na floresta, a disputa não é por território no papel: é por rio, estrada e dados. Quem mapeia a Amazônia controla o futuro do continente.",
+    summary:
+      "Na floresta, a disputa não é por território no papel: é por rio, estrada e dados. Quem mapeia a Amazônia controla o futuro do continente.",
     mission: {
       title: "Olhos na Floresta",
       objective: "Domine as clareiras e negue a rede ao adversário.",
@@ -620,7 +631,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Aqui não se ganha no mapa. Se ganha em quem enxerga primeiro." },
-      { speaker: "Seringueiro", text: "A floresta já foi invadida antes. Aprendeu a esconder o caminho.", kind: "ficcao" },
+      {
+        speaker: "Seringueiro",
+        text: "A floresta já foi invadida antes. Aprendeu a esconder o caminho.",
+        kind: "ficcao",
+      },
     ],
     archives: ["a-ouro-azul"],
   },
@@ -631,7 +646,8 @@ export const chapters: Chapter[] = [
     title: "O Porto Silencioso",
     era: "Hoje",
     place: "Santos",
-    summary: "Navios, contêineres e dados. O porto que escoa metade das riquezas do país também escoa influência.",
+    summary:
+      "Navios, contêineres e dados. O porto que escoa metade das riquezas do país também escoa influência.",
     mission: {
       title: "Cais 7",
       objective: "Segure os pontos do porto e impeça a operação fantasma.",
@@ -650,15 +666,24 @@ export const chapters: Chapter[] = [
     title: "A Medalha",
     era: "1943–1945",
     place: "Apeninos, Itália",
-    summary: "Na casa da avó, Davi encontra a medalha e as cartas do bisavô Joaquim. Ele descobre que o Brasil mandou cerca de 25 mil homens à Segunda Guerra.",
+    summary:
+      "Na casa da avó, Davi encontra a medalha e as cartas do bisavô Joaquim. Ele descobre que o Brasil mandou cerca de 25 mil homens à Segunda Guerra.",
     mission: {
       title: "Monte Castello",
       objective: "Avance montanha acima e capture o cume (Cume Norte).",
       battle: "Montanha",
     },
     dialogue: [
-      { speaker: "Carta de Joaquim", text: "A neve aqui não é como a de cinema. Ela entra na bota e na alma. Mas a cobra vai fumar.", kind: "ficcao" },
-      { speaker: "Profa. Helena", text: "Monte Castello caiu em 21 de fevereiro de 1945. Isso é fato. Pergunte por que você não aprendeu isso na escola.", kind: "fato" },
+      {
+        speaker: "Carta de Joaquim",
+        text: "A neve aqui não é como a de cinema. Ela entra na bota e na alma. Mas a cobra vai fumar.",
+        kind: "ficcao",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Monte Castello caiu em 21 de fevereiro de 1945. Isso é fato. Pergunte por que você não aprendeu isso na escola.",
+        kind: "fato",
+      },
     ],
     archives: ["a-feb-criacao", "a-feb-embarque", "a-feb-cobra", "a-feb-castello"],
   },
@@ -669,15 +694,24 @@ export const chapters: Chapter[] = [
     title: "O Primeiro Escalão",
     era: "1944",
     place: "Nápoles, Itália",
-    summary: "Cerca de 5 mil brasileiros desembarcam em Nápoles. Davi acompanha, carta por carta, a travessia que a história tratou de apagar.",
+    summary:
+      "Cerca de 5 mil brasileiros desembarcam em Nápoles. Davi acompanha, carta por carta, a travessia que a história tratou de apagar.",
     mission: {
       title: "General Mann",
       objective: "Proteja o desembarque e assegure a cabeça de ponte.",
       battle: "Travessia de rio",
     },
     dialogue: [
-      { speaker: "Carta de Joaquim", text: "Chegamos. A Itália é verde de longe e cinza de perto.", kind: "ficcao" },
-      { speaker: "Profa. Helena", text: "Cerca de 25 mil brasileiros serviram na Itália. Cerca de 450 não voltaram.", kind: "fato" },
+      {
+        speaker: "Carta de Joaquim",
+        text: "Chegamos. A Itália é verde de longe e cinza de perto.",
+        kind: "ficcao",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Cerca de 25 mil brasileiros serviram na Itália. Cerca de 450 não voltaram.",
+        kind: "fato",
+      },
     ],
     archives: ["a-feb-embarque", "a-nordeste-base", "a-feb-mortos"],
   },
@@ -688,15 +722,24 @@ export const chapters: Chapter[] = [
     title: "Montese",
     era: "1945",
     place: "Montese, Itália",
-    summary: "A batalha mais sangrenta da FEB. Casa a casa, os pracinhas tomam uma cidade que os alemães não queriam perder.",
+    summary:
+      "A batalha mais sangrenta da FEB. Casa a casa, os pracinhas tomam uma cidade que os alemães não queriam perder.",
     mission: {
       title: "Montese",
       objective: "Neutralize a capacidade de combate adversária na cidade.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Carta de Joaquim", text: "Cada casa custa um nome. Não sobra tempo para decorar os nomes.", kind: "ficcao" },
-      { speaker: "Profa. Helena", text: "Montese foi a batalha mais sangrenta da FEB. A cidade foi tomada em combate casa a casa.", kind: "fato" },
+      {
+        speaker: "Carta de Joaquim",
+        text: "Cada casa custa um nome. Não sobra tempo para decorar os nomes.",
+        kind: "ficcao",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Montese foi a batalha mais sangrenta da FEB. A cidade foi tomada em combate casa a casa.",
+        kind: "fato",
+      },
     ],
     archives: ["a-feb-montese", "a-feb-mortos", "a-monumento"],
   },
@@ -707,15 +750,24 @@ export const chapters: Chapter[] = [
     title: "Fornovo di Taro",
     era: "1945",
     place: "Fornovo di Taro, Itália",
-    summary: "A 148ª Divisão alemã e remanescentes italianos — cerca de 15 mil homens e dois generais — rendem-se à FEB.",
+    summary:
+      "A 148ª Divisão alemã e remanescentes italianos — cerca de 15 mil homens e dois generais — rendem-se à FEB.",
     mission: {
       title: "Fornovo",
       objective: "Cerque e force a rendição das forças adversárias.",
       battle: "Campo aberto",
     },
     dialogue: [
-      { speaker: "Carta de Joaquim", text: "Eles se renderam em massa. Dois generais. E nós éramos os pracinhas esquecidos.", kind: "ficcao" },
-      { speaker: "Profa. Helena", text: "Em 28–29 de abril de 1945, cerca de 15 mil homens e dois generais se rendem à FEB.", kind: "fato" },
+      {
+        speaker: "Carta de Joaquim",
+        text: "Eles se renderam em massa. Dois generais. E nós éramos os pracinhas esquecidos.",
+        kind: "ficcao",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Em 28–29 de abril de 1945, cerca de 15 mil homens e dois generais se rendem à FEB.",
+        kind: "fato",
+      },
     ],
     archives: ["a-feb-fornovo", "a-monumento"],
   },
@@ -726,15 +778,23 @@ export const chapters: Chapter[] = [
     title: "A Volta do Fio",
     era: "1945",
     place: "Rio de Janeiro",
-    summary: "Os pracinhas voltam vitoriosos e são desmobilizados quase imediatamente. Meses depois, o regime cai. Davi começa a ver um padrão.",
+    summary:
+      "Os pracinhas voltam vitoriosos e são desmobilizados quase imediatamente. Meses depois, o regime cai. Davi começa a ver um padrão.",
     mission: {
       title: "Desfile Interrompido",
       objective: "Mantenha as posições enquanto os arquivos são preservados.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Davi", text: "Heróis de guerra voltando para casa... e ninguém para recebê-los." },
-      { speaker: "Profa. Helena", text: "A FEB foi desmobilizada rapidamente, com unidades dissolvidas logo após o desembarque.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Heróis de guerra voltando para casa... e ninguém para recebê-los.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A FEB foi desmobilizada rapidamente, com unidades dissolvidas logo após o desembarque.",
+        kind: "fato",
+      },
     ],
     archives: ["a-feb-desmob", "a-feb-vargas", "a-feb-tese"],
   },
@@ -745,7 +805,8 @@ export const chapters: Chapter[] = [
     title: "A Desmobilização",
     era: "1945–1946",
     place: "Rio de Janeiro",
-    summary: "Unidades dissolvidas, veteranos sem amparo, direitos só décadas depois. Davi entende que a vitória real foi seguida de um silêncio calculado.",
+    summary:
+      "Unidades dissolvidas, veteranos sem amparo, direitos só décadas depois. Davi entende que a vitória real foi seguida de um silêncio calculado.",
     mission: {
       title: "Arquivo Vivo",
       objective: "Proteja o acervo e negue o avanço sobre a memória.",
@@ -753,7 +814,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Eles venceram a guerra. E voltaram para o esquecimento." },
-      { speaker: "Arquivista", text: "Papel velho não vota e não reclama. Por isso é fácil de perder.", kind: "ficcao" },
+      {
+        speaker: "Arquivista",
+        text: "Papel velho não vota e não reclama. Por isso é fácil de perder.",
+        kind: "ficcao",
+      },
     ],
     archives: ["a-feb-desmob", "a-feb-vargas", "a-feb-tese"],
   },
@@ -764,7 +829,8 @@ export const chapters: Chapter[] = [
     title: "Os Bons Vizinhos",
     era: "1940–1947",
     place: "Natal · Rio · Nova York",
-    summary: "Enquanto os pracinhas lutavam, um Rockefeller cuidava do coração dos brasileiros: cinema, rádio, Zé Carioca.",
+    summary:
+      "Enquanto os pracinhas lutavam, um Rockefeller cuidava do coração dos brasileiros: cinema, rádio, Zé Carioca.",
     mission: {
       title: "Trampolim da Vitória",
       objective: "Mapeie e domine as redes de influência na região.",
@@ -772,7 +838,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Amizade, cinema, rádio. Tudo isso é uma operação?" },
-      { speaker: "Profa. Helena", text: "Nelson Rockefeller dirigiu o órgão de influência econômica e cultural dos EUA na América Latina.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Nelson Rockefeller dirigiu o órgão de influência econômica e cultural dos EUA na América Latina.",
+        kind: "fato",
+      },
     ],
     archives: ["a-ciaa", "a-zecarioca", "a-natal"],
   },
@@ -783,7 +853,8 @@ export const chapters: Chapter[] = [
     title: "Zé Carioca",
     era: "1942",
     place: "Hollywood · Rio",
-    summary: "Um papagaio simpático vende o Brasil para os brasileiros. Davi aprende que a cultura é a primeira linha de frente.",
+    summary:
+      "Um papagaio simpático vende o Brasil para os brasileiros. Davi aprende que a cultura é a primeira linha de frente.",
     mission: {
       title: "Alô, Amigos",
       objective: "Assuma o controle das narrativas culturais na cidade.",
@@ -791,7 +862,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Eles desenharam o Brasil antes de a gente se desenhar." },
-      { speaker: "Profa. Helena", text: "Walt Disney viajou à América do Sul com apoio do escritório de Rockefeller; nasceu o Zé Carioca.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Walt Disney viajou à América do Sul com apoio do escritório de Rockefeller; nasceu o Zé Carioca.",
+        kind: "fato",
+      },
     ],
     archives: ["a-zecarioca", "a-ciaa"],
   },
@@ -802,15 +877,23 @@ export const chapters: Chapter[] = [
     title: "Standard Oil",
     era: "1870–1911",
     place: "Cleveland, EUA",
-    summary: "A trilha recua até o monopólio que fundou a fortuna. Em 1911, a Suprema Corte dos EUA divide a Standard Oil — mas a influência sobrevive.",
+    summary:
+      "A trilha recua até o monopólio que fundou a fortuna. Em 1911, a Suprema Corte dos EUA divide a Standard Oil — mas a influência sobrevive.",
     mission: {
       title: "A Linha de Fogo",
       objective: "Rompa o cerco econômico e retome os poços.",
       battle: "Campo aberto",
     },
     dialogue: [
-      { speaker: "Davi", text: "Um império nasceu do petróleo e da pressão. Nada disso é acidente." },
-      { speaker: "Profa. Helena", text: "Em 1911, a Suprema Corte dos EUA determinou a divisão da Standard Oil por monopólio.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Um império nasceu do petróleo e da pressão. Nada disso é acidente.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Em 1911, a Suprema Corte dos EUA determinou a divisão da Standard Oil por monopólio.",
+        kind: "fato",
+      },
     ],
     archives: ["a-standard", "a-fundacao"],
   },
@@ -821,7 +904,8 @@ export const chapters: Chapter[] = [
     title: "O Escândalo do Petróleo",
     era: "1936",
     place: "São Paulo",
-    summary: "Monteiro Lobato publica um livro acusando trustes estrangeiros de sabotar a busca por petróleo no Brasil. Em 1941, é preso.",
+    summary:
+      "Monteiro Lobato publica um livro acusando trustes estrangeiros de sabotar a busca por petróleo no Brasil. Em 1941, é preso.",
     mission: {
       title: "O Poço Que Não Existe",
       objective: "Neutralize a sabotagem e proteja as frentes de pesquisa.",
@@ -829,7 +913,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Lobato escreveu a verdade e foi preso por isso." },
-      { speaker: "Profa. Helena", text: "Em 1936, Monteiro Lobato publicou 'O Escândalo do Petróleo'. Em 1941, foi preso pelo Estado Novo.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Em 1936, Monteiro Lobato publicou 'O Escândalo do Petróleo'. Em 1941, foi preso pelo Estado Novo.",
+        kind: "fato",
+      },
     ],
     archives: ["a-lobato", "a-standard"],
   },
@@ -840,7 +928,8 @@ export const chapters: Chapter[] = [
     title: "O Petróleo é Nosso",
     era: "1947–1953",
     place: "Rio de Janeiro",
-    summary: "Após campanha popular, a Lei 2.004 cria a Petrobras e o monopólio estatal. Davi vê a nação escolher lutar pela própria energia.",
+    summary:
+      "Após campanha popular, a Lei 2.004 cria a Petrobras e o monopólio estatal. Davi vê a nação escolher lutar pela própria energia.",
     mission: {
       title: "Campanha do Petróleo",
       objective: "Mantenha os poços sob controle popular até o fim.",
@@ -848,7 +937,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "O povo foi para a rua por um poço. Isso é guerra, sim." },
-      { speaker: "Profa. Helena", text: "A Lei 2.004, de 1953, criou a Petrobras e o monopólio estatal do petróleo.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A Lei 2.004, de 1953, criou a Petrobras e o monopólio estatal do petróleo.",
+        kind: "fato",
+      },
     ],
     archives: ["a-petrobras", "a-lobato", "a-standard"],
   },
@@ -859,7 +952,8 @@ export const chapters: Chapter[] = [
     title: "A Fundação",
     era: "1913",
     place: "Nova York",
-    summary: "A fortuna do petróleo vira filantropia. Saúde, ciência e ciências sociais passam a ser financiadas — e, com o dinheiro, vem a direção.",
+    summary:
+      "A fortuna do petróleo vira filantropia. Saúde, ciência e ciências sociais passam a ser financiadas — e, com o dinheiro, vem a direção.",
     mission: {
       title: "A Mão Invisível",
       objective: "Segure o centro de decisão e negue a captura da agenda.",
@@ -867,7 +961,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Uma fundação não é caridade. É política com gravata." },
-      { speaker: "Profa. Helena", text: "Criada em 1913, a Fundação Rockefeller se tornou uma das maiores financiadoras de saúde e ciência.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Criada em 1913, a Fundação Rockefeller se tornou uma das maiores financiadoras de saúde e ciência.",
+        kind: "fato",
+      },
     ],
     archives: ["a-fundacao", "a-rock-tese"],
   },
@@ -878,7 +976,8 @@ export const chapters: Chapter[] = [
     title: "O Caminho do Café",
     era: "1929–1930s",
     place: "São Paulo",
-    summary: "A crise de 1929 derruba o café e reordena o poder no Brasil. Davi entende que a economia precede a guerra.",
+    summary:
+      "A crise de 1929 derruba o café e reordena o poder no Brasil. Davi entende que a economia precede a guerra.",
     mission: {
       title: "A Grande Depressão",
       objective: "Reorganize as posições econômicas sob crise.",
@@ -886,7 +985,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "A crise não foi acidente. Foi o gatilho de tudo que veio depois." },
-      { speaker: "Profa. Helena", text: "A crise de 1929 reordenou a economia e a política do Brasil, abrindo espaço para o Estado Novo.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A crise de 1929 reordenou a economia e a política do Brasil, abrindo espaço para o Estado Novo.",
+        kind: "fato",
+      },
     ],
     archives: ["a-standard", "a-fundacao"],
   },
@@ -897,7 +1000,8 @@ export const chapters: Chapter[] = [
     title: "Relatório Flexner",
     era: "1910",
     place: "Baltimore, EUA",
-    summary: "Um relatório financiado pela Carnegie redesenha a medicina nos EUA. Com recursos Rockefeller, escolas são reformadas — e muitas fecham.",
+    summary:
+      "Um relatório financiado pela Carnegie redesenha a medicina nos EUA. Com recursos Rockefeller, escolas são reformadas — e muitas fecham.",
     mission: {
       title: "O Currículo",
       objective: "Reorganize as posições de saúde pública sob pressão.",
@@ -905,7 +1009,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Fecharam escolas de medicina e chamaram de 'reforma'." },
-      { speaker: "Profa. Helena", text: "O Relatório Flexner (1910) reformou o ensino médico; 5 das 7 escolas para negros fecharam.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "O Relatório Flexner (1910) reformou o ensino médico; 5 das 7 escolas para negros fecharam.",
+        kind: "fato",
+      },
     ],
     archives: ["a-flexner", "a-med-tese"],
   },
@@ -916,15 +1024,23 @@ export const chapters: Chapter[] = [
     title: "A Febre Amarela",
     era: "1923–1939",
     place: "Rio de Janeiro",
-    summary: "A Fundação Rockefeller atua com o governo brasileiro no combate à febre amarela. Ajuda real — e uma porta de entrada.",
+    summary:
+      "A Fundação Rockefeller atua com o governo brasileiro no combate à febre amarela. Ajuda real — e uma porta de entrada.",
     mission: {
       title: "Saúde Soberana",
       objective: "Contenha o surto e proteja a autonomia sanitária.",
       battle: "Floresta",
     },
     dialogue: [
-      { speaker: "Davi", text: "Eles combateram a doença de verdade. E entraram pela porta da saúde." },
-      { speaker: "Profa. Helena", text: "A Fundação Rockefeller atuou em convênio com o governo brasileiro contra a febre amarela.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Eles combateram a doença de verdade. E entraram pela porta da saúde.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A Fundação Rockefeller atuou em convênio com o governo brasileiro contra a febre amarela.",
+        kind: "fato",
+      },
     ],
     archives: ["a-febre", "a-med-tese"],
   },
@@ -935,7 +1051,8 @@ export const chapters: Chapter[] = [
     title: "O Instituto de Berlim",
     era: "1927–1930s",
     place: "Berlim, Alemanha",
-    summary: "A Fundação Rockefeller financia um instituto de antropologia, hereditariedade e eugenia em Berlim, antes da consolidação do nazismo.",
+    summary:
+      "A Fundação Rockefeller financia um instituto de antropologia, hereditariedade e eugenia em Berlim, antes da consolidação do nazismo.",
     mission: {
       title: "A Ciência do Controle",
       objective: "Bloqueie o posto de pesquisa e negue a ciência do controle.",
@@ -943,7 +1060,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Isso não é ciência. É uma justificativa com jaleco." },
-      { speaker: "Profa. Helena", text: "A Fundação Rockefeller financiou o Instituto Kaiser Wilhelm de eugenia em Berlim.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A Fundação Rockefeller financiou o Instituto Kaiser Wilhelm de eugenia em Berlim.",
+        kind: "fato",
+      },
     ],
     archives: ["a-kwi", "a-antro-tese"],
   },
@@ -954,7 +1075,8 @@ export const chapters: Chapter[] = [
     title: "Projeto Camelot",
     era: "1964–1965",
     place: "Chile",
-    summary: "Um projeto militar dos EUA quer prever insurgências na América Latina usando antropólogos e sociólogos. Exposto no Chile, é cancelado.",
+    summary:
+      "Um projeto militar dos EUA quer prever insurgências na América Latina usando antropólogos e sociólogos. Exposto no Chile, é cancelado.",
     mission: {
       title: "Camelot",
       objective: "Descubra e bloqueie o posto de mapeamento social.",
@@ -962,7 +1084,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Eles queriam prever uma revolução. Como se revolução fosse dado." },
-      { speaker: "Profa. Helena", text: "O Projeto Camelot foi cancelado em 1965 depois de exposto no Chile.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "O Projeto Camelot foi cancelado em 1965 depois de exposto no Chile.",
+        kind: "fato",
+      },
     ],
     archives: ["a-camelot", "a-antro-tese"],
   },
@@ -973,7 +1099,8 @@ export const chapters: Chapter[] = [
     title: "Escola das Américas",
     era: "1946–",
     place: "Panamá · Geórgia",
-    summary: "Um centro de treinamento dos EUA forma gerações de oficiais latino-americanos — vários ligados a violações de direitos humanos.",
+    summary:
+      "Um centro de treinamento dos EUA forma gerações de oficiais latino-americanos — vários ligados a violações de direitos humanos.",
     mission: {
       title: "A Doutrina",
       objective: "Enfrente a doutrina importada e retome a formação militar.",
@@ -981,7 +1108,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Nossos oficiais aprenderam a lutar contra o próprio povo." },
-      { speaker: "Profa. Helena", text: "A Escola das Américas formou gerações de oficiais latino-americanos a partir de 1946.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A Escola das Américas formou gerações de oficiais latino-americanos a partir de 1946.",
+        kind: "fato",
+      },
     ],
     archives: ["a-soa", "a-dsn"],
   },
@@ -992,7 +1123,8 @@ export const chapters: Chapter[] = [
     title: "Guatemala, 1954",
     era: "1954",
     place: "Guatemala",
-    summary: "A CIA derruba um governo reformista e salva o modelo de enclave da United Fruit. Davi vê o roteiro antes de vê-lo no Brasil.",
+    summary:
+      "A CIA derruba um governo reformista e salva o modelo de enclave da United Fruit. Davi vê o roteiro antes de vê-lo no Brasil.",
     mission: {
       title: "Operação PBSUCCESS",
       objective: "Impeça a operação de desestabilização na região.",
@@ -1000,7 +1132,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Mudaram o governo de outro país com aviões e rádio." },
-      { speaker: "Profa. Helena", text: "Em 1954, a CIA patrocinou a Operação PBSUCCESS contra Jacobo Árbenz, na Guatemala.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Em 1954, a CIA patrocinou a Operação PBSUCCESS contra Jacobo Árbenz, na Guatemala.",
+        kind: "fato",
+      },
     ],
     archives: ["a-guatemala54", "a-alianca"],
   },
@@ -1011,7 +1147,8 @@ export const chapters: Chapter[] = [
     title: "Aliança para o Progresso",
     era: "1961",
     place: "Brasília",
-    summary: "Ajuda econômica, reformas e influência: o programa dos EUA tenta conter a revolução na América Latina com dinheiro e agenda.",
+    summary:
+      "Ajuda econômica, reformas e influência: o programa dos EUA tenta conter a revolução na América Latina com dinheiro e agenda.",
     mission: {
       title: "O Envelope",
       objective: "Negocie a ajuda sem entregar a agenda.",
@@ -1019,7 +1156,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Vieram com dinheiro e uma lista de reformas para a gente fazer." },
-      { speaker: "Profa. Helena", text: "A Aliança para o Progresso (1961) combinava ajuda econômica e influência política.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A Aliança para o Progresso (1961) combinava ajuda econômica e influência política.",
+        kind: "fato",
+      },
     ],
     archives: ["a-alianca", "a-ipes"],
   },
@@ -1030,7 +1171,8 @@ export const chapters: Chapter[] = [
     title: "A CPI do IBAD",
     era: "1963",
     place: "Brasília",
-    summary: "Uma CPI investiga o financiamento estrangeiro de propaganda política. A comissão é arquivada sob pressão antes de chegar ao topo.",
+    summary:
+      "Uma CPI investiga o financiamento estrangeiro de propaganda política. A comissão é arquivada sob pressão antes de chegar ao topo.",
     mission: {
       title: "Os Documentos",
       objective: "Proteja as provas e leve a investigação até o fim.",
@@ -1038,7 +1180,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Arquivaram a CPI antes de chegar no topo da cadeia." },
-      { speaker: "Profa. Helena", text: "A CPI do IBAD (1963) investigou financiamento estrangeiro de propaganda política.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A CPI do IBAD (1963) investigou financiamento estrangeiro de propaganda política.",
+        kind: "fato",
+      },
     ],
     archives: ["a-cpi-ibad", "a-ipes"],
   },
@@ -1049,15 +1195,23 @@ export const chapters: Chapter[] = [
     title: "A Torre de Wardenclyffe",
     era: "1901–1906",
     place: "Long Island, EUA",
-    summary: "Tesla constrói uma torre para transmitir energia sem fio, financiada por J. P. Morgan — que retira o apoio. O projeto é abandonado.",
+    summary:
+      "Tesla constrói uma torre para transmitir energia sem fio, financiada por J. P. Morgan — que retira o apoio. O projeto é abandonado.",
     mission: {
       title: "A Torre",
       objective: "Proteja a estação de transmissão até a pesquisa concluir.",
       battle: "Campo aberto",
     },
     dialogue: [
-      { speaker: "Davi", text: "Retiraram o dinheiro quando viram que não dava para cobrar pela energia." },
-      { speaker: "Profa. Helena", text: "Tesla construiu a torre de Wardenclyffe com financiamento de J. P. Morgan, retirado depois.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Retiraram o dinheiro quando viram que não dava para cobrar pela energia.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Tesla construiu a torre de Wardenclyffe com financiamento de J. P. Morgan, retirado depois.",
+        kind: "fato",
+      },
     ],
     archives: ["a-wardenclyffe", "a-tesla-tese"],
   },
@@ -1068,7 +1222,8 @@ export const chapters: Chapter[] = [
     title: "O Quarto 3327",
     era: "1943",
     place: "Nova York",
-    summary: "Nikola Tesla morre sozinho, endividado, no quarto 3327 do Hotel New Yorker. Seus papéis são apreendidos pelo governo dos EUA.",
+    summary:
+      "Nikola Tesla morre sozinho, endividado, no quarto 3327 do Hotel New Yorker. Seus papéis são apreendidos pelo governo dos EUA.",
     mission: {
       title: "Quarto 3327",
       objective: "Recupere os documentos e negue a captura do legado.",
@@ -1076,7 +1231,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Ele morreu sozinho e levaram tudo. Até o que não era deles." },
-      { speaker: "Profa. Helena", text: "Tesla morreu em 7 de janeiro de 1943; seus papéis foram apreendidos pelo Office of Alien Property.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Tesla morreu em 7 de janeiro de 1943; seus papéis foram apreendidos pelo Office of Alien Property.",
+        kind: "fato",
+      },
     ],
     archives: ["a-tesla-morte", "a-tesla-tese"],
   },
@@ -1087,7 +1246,8 @@ export const chapters: Chapter[] = [
     title: "Corrente Alternada",
     era: "1888–1893",
     place: "Pittsburgh · Chicago",
-    summary: "A guerra das correntes opõe Tesla e Edison. A energia que poderia ser livre perde para a energia que pode ser cobrada.",
+    summary:
+      "A guerra das correntes opõe Tesla e Edison. A energia que poderia ser livre perde para a energia que pode ser cobrada.",
     mission: {
       title: "A Guerra das Correntes",
       objective: "Rompa o bloqueio energético e retome a rede.",
@@ -1095,7 +1255,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "A corrente que venceu não foi a melhor. Foi a que dava lucro." },
-      { speaker: "Profa. Helena", text: "A 'guerra das correntes' definiu o modelo elétrico do século XX.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A 'guerra das correntes' definiu o modelo elétrico do século XX.",
+        kind: "fato",
+      },
     ],
     archives: ["a-wardenclyffe", "a-tesla-morte"],
   },
@@ -1106,15 +1270,23 @@ export const chapters: Chapter[] = [
     title: "O Automóvel e a Cidade",
     era: "1920s–1950s",
     place: "Detroit · São Paulo",
-    summary: "A indústria automobilística redesenha a cidade em torno do carro. Davi entende que a guerra também passa pelo asfalto.",
+    summary:
+      "A indústria automobilística redesenha a cidade em torno do carro. Davi entende que a guerra também passa pelo asfalto.",
     mission: {
       title: "A Rua",
       objective: "Segure os bairros e negue a via que corta a cidade.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Davi", text: "Cortaram a cidade em nome do progresso. A comunidade pagou a conta." },
-      { speaker: "Profa. Helena", text: "A indústria automobilística redesenhou as cidades em torno do carro no século XX.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Cortaram a cidade em nome do progresso. A comunidade pagou a conta.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A indústria automobilística redesenhou as cidades em torno do carro no século XX.",
+        kind: "fato",
+      },
     ],
     archives: ["a-jacobs", "a-lomex"],
   },
@@ -1125,7 +1297,8 @@ export const chapters: Chapter[] = [
     title: "Contra Robert Moses",
     era: "1958–1968",
     place: "Nova York",
-    summary: "Jane Jacobs, com bolsa da própria Fundação Rockefeller, derruba a via expressa apoiada por David Rockefeller.",
+    summary:
+      "Jane Jacobs, com bolsa da própria Fundação Rockefeller, derruba a via expressa apoiada por David Rockefeller.",
     mission: {
       title: "Washington Square",
       objective: "Organize os bairros e bloqueie a via expressa.",
@@ -1133,7 +1306,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Ela usou a bolsa deles para derrotá-los. Isso é jogar xadrez." },
-      { speaker: "Profa. Helena", text: "Jane Jacobs liderou a resistência à via expressa de Lower Manhattan (LOMEX).", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Jane Jacobs liderou a resistência à via expressa de Lower Manhattan (LOMEX).",
+        kind: "fato",
+      },
     ],
     archives: ["a-jacobs", "a-lomex", "a-jacobs-tese"],
   },
@@ -1144,15 +1321,23 @@ export const chapters: Chapter[] = [
     title: "A Cidade Viva",
     era: "1961",
     place: "Nova York",
-    summary: "'Morte e Vida de Grandes Cidades' prova que ruas vivas resistem. Davi liga o urbanismo à defesa nacional.",
+    summary:
+      "'Morte e Vida de Grandes Cidades' prova que ruas vivas resistem. Davi liga o urbanismo à defesa nacional.",
     mission: {
       title: "Diversidade",
       objective: "Defenda a vizinhança e negue o plano que a apaga.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Davi", text: "Ela escreveu um livro sobre ruas e acabou ensinando defesa nacional." },
-      { speaker: "Profa. Helena", text: "Jane Jacobs publicou 'Morte e Vida de Grandes Cidades' em 1961.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Ela escreveu um livro sobre ruas e acabou ensinando defesa nacional.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Jane Jacobs publicou 'Morte e Vida de Grandes Cidades' em 1961.",
+        kind: "fato",
+      },
     ],
     archives: ["a-jacobs", "a-jacobs-tese"],
   },
@@ -1163,15 +1348,23 @@ export const chapters: Chapter[] = [
     title: "Mockingbird",
     era: "1950s–1970s",
     place: "Washington, EUA",
-    summary: "Programa da CIA de relacionamento com a imprensa: jornalistas e veículos servem como canais de influência. Exposto no Congresso em 1975.",
+    summary:
+      "Programa da CIA de relacionamento com a imprensa: jornalistas e veículos servem como canais de influência. Exposto no Congresso em 1975.",
     mission: {
       title: "A Operação Silenciosa",
       objective: "Neutralize a rede de propaganda e retome a informação.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Davi", text: "Contrataram jornalistas. Pagaram para escrever a guerra do jeito deles." },
-      { speaker: "Profa. Helena", text: "A Operação Mockingbird foi exposta no Congresso dos EUA em 1975.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Contrataram jornalistas. Pagaram para escrever a guerra do jeito deles.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A Operação Mockingbird foi exposta no Congresso dos EUA em 1975.",
+        kind: "fato",
+      },
     ],
     archives: ["a-mockingbird", "a-ira"],
   },
@@ -1182,7 +1375,8 @@ export const chapters: Chapter[] = [
     title: "COINTELPRO",
     era: "1956–1971",
     place: "Estados Unidos",
-    summary: "O FBI infiltra, desacredita e neutraliza organizações políticas domésticas. Vigilância ilegal vira método de governo.",
+    summary:
+      "O FBI infiltra, desacredita e neutraliza organizações políticas domésticas. Vigilância ilegal vira método de governo.",
     mission: {
       title: "Ameaça Interna",
       objective: "Proteja as organizações e negue a infiltração.",
@@ -1190,7 +1384,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Vigiaram organizações legais e chamaram de segurança." },
-      { speaker: "Profa. Helena", text: "O COINTELPRO (1956–1971) envolveu vigilância ilegal e sabotagem de organizações políticas.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "O COINTELPRO (1956–1971) envolveu vigilância ilegal e sabotagem de organizações políticas.",
+        kind: "fato",
+      },
     ],
     archives: ["a-cointelpro", "a-dsn"],
   },
@@ -1201,15 +1399,23 @@ export const chapters: Chapter[] = [
     title: "Condor",
     era: "1975–1980s",
     place: "Cone Sul",
-    summary: "Ditaduras coordenam a perseguição de opositores além-fronteiras, com apoio dos EUA. A repressão ganha escala continental.",
+    summary:
+      "Ditaduras coordenam a perseguição de opositores além-fronteiras, com apoio dos EUA. A repressão ganha escala continental.",
     mission: {
       title: "Rotas do Silêncio",
       objective: "Rompas as rotas da repressão transfronteiriça.",
       battle: "Floresta",
     },
     dialogue: [
-      { speaker: "Davi", text: "Perseguiram gente fora do próprio país. Isso é uma guerra continental." },
-      { speaker: "Profa. Helena", text: "A Operação Condor coordenou ditaduras do Cone Sul com apoio dos EUA.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Perseguiram gente fora do próprio país. Isso é uma guerra continental.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A Operação Condor coordenou ditaduras do Cone Sul com apoio dos EUA.",
+        kind: "fato",
+      },
     ],
     archives: ["a-condor", "a-soa"],
   },
@@ -1220,7 +1426,8 @@ export const chapters: Chapter[] = [
     title: "O Valor da Ciência na Previsão",
     era: "2013",
     place: "Moscou",
-    summary: "O general russo Gerasimov descreve a guerra moderna como combinação de meios políticos, econômicos, informacionais e militares.",
+    summary:
+      "O general russo Gerasimov descreve a guerra moderna como combinação de meios políticos, econômicos, informacionais e militares.",
     mission: {
       title: "Guerra Sem Declaração",
       objective: "Enfrente a doutrina híbrida e retome as posições.",
@@ -1228,7 +1435,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Escreveram o manual da guerra que estamos vivendo." },
-      { speaker: "Profa. Helena", text: "Em 2013, o general Gerasimov descreveu a guerra moderna como combinação de meios não militares.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Em 2013, o general Gerasimov descreveu a guerra moderna como combinação de meios não militares.",
+        kind: "fato",
+      },
     ],
     archives: ["a-gerasimov", "a-korybko"],
   },
@@ -1239,15 +1450,23 @@ export const chapters: Chapter[] = [
     title: "Guerras Híbridas",
     era: "2015",
     place: "Moscou · Washington",
-    summary: "Um estudo sobre revoluções coloridas e guerra não convencional mostra como trocar governos sem tanques.",
+    summary:
+      "Um estudo sobre revoluções coloridas e guerra não convencional mostra como trocar governos sem tanques.",
     mission: {
       title: "Revolução de Cores",
       objective: "Desmonte a operação de mudança de regime.",
       battle: "Cidade",
     },
     dialogue: [
-      { speaker: "Davi", text: "Trocam governo com panfleto e perfil falso. Nem precisa de tanque." },
-      { speaker: "Profa. Helena", text: "Andrew Korybko publicou 'Hybrid Wars' em 2015 sobre revoluções coloridas.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Trocam governo com panfleto e perfil falso. Nem precisa de tanque.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Andrew Korybko publicou 'Hybrid Wars' em 2015 sobre revoluções coloridas.",
+        kind: "fato",
+      },
     ],
     archives: ["a-korybko", "a-ira"],
   },
@@ -1258,7 +1477,8 @@ export const chapters: Chapter[] = [
     title: "As Revelações de Snowden",
     era: "2013",
     place: "Rio · Washington",
-    summary: "Vigilância em massa da NSA alcança chefes de Estado e a Petrobras. O mundo descobre que o cabo também é arma.",
+    summary:
+      "Vigilância em massa da NSA alcança chefes de Estado e a Petrobras. O mundo descobre que o cabo também é arma.",
     mission: {
       title: "O Grande Ouvido",
       objective: "Proteja a infraestrutura digital e negue a vigilância.",
@@ -1266,7 +1486,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Espionaram a maior empresa do país. A guerra estava no cabo." },
-      { speaker: "Profa. Helena", text: "Em 2013, Edward Snowden expôs a vigilância em massa da NSA, incluindo a espionagem da Petrobras.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Em 2013, Edward Snowden expôs a vigilância em massa da NSA, incluindo a espionagem da Petrobras.",
+        kind: "fato",
+      },
     ],
     archives: ["a-snowden", "a-petrobras-hack", "a-5g"],
   },
@@ -1277,7 +1501,8 @@ export const chapters: Chapter[] = [
     title: "A Petrobras Espionada",
     era: "2013",
     place: "Rio de Janeiro",
-    summary: "Documentos confirmam a espionagem da maior empresa do país. Davi entende que a economia é alvo militar.",
+    summary:
+      "Documentos confirmam a espionagem da maior empresa do país. Davi entende que a economia é alvo militar.",
     mission: {
       title: "Perímetro",
       objective: "Segure o perímetro industrial e negue a coleta de dados.",
@@ -1285,7 +1510,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Espionaram o petróleo. A economia é a retaguarda e o alvo." },
-      { speaker: "Profa. Helena", text: "Documentos indicam que a NSA espionou a Petrobras em 2013.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Documentos indicam que a NSA espionou a Petrobras em 2013.",
+        kind: "fato",
+      },
     ],
     archives: ["a-petrobras-hack", "a-snowden"],
   },
@@ -1296,15 +1525,23 @@ export const chapters: Chapter[] = [
     title: "A Escala da Ciberguerra",
     era: "2010",
     place: "Natanz · Global",
-    summary: "Stuxnet sabota centrífugas nucleares sem disparar um tiro. A fronteira entre código e explosivo desaparece.",
+    summary:
+      "Stuxnet sabota centrífugas nucleares sem disparar um tiro. A fronteira entre código e explosivo desaparece.",
     mission: {
       title: "Código e Aço",
       objective: "Bloqueie a sabotagem cibernética da instalação.",
       battle: "Região fortificada",
     },
     dialogue: [
-      { speaker: "Davi", text: "Uma linha de código explodiu uma centrífuga do outro lado do mundo." },
-      { speaker: "Profa. Helena", text: "Stuxnet (2010) foi a primeira arma cibernética conhecida a causar dano físico.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "Uma linha de código explodiu uma centrífuga do outro lado do mundo.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "Stuxnet (2010) foi a primeira arma cibernética conhecida a causar dano físico.",
+        kind: "fato",
+      },
     ],
     archives: ["a-stuxnet", "a-deepfake"],
   },
@@ -1315,7 +1552,8 @@ export const chapters: Chapter[] = [
     title: "Cambridge Analytica",
     era: "2018",
     place: "Londres · Global",
-    summary: "Dados de redes sociais viram mira de propaganda política. O eleitor deixa de ser cidadão e vira perfil.",
+    summary:
+      "Dados de redes sociais viram mira de propaganda política. O eleitor deixa de ser cidadão e vira perfil.",
     mission: {
       title: "O Perfil",
       objective: "Proteja os dados dos cidadãos e negue a manipulação.",
@@ -1323,7 +1561,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Venderam o voto da população como se fosse mercadoria." },
-      { speaker: "Profa. Helena", text: "O escândalo da Cambridge Analytica (2018) mostrou o uso de dados para propaganda política.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "O escândalo da Cambridge Analytica (2018) mostrou o uso de dados para propaganda política.",
+        kind: "fato",
+      },
     ],
     archives: ["a-cambridge", "a-ira"],
   },
@@ -1334,7 +1576,8 @@ export const chapters: Chapter[] = [
     title: "A Fábrica de Trolls",
     era: "2013–2018",
     place: "São Petersburgo",
-    summary: "Uma agência russa opera contas falsas para inflamar divisões. A mentira industrializada vira arma de Estado.",
+    summary:
+      "Uma agência russa opera contas falsas para inflamar divisões. A mentira industrializada vira arma de Estado.",
     mission: {
       title: "Trolls",
       objective: "Derrube a fábrica de propaganda estatal.",
@@ -1342,7 +1585,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Industrializaram a mentira. Virou linha de montagem." },
-      { speaker: "Profa. Helena", text: "A Internet Research Agency operou contas falsas em redes sociais até os indiciamentos de 2018.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "A Internet Research Agency operou contas falsas em redes sociais até os indiciamentos de 2018.",
+        kind: "fato",
+      },
     ],
     archives: ["a-ira", "a-cambridge"],
   },
@@ -1353,7 +1600,8 @@ export const chapters: Chapter[] = [
     title: "Pegasus",
     era: "2016–2021",
     place: "Global",
-    summary: "Software espião invade celulares sem clique e é vendido a governos. Jornalistas e ativistas viram alvos.",
+    summary:
+      "Software espião invade celulares sem clique e é vendido a governos. Jornalistas e ativistas viram alvos.",
     mission: {
       title: "O Celular na Mesa",
       objective: "Proteja os alvos e negue a invasão.",
@@ -1361,7 +1609,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Invadiram o celular de jornalista sem nem tocar no aparelho." },
-      { speaker: "Profa. Helena", text: "O Projeto Pegasus documentou o uso do software da NSO Group contra jornalistas e ativistas.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "O Projeto Pegasus documentou o uso do software da NSO Group contra jornalistas e ativistas.",
+        kind: "fato",
+      },
     ],
     archives: ["a-pegasus", "a-snowden"],
   },
@@ -1372,15 +1624,23 @@ export const chapters: Chapter[] = [
     title: "A Disputa do 5G",
     era: "2019–",
     place: "Brasília · Pequim · Washington",
-    summary: "EUA e China brigam pela rede 5G. Quem instala a antena controla o fluxo de dados — e, com ele, o país.",
+    summary:
+      "EUA e China brigam pela rede 5G. Quem instala a antena controla o fluxo de dados — e, com ele, o país.",
     mission: {
       title: "A Antena",
       objective: "Dispute a infraestrutura e garanta a soberania digital.",
       battle: "Região fortificada",
     },
     dialogue: [
-      { speaker: "Davi", text: "A briga não é pela antena. É por quem escuta o que passa por ela." },
-      { speaker: "Profa. Helena", text: "A disputa pelo 5G expôs a infraestrutura de telecomunicações como campo de guerra.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "A briga não é pela antena. É por quem escuta o que passa por ela.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A disputa pelo 5G expôs a infraestrutura de telecomunicações como campo de guerra.",
+        kind: "fato",
+      },
     ],
     archives: ["a-5g", "a-snowden", "a-brics"],
   },
@@ -1391,7 +1651,8 @@ export const chapters: Chapter[] = [
     title: "Deepfakes",
     era: "2018–",
     place: "Global",
-    summary: "Vídeos e áudios sintéticos simulam falas de pessoas reais. O custo da mentira cai a zero e a dúvida vira arma.",
+    summary:
+      "Vídeos e áudios sintéticos simulam falas de pessoas reais. O custo da mentira cai a zero e a dúvida vira arma.",
     mission: {
       title: "A Prova",
       objective: "Proteja a verdade verificável e negue a falsificação.",
@@ -1399,7 +1660,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Fizeram o presidente dizer o que ele nunca disse." },
-      { speaker: "Profa. Helena", text: "Deepfakes capazes de simular falas reais mudaram o custo da mentira a partir de 2018.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Deepfakes capazes de simular falas reais mudaram o custo da mentira a partir de 2018.",
+        kind: "fato",
+      },
     ],
     archives: ["a-deepfake", "a-cambridge"],
   },
@@ -1410,7 +1675,8 @@ export const chapters: Chapter[] = [
     title: "Ouro Azul",
     era: "2020s",
     place: "Amazônia · Global",
-    summary: "Água, aquíferos e a floresta entram na conta estratégica do século. Quem controla a água controla a comida e o clima.",
+    summary:
+      "Água, aquíferos e a floresta entram na conta estratégica do século. Quem controla a água controla a comida e o clima.",
     mission: {
       title: "Ouro Azul",
       objective: "Proteja as fontes e negue a apropriação estratégica.",
@@ -1418,7 +1684,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Descobriram que dá para tomar um país pela torneira." },
-      { speaker: "Profa. Helena", text: "Água e floresta passaram a ser tratadas como ativos estratégicos no século XXI.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Água e floresta passaram a ser tratadas como ativos estratégicos no século XXI.",
+        kind: "fato",
+      },
     ],
     archives: ["a-ouro-azul", "a-brics"],
   },
@@ -1429,7 +1699,8 @@ export const chapters: Chapter[] = [
     title: "Os Arquivos Abertos",
     era: "2010s",
     place: "Global",
-    summary: "Vazamentos revelam bases, drones e operações secretas em vários países. Davi vê a guerra híbrida de cima pela primeira vez.",
+    summary:
+      "Vazamentos revelam bases, drones e operações secretas em vários países. Davi vê a guerra híbrida de cima pela primeira vez.",
     mission: {
       title: "Wikileaks",
       objective: "Mapeie as operações e negue a infraestrutura oculta.",
@@ -1437,7 +1708,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Agora eu vejo o tabuleiro inteiro. Sempre esteve lá." },
-      { speaker: "Profa. Helena", text: "Vazamentos revelaram bases e operações secretas em vários países na década de 2010.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "Vazamentos revelaram bases e operações secretas em vários países na década de 2010.",
+        kind: "fato",
+      },
     ],
     archives: ["a-snowden", "a-condor"],
   },
@@ -1448,7 +1723,8 @@ export const chapters: Chapter[] = [
     title: "BRICS e o Sul Global",
     era: "2009–",
     place: "Global",
-    summary: "O bloco de emergentes cria bancos e arranjos de troca para reduzir a dependência do dólar. A guerra financeira ganha capítulo.",
+    summary:
+      "O bloco de emergentes cria bancos e arranjos de troca para reduzir a dependência do dólar. A guerra financeira ganha capítulo.",
     mission: {
       title: "O Banco do Sul",
       objective: "Construa a alternativa financeira e negue o bloqueio.",
@@ -1456,7 +1732,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "Descobri que dá para atacar um país pela moeda." },
-      { speaker: "Profa. Helena", text: "O BRICS criou bancos e arranjos de troca para reduzir a dependência do dólar.", kind: "fato" },
+      {
+        speaker: "Profa. Helena",
+        text: "O BRICS criou bancos e arranjos de troca para reduzir a dependência do dólar.",
+        kind: "fato",
+      },
     ],
     archives: ["a-brics", "a-standard"],
   },
@@ -1467,15 +1747,23 @@ export const chapters: Chapter[] = [
     title: "O Tabuleiro",
     era: "Hoje",
     place: "Brasil",
-    summary: "Davi junta todas as peças: FEB, Rockefeller, Tesla, Jacobs, Camelot, imprensa, dados, 5G. A guerra híbrida tem nome.",
+    summary:
+      "Davi junta todas as peças: FEB, Rockefeller, Tesla, Jacobs, Camelot, imprensa, dados, 5G. A guerra híbrida tem nome.",
     mission: {
       title: "O Tabuleiro",
       objective: "Desmonte a rede híbrida e retome o controle do país.",
       battle: "Região fortificada",
     },
     dialogue: [
-      { speaker: "Davi", text: "FEB, Rockefeller, Tesla, Jacobs, Camelot... era tudo a mesma guerra." },
-      { speaker: "Profa. Helena", text: "A guerra híbrida combina economia, cultura, ciência, dados e força militar.", kind: "fato" },
+      {
+        speaker: "Davi",
+        text: "FEB, Rockefeller, Tesla, Jacobs, Camelot... era tudo a mesma guerra.",
+      },
+      {
+        speaker: "Profa. Helena",
+        text: "A guerra híbrida combina economia, cultura, ciência, dados e força militar.",
+        kind: "fato",
+      },
     ],
     archives: ["a-gerasimov", "a-korybko", "a-final-tese"],
   },
@@ -1486,7 +1774,8 @@ export const chapters: Chapter[] = [
     title: "Soberano",
     era: "Hoje",
     place: "Brasil",
-    summary: "De volta ao presente, Davi entende a primeira batalha que lutou. Agora conhece o terreno, as armas e os heróis. A guerra híbrida ganha nome — e resposta.",
+    summary:
+      "De volta ao presente, Davi entende a primeira batalha que lutou. Agora conhece o terreno, as armas e os heróis. A guerra híbrida ganha nome — e resposta.",
     mission: {
       title: "A Cobra Vai Fumar",
       objective: "Vença a batalha final com a Doutrina de Montanha da FEB desbloqueada.",
@@ -1494,7 +1783,11 @@ export const chapters: Chapter[] = [
     },
     dialogue: [
       { speaker: "Davi", text: "A guerra nunca acabou. Só trocou de uniforme." },
-      { speaker: "Carta de Joaquim", text: "Se um dia te perguntarem quem somos, diga que fomos.", kind: "ficcao" },
+      {
+        speaker: "Carta de Joaquim",
+        text: "Se um dia te perguntarem quem somos, diga que fomos.",
+        kind: "ficcao",
+      },
     ],
     archives: ["a-korybko", "a-final-tese", "a-tese-50"],
   },

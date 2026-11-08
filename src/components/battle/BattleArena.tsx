@@ -1,7 +1,16 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-import type { BattleState, ControlPoint, Side } from "@/game/battle/types";
+import type {
+  BattleState,
+  BattleUnit,
+  ControlPoint,
+  Projectile,
+  Side,
+  Structure,
+  Territory,
+  VisualEffect,
+} from "@/game/battle/types";
 
 interface Props {
   state: BattleState;
@@ -13,7 +22,10 @@ interface Props {
   onSelectPoint: (pointId: string) => void;
 }
 
-const SIDE_COLOR: Record<Side, string> = { blue: "var(--ally)", red: "var(--enemy)" };
+const ALLY = "var(--ally)";
+const ENEMY = "var(--enemy)";
+
+const sideColor = (s: Side): string => (s === "blue" ? ALLY : ENEMY);
 
 export function BattleArena({
   state,
@@ -22,7 +34,6 @@ export function BattleArena({
   selectedUnitId,
   onPlace,
   onSelectUnit,
-  onSelectPoint,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const arena = state.config.arena;
@@ -31,6 +42,7 @@ export function BattleArena({
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
     const x = ((clientX - rect.left) / rect.width) * 100;
     const y = ((clientY - rect.top) / rect.height) * 100;
     return { x, y };
@@ -44,6 +56,10 @@ export function BattleArena({
 
   const units = [...state.blue.units, ...state.red.units];
   const selected = units.find((u) => u.id === selectedUnitId) ?? null;
+  const pendingCard = pendingCardId
+    ? state.blue.deck.hand.find((h) => h.cardId === pendingCardId)
+    : null;
+  void pendingCard;
 
   return (
     <div className="relative">
@@ -51,20 +67,75 @@ export function BattleArena({
         ref={svgRef}
         viewBox="0 0 100 100"
         className={cn(
-          "mx-auto aspect-square w-full max-h-[58vh] touch-none select-none rounded-sm border border-border bg-land/40 sm:max-h-[70vh]",
+          "aspect-square max-h-full w-auto max-w-full touch-none select-none rounded-sm border border-border",
           pendingCardId ? "cursor-crosshair" : "cursor-default",
         )}
         onPointerDown={handlePointer}
       >
         <defs>
-          <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-            <path d="M10 0 L0 0 0 10" fill="none" stroke="oklch(1 0 0 / 0.05)" strokeWidth="0.3" />
-          </pattern>
+          <linearGradient id="allyZone" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor={ALLY} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={ALLY} stopOpacity="0.04" />
+          </linearGradient>
+          <linearGradient id="enemyZone" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={ENEMY} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={ENEMY} stopOpacity="0.04" />
+          </linearGradient>
+          <radialGradient id="terrGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
+            <stop offset="60%" stopColor="#ffffff" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </radialGradient>
         </defs>
 
-        <rect x="0" y="0" width="100" height="100" fill="url(#grid)" />
+        {/* Terreno base */}
+        <rect x="0" y="0" width="100" height="100" fill="oklch(0.26 0.03 120)" />
+        <rect x="0" y="0" width="100" height="100" fill="url(#enemyZone)" />
+        <rect
+          x="0"
+          y="0"
+          width="100"
+          height="50"
+          fill="url(#allyZone)"
+          transform="translate(0,50)"
+        />
 
-        {/* zonas de desdobramento */}
+        {/* Linhas de grade tênues */}
+        {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
+          <line
+            key={`v${i}`}
+            x1={i * 10}
+            y1="0"
+            x2={i * 10}
+            y2="100"
+            stroke="oklch(1 0 0 / 0.045)"
+            strokeWidth="0.2"
+          />
+        ))}
+        {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
+          <line
+            key={`h${i}`}
+            x1="0"
+            y1={i * 10}
+            x2="100"
+            y2={i * 10}
+            stroke="oklch(1 0 0 / 0.045)"
+            strokeWidth="0.2"
+          />
+        ))}
+
+        {/* Linha divisória das metades */}
+        <line
+          x1="0"
+          y1="50"
+          x2="100"
+          y2="50"
+          stroke="oklch(1 0 0 / 0.18)"
+          strokeWidth="0.3"
+          strokeDasharray="2 2"
+        />
+
+        {/* Zonas de desdobramento */}
         {(["red", "blue"] as Side[]).map((s) => {
           const z = arena.deployZone[s];
           return (
@@ -74,31 +145,16 @@ export function BattleArena({
               y={z.y}
               width={z.w}
               height={z.h}
-              fill={SIDE_COLOR[s]}
-              opacity={s === "blue" ? 0.08 : 0.06}
-              stroke={SIDE_COLOR[s]}
-              strokeOpacity={0.25}
-              strokeDasharray="2 2"
+              fill="none"
+              stroke={sideColor(s)}
+              strokeOpacity={0.3}
+              strokeDasharray="1.5 1.5"
               strokeWidth="0.3"
             />
           );
         })}
 
-        {/* rotas sugeridas */}
-        {arena.routes.map((r, i) => (
-          <line
-            key={i}
-            x1={r.from[0]}
-            y1={r.from[1]}
-            x2={r.to[0]}
-            y2={r.to[1]}
-            stroke="oklch(1 0 0 / 0.12)"
-            strokeWidth="0.5"
-            strokeDasharray="3 3"
-          />
-        ))}
-
-        {/* obstáculos */}
+        {/* Obstáculos */}
         {arena.obstacles.map((o) => (
           <circle
             key={o.id}
@@ -106,125 +162,71 @@ export function BattleArena({
             cy={o.y}
             r={o.radius}
             fill={obstacleFill(o.kind)}
-            opacity={o.kind === "barricada" ? 0.55 : 0.85}
-            stroke={o.kind === "barricada" ? SIDE_COLOR[o.side ?? "blue"] : "oklch(1 0 0 / 0.12)"}
-            strokeWidth="0.4"
+            opacity={o.kind === "barricada" ? 0.6 : 0.7}
+            stroke={o.kind === "barricada" ? sideColor(o.side ?? "blue") : "oklch(1 0 0 / 0.1)"}
+            strokeWidth="0.3"
           />
         ))}
 
-        {/* zonas de efeito */}
+        {/* Territórios de expansão */}
+        {state.territories.map((t) => (
+          <TerritoryGlyph key={t.id} territory={t} />
+        ))}
+
+        {/* Pontos de controle */}
+        {arena.controlPoints.map((p) => (
+          <ControlPointGlyph key={p.id} point={p} />
+        ))}
+
+        {/* Estruturas */}
+        {state.structures.map((s) => (
+          <StructureGlyph key={s.id} structure={s} />
+        ))}
+
+        {/* Zonas de efeito (fumaça/reconhecimento) */}
         {state.zones.map((z) => (
           <circle
             key={z.id}
             cx={z.x}
             cy={z.y}
             r={z.radius}
-            fill={
-              z.kind === "fumaca"
-                ? "oklch(0.9 0 0 / 0.28)"
-                : z.kind === "reconhecimento"
-                  ? SIDE_COLOR[z.side]
-                  : "var(--doc)"
-            }
-            opacity={z.kind === "fumaca" ? 0.6 : 0.16}
-            stroke={z.kind === "fumaca" ? "oklch(0.9 0 0 / 0.4)" : SIDE_COLOR[z.side]}
-            strokeWidth="0.3"
-            strokeDasharray="1.5 1.5"
+            fill={z.kind === "fumaca" ? "oklch(0.92 0 0 / 0.3)" : sideColor(z.side)}
+            opacity={z.kind === "fumaca" ? 0.5 : 0.12}
+            stroke={z.kind === "fumaca" ? "oklch(0.95 0 0 / 0.4)" : sideColor(z.side)}
+            strokeWidth="0.25"
+            strokeDasharray="1.2 1.2"
           />
         ))}
 
-        {/* pontos de controle */}
-        {arena.controlPoints.map((p) => (
-          <ControlPointGlyph key={p.id} point={p} onClick={() => onSelectPoint(p.id)} />
-        ))}
-
-        {/* unidades */}
+        {/* Unidades */}
         {units.map((u) => {
           const visible = u.side === "blue" || u.seen.blue || u.revealed > 0;
           if (!visible) {
-            return (
-              <circle
-                key={u.id}
-                cx={u.x}
-                cy={u.y}
-                r={1.4}
-                fill="oklch(0.5 0 0 / 0.5)"
-                stroke="oklch(1 0 0 / 0.2)"
-                strokeWidth="0.2"
-              />
-            );
+            return <circle key={u.id} cx={u.x} cy={u.y} r={1.2} fill="oklch(0.5 0 0 / 0.45)" />;
           }
-          const isSelected = u.id === selectedUnitId;
           return (
-            <g
+            <UnitGlyph
               key={u.id}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                if (u.side === "blue") onSelectUnit(isSelected ? null : u.id);
-              }}
-              className={u.side === "blue" ? "cursor-pointer" : undefined}
-            >
-              <circle cx={u.x} cy={u.y} r={u.radius} fill={SIDE_COLOR[u.side]} opacity={0.22} />
-              <circle
-                cx={u.x}
-                cy={u.y}
-                r={u.radius * 0.62}
-                fill={SIDE_COLOR[u.side]}
-                stroke={isSelected ? "var(--primary)" : "oklch(0 0 0 / 0.5)"}
-                strokeWidth={isSelected ? 0.6 : 0.3}
-              />
-              {u.smoke > 0 && (
-                <circle
-                  cx={u.x}
-                  cy={u.y}
-                  r={u.radius * 0.8}
-                  fill="none"
-                  stroke="oklch(1 0 0 / 0.5)"
-                  strokeWidth="0.25"
-                  strokeDasharray="1 1"
-                />
-              )}
-              {u.jammed > 0 && (
-                <circle
-                  cx={u.x}
-                  cy={u.y}
-                  r={u.radius * 0.9}
-                  fill="none"
-                  stroke="var(--ai)"
-                  strokeWidth="0.25"
-                />
-              )}
-              <text
-                x={u.x}
-                y={u.y + 0.9}
-                textAnchor="middle"
-                fontSize="2.4"
-                fontFamily="var(--font-mono)"
-                fill="oklch(0.1 0 0)"
-                fontWeight={700}
-              >
-                {u.short}
-              </text>
-              {/* barra de vida */}
-              <rect
-                x={u.x - u.radius}
-                y={u.y - u.radius - 1.8}
-                width={u.radius * 2}
-                height={0.9}
-                fill="oklch(0 0 0 / 0.5)"
-              />
-              <rect
-                x={u.x - u.radius}
-                y={u.y - u.radius - 1.8}
-                width={u.radius * 2 * Math.max(0, u.hp / u.maxHp)}
-                height={0.9}
-                fill={u.hp / u.maxHp > 0.4 ? "var(--fact)" : "var(--enemy)"}
-              />
-            </g>
+              unit={u}
+              selected={u.id === selectedUnitId}
+              onSelect={() =>
+                u.side === "blue" && onSelectUnit(u.id === selectedUnitId ? null : u.id)
+              }
+            />
           );
         })}
 
-        {/* alcance da unidade selecionada */}
+        {/* Projéteis */}
+        {state.projectiles.map((p) => (
+          <ProjectileGlyph key={p.id} projectile={p} />
+        ))}
+
+        {/* Efeitos visuais */}
+        {state.effects.map((e) => (
+          <EffectGlyph key={e.id} effect={e} />
+        ))}
+
+        {/* Alcance da unidade selecionada */}
         {selected && (
           <circle
             cx={selected.x}
@@ -240,35 +242,266 @@ export function BattleArena({
       </svg>
 
       {pendingCardId && (
-        <div className="pointer-events-none absolute left-2 top-2 border border-primary bg-background/85 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary">
+        <div className="pointer-events-none absolute left-2 top-2 border border-primary bg-background/90 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary">
           {pendingIsGlobal
             ? "Clique em qualquer ponto do teatro"
-            : "Clique na sua zona (parte inferior)"}
+            : "Clique na sua zona ou numa base avançada"}
         </div>
       )}
     </div>
   );
 }
 
-function ControlPointGlyph({ point, onClick }: { point: ControlPoint; onClick: () => void }) {
-  const color = point.owner === "neutro" ? "var(--neutral)" : SIDE_COLOR[point.owner];
+// ---------------------------------------------------------------------------
+// Estruturas: base principal, torres e bases avançadas
+// ---------------------------------------------------------------------------
+
+function StructureGlyph({ structure: s }: { structure: Structure }) {
+  const color = sideColor(s.side);
+  const hpPct = Math.max(0, s.hp / s.maxHp);
+  const damaged = hpPct < 0.5;
+  const critical = hpPct < 0.2;
+  return (
+    <g>
+      {s.underConstruction && (
+        <circle
+          cx={s.x}
+          cy={s.y}
+          r={s.radius + 1.5}
+          fill="none"
+          stroke={color}
+          strokeWidth="0.4"
+          strokeDasharray="1 1"
+        />
+      )}
+      {s.kind === "base-principal" ? (
+        <BasePrincipalGlyph s={s} color={color} />
+      ) : (
+        <TowerGlyph s={s} color={color} />
+      )}
+      {/* dano progressivo */}
+      {damaged && <circle cx={s.x} cy={s.y} r={s.radius * 0.6} fill="oklch(0.4 0 0 / 0.4)" />}
+      {critical && (
+        <circle cx={s.x} cy={s.y} r={s.radius * 0.5} fill="var(--enemy)" opacity={0.5}>
+          <animate
+            attributeName="opacity"
+            values="0.3;0.7;0.3"
+            dur="0.8s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
+      {/* barra de vida */}
+      <rect
+        x={s.x - s.radius}
+        y={s.y - s.radius - 2.2}
+        width={s.radius * 2}
+        height="1.1"
+        fill="oklch(0 0 0 / 0.6)"
+      />
+      <rect
+        x={s.x - s.radius}
+        y={s.y - s.radius - 2.2}
+        width={s.radius * 2 * hpPct}
+        height="1.1"
+        fill={hpPct > 0.4 ? "var(--fact)" : "var(--enemy)"}
+      />
+      {s.underConstruction && (
+        <text
+          x={s.x}
+          y={s.y - s.radius - 3}
+          textAnchor="middle"
+          fontSize="2"
+          fontFamily="var(--font-mono)"
+          fill="var(--doc)"
+        >
+          {Math.round(s.buildProgress)}%
+        </text>
+      )}
+    </g>
+  );
+}
+
+function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
+  return (
+    <g>
+      {/* perímetro fortificado */}
+      <circle
+        cx={s.x}
+        cy={s.y}
+        r={s.radius}
+        fill={color}
+        opacity={0.14}
+        stroke={color}
+        strokeWidth="0.35"
+      />
+      <circle cx={s.x} cy={s.y} r={s.radius * 0.72} fill={color} opacity={0.22} />
+      {/* centro de comando */}
+      <rect
+        x={s.x - s.radius * 0.42}
+        y={s.y - s.radius * 0.42}
+        width={s.radius * 0.84}
+        height={s.radius * 0.84}
+        fill="oklch(0.18 0 0)"
+        stroke={color}
+        strokeWidth="0.3"
+      />
+      {/* radar */}
+      <circle cx={s.x} cy={s.y} r={s.radius * 0.28} fill="none" stroke={color} strokeWidth="0.3" />
+      <line
+        x1={s.x}
+        y1={s.y}
+        x2={s.x + Math.cos(s.aim) * s.radius * 0.28}
+        y2={s.y + Math.sin(s.aim) * s.radius * 0.28}
+        stroke={color}
+        strokeWidth="0.3"
+      />
+      {/* torres de comunicação */}
+      <line
+        x1={s.x - s.radius * 0.6}
+        y1={s.y - s.radius * 0.6}
+        x2={s.x - s.radius * 0.6}
+        y2={s.y - s.radius}
+        stroke={color}
+        strokeWidth="0.4"
+      />
+      <line
+        x1={s.x + s.radius * 0.6}
+        y1={s.y - s.radius * 0.6}
+        x2={s.x + s.radius * 0.6}
+        y2={s.y - s.radius}
+        stroke={color}
+        strokeWidth="0.4"
+      />
+    </g>
+  );
+}
+
+function TowerGlyph({ s, color }: { s: Structure; color: string }) {
+  const rx = s.x + Math.cos(s.aim) * s.radius * 0.9;
+  const ry = s.y + Math.sin(s.aim) * s.radius * 0.9;
+  return (
+    <g>
+      <circle
+        cx={s.x}
+        cy={s.y}
+        r={s.radius}
+        fill={color}
+        opacity={0.2}
+        stroke={color}
+        strokeWidth="0.3"
+      />
+      <rect
+        x={s.x - s.radius * 0.55}
+        y={s.y - s.radius * 0.55}
+        width={s.radius * 1.1}
+        height={s.radius * 1.1}
+        fill="oklch(0.2 0 0)"
+        stroke={color}
+        strokeWidth="0.3"
+      />
+      {/* canhão com recuo */}
+      <line
+        x1={s.x}
+        y1={s.y}
+        x2={s.x + Math.cos(s.aim) * (s.radius * 0.9 - s.recoil * 0.6)}
+        y2={s.y + Math.sin(s.aim) * (s.radius * 0.9 - s.recoil * 0.6)}
+        stroke={color}
+        strokeWidth="0.6"
+      />
+      <circle cx={rx} cy={ry} r="0.5" fill={color} />
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Territórios de expansão
+// ---------------------------------------------------------------------------
+
+function TerritoryGlyph({ territory: t }: { territory: Territory }) {
+  const owned = t.owner !== "neutro";
+  const color = owned ? sideColor(t.owner as Side) : "#ffffff";
+  return (
+    <g>
+      <circle
+        cx={t.x}
+        cy={t.y}
+        r={t.radius * 1.6}
+        fill="url(#terrGlow)"
+        opacity={owned ? 0.4 : 0.9}
+      />
+      <circle
+        cx={t.x}
+        cy={t.y}
+        r={t.radius}
+        fill={color}
+        opacity={owned ? 0.14 : 0.05}
+        stroke={color}
+        strokeWidth="0.35"
+        strokeDasharray={owned ? undefined : "1 1"}
+      />
+      <circle cx={t.x} cy={t.y} r={t.radius * 0.35} fill={color} opacity={owned ? 0.7 : 0.9}>
+        {!owned && (
+          <animate
+            attributeName="opacity"
+            values="0.4;0.95;0.4"
+            dur="1.8s"
+            repeatCount="indefinite"
+          />
+        )}
+      </circle>
+      {!owned && (t.progress.blue > 0 || t.progress.red > 0) && (
+        <>
+          <rect
+            x={t.x - t.radius}
+            y={t.y + t.radius + 0.6}
+            width={t.radius * 2}
+            height="0.9"
+            fill="oklch(0 0 0 / 0.5)"
+          />
+          <rect
+            x={t.x - t.radius}
+            y={t.y + t.radius + 0.6}
+            width={t.radius * 2 * (t.progress.blue / 100)}
+            height="0.9"
+            fill={ALLY}
+          />
+          <rect
+            x={t.x + t.radius - t.radius * 2 * (t.progress.red / 100)}
+            y={t.y + t.radius + 0.6}
+            width={t.radius * 2 * (t.progress.red / 100)}
+            height="0.9"
+            fill={ENEMY}
+          />
+        </>
+      )}
+    </g>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pontos de controle
+// ---------------------------------------------------------------------------
+
+function ControlPointGlyph({ point }: { point: ControlPoint }) {
+  const color = point.owner === "neutro" ? "var(--neutral)" : sideColor(point.owner);
   const bluePct = point.progress.blue;
   const redPct = point.progress.red;
   return (
-    <g onClick={onClick} className="cursor-pointer">
+    <g>
       <circle
         cx={point.x}
         cy={point.y}
         r={point.radius}
         fill={color}
-        opacity={0.12}
+        opacity={0.1}
         stroke={color}
         strokeWidth="0.4"
       />
       <circle
         cx={point.x}
         cy={point.y}
-        r={point.radius * 0.55}
+        r={point.radius * 0.5}
         fill="none"
         stroke={color}
         strokeWidth="0.3"
@@ -278,24 +511,24 @@ function ControlPointGlyph({ point, onClick }: { point: ControlPoint; onClick: (
         <>
           <rect
             x={point.x - 4}
-            y={point.y + point.radius - 0.6}
+            y={point.y + point.radius - 0.4}
             width={8}
-            height={1}
+            height="1"
             fill="oklch(0 0 0 / 0.5)"
           />
           <rect
             x={point.x - 4}
-            y={point.y + point.radius - 0.6}
+            y={point.y + point.radius - 0.4}
             width={8 * (bluePct / 100)}
-            height={1}
-            fill="var(--ally)"
+            height="1"
+            fill={ALLY}
           />
           <rect
             x={point.x + 4 - 8 * (redPct / 100)}
-            y={point.y + point.radius - 0.6}
+            y={point.y + point.radius - 0.4}
             width={8 * (redPct / 100)}
-            height={1}
-            fill="var(--enemy)"
+            height="1"
+            fill={ENEMY}
           />
         </>
       )}
@@ -303,15 +536,399 @@ function ControlPointGlyph({ point, onClick }: { point: ControlPoint; onClick: (
         x={point.x}
         y={point.y - point.radius - 0.8}
         textAnchor="middle"
-        fontSize="2.2"
+        fontSize="2"
         fontFamily="var(--font-mono)"
         fill={color}
-        letterSpacing="0.1"
       >
-        {point.sector.toUpperCase()} · {point.value}
+        {point.sector.toUpperCase()}
       </text>
     </g>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Unidades — silhuetas distintas por modelo
+// ---------------------------------------------------------------------------
+
+function UnitGlyph({
+  unit,
+  selected,
+  onSelect,
+}: {
+  unit: BattleUnit;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const color = sideColor(unit.side);
+  const airborne = unit.domain === "aereo";
+  const y = airborne ? unit.y - 2.4 : unit.y;
+  return (
+    <g onClick={onSelect} className={unit.side === "blue" ? "cursor-pointer" : undefined}>
+      {airborne && (
+        <ellipse
+          cx={unit.x}
+          cy={unit.y + 1.6}
+          rx={unit.radius * 0.9}
+          ry={unit.radius * 0.4}
+          fill="oklch(0 0 0 / 0.35)"
+        />
+      )}
+      <circle cx={unit.x} cy={y} r={unit.radius + 0.8} fill={color} opacity={0.16} />
+      <g transform={`translate(${unit.x} ${y}) rotate(${(unit.aim * 180) / Math.PI})`}>
+        {unitModel(unit.model, color, selected)}
+      </g>
+      {unit.smoke > 0 && (
+        <circle
+          cx={unit.x}
+          cy={y}
+          r={unit.radius * 1.1}
+          fill="none"
+          stroke="oklch(1 0 0 / 0.5)"
+          strokeWidth="0.25"
+          strokeDasharray="1 1"
+        />
+      )}
+      {unit.jammed > 0 && (
+        <circle
+          cx={unit.x}
+          cy={y}
+          r={unit.radius * 1.2}
+          fill="none"
+          stroke="var(--ai)"
+          strokeWidth="0.25"
+        />
+      )}
+      {/* barra de vida */}
+      <rect
+        x={unit.x - unit.radius}
+        y={y - unit.radius - 1.8}
+        width={unit.radius * 2}
+        height="0.9"
+        fill="oklch(0 0 0 / 0.5)"
+      />
+      <rect
+        x={unit.x - unit.radius}
+        y={y - unit.radius - 1.8}
+        width={unit.radius * 2 * Math.max(0, unit.hp / unit.maxHp)}
+        height="0.9"
+        fill={unit.hp / unit.maxHp > 0.4 ? "var(--fact)" : "var(--enemy)"}
+      />
+      <text
+        x={unit.x}
+        y={y + 0.9}
+        textAnchor="middle"
+        fontSize="2"
+        fontFamily="var(--font-mono)"
+        fill="oklch(0.08 0 0)"
+        fontWeight={700}
+        transform={`rotate(0)`}
+      >
+        {unit.short}
+      </text>
+    </g>
+  );
+}
+
+// Desenha o modelo da unidade centrado na origem, com o "nariz" apontando para +x.
+function unitModel(model: BattleUnit["model"], color: string, selected: boolean): ReactNode {
+  const outline = selected ? "var(--primary)" : "oklch(0 0 0 / 0.5)";
+  const sw = selected ? 0.5 : 0.28;
+  const body = (children: ReactNode) => (
+    <g stroke={outline} strokeWidth={sw}>
+      {children}
+    </g>
+  );
+  switch (model) {
+    case "soldado-fuzil":
+      return body(
+        <>
+          <circle r="0.7" fill={color} />
+          <rect x="-0.3" y="-0.7" width="1.7" height="1.4" fill={color} rx="0.2" />
+          <line x1="0.6" y1="0" x2="2.2" y2="0" stroke={color} strokeWidth="0.4" />
+        </>,
+      );
+    case "soldado-assalto":
+      return body(
+        <>
+          <circle r="0.8" fill={color} />
+          <rect x="-0.3" y="-0.9" width="1.9" height="1.8" fill={color} rx="0.25" />
+          <line x1="0.7" y1="-0.3" x2="2.3" y2="-0.3" stroke={color} strokeWidth="0.4" />
+          <rect x="-0.9" y="-1" width="0.8" height="2" fill={color} opacity={0.7} />
+        </>,
+      );
+    case "soldado-antitanque":
+      return body(
+        <>
+          <circle r="0.7" fill={color} />
+          <rect x="-0.3" y="-0.7" width="1.5" height="1.4" fill={color} rx="0.2" />
+          <rect x="0.6" y="-0.5" width="2.4" height="1" fill={color} rx="0.15" />
+          <line x1="0.9" y1="-0.6" x2="0.9" y2="0.6" stroke={color} strokeWidth="0.3" />
+        </>,
+      );
+    case "engenheiro":
+      return body(
+        <>
+          <circle r="0.7" fill={color} />
+          <rect x="-0.3" y="-0.7" width="1.4" height="1.4" fill={color} rx="0.2" />
+          <rect x="0.4" y="-0.9" width="1" height="1.8" fill="var(--doc)" opacity={0.85} />
+          <line x1="1.2" y1="-1.1" x2="1.2" y2="1.1" stroke="var(--doc)" strokeWidth="0.3" />
+        </>,
+      );
+    case "canhao":
+      return body(
+        <>
+          <rect x="-1.6" y="-1" width="2.4" height="2" fill={color} rx="0.25" />
+          <circle cx="-1.2" cy="-1.1" r="0.5" fill="oklch(0.2 0 0)" />
+          <circle cx="-1.2" cy="1.1" r="0.5" fill="oklch(0.2 0 0)" />
+          <rect x="0.6" y="-0.35" width="2.8" height="0.7" fill={color} rx="0.15" />
+        </>,
+      );
+    case "artilharia-pesada":
+      return body(
+        <>
+          <rect x="-2" y="-1.3" width="3" height="2.6" fill={color} rx="0.3" />
+          <circle cx="-1.5" cy="-1.4" r="0.6" fill="oklch(0.2 0 0)" />
+          <circle cx="-1.5" cy="1.4" r="0.6" fill="oklch(0.2 0 0)" />
+          <rect x="0.8" y="-0.45" width="3.6" height="0.9" fill={color} rx="0.15" />
+          <rect x="-0.4" y="-0.6" width="1.4" height="1.2" fill={color} opacity={0.6} />
+        </>,
+      );
+    case "lmf":
+      return body(
+        <>
+          <rect x="-1.8" y="-1.1" width="2.6" height="2.2" fill={color} rx="0.25" />
+          <rect
+            x="0.7"
+            y="-1"
+            width="1.9"
+            height="2"
+            fill="oklch(0.18 0 0)"
+            stroke={color}
+            strokeWidth="0.3"
+          />
+          {[-0.6, -0.2, 0.2, 0.6].map((yy) => (
+            <circle key={yy} cx="0.9" cy={yy} r="0.18" fill={color} />
+          ))}
+        </>,
+      );
+    case "lancador-missil":
+      return body(
+        <>
+          <rect x="-2.2" y="-1" width="3" height="2" fill={color} rx="0.25" />
+          <circle cx="-1.7" cy="-1.1" r="0.5" fill="oklch(0.2 0 0)" />
+          <circle cx="-1.7" cy="1.1" r="0.5" fill="oklch(0.2 0 0)" />
+          <rect x="0.7" y="-0.8" width="3" height="1.6" fill={color} rx="0.5" />
+        </>,
+      );
+    case "tanque":
+      return body(
+        <>
+          <rect x="-2.2" y="-1.4" width="4.2" height="2.8" fill={color} rx="0.3" />
+          <rect x="-2.2" y="-1.7" width="4.2" height="0.5" fill="oklch(0.15 0 0)" />
+          <rect x="-2.2" y="1.2" width="4.2" height="0.5" fill="oklch(0.15 0 0)" />
+          <circle cx="0" cy="0" r="1.05" fill={color} opacity={0.9} />
+          <rect
+            x="0.8"
+            y="-0.28"
+            width="3.4"
+            height="0.56"
+            fill="oklch(0.15 0 0)"
+            stroke={color}
+            strokeWidth="0.25"
+          />
+        </>,
+      );
+    case "vbld":
+      return body(
+        <>
+          <path d="M-2 -1.3 L1.6 -1.3 L2.4 0 L1.6 1.3 L-2 1.3 Z" fill={color} />
+          <circle cx="0" cy="0" r="0.7" fill="oklch(0.18 0 0)" stroke={color} strokeWidth="0.2" />
+          <line x1="1.2" y1="0" x2="2.6" y2="0" stroke={color} strokeWidth="0.4" />
+        </>,
+      );
+    case "drone-recon":
+      return body(
+        <>
+          <ellipse rx="0.9" ry="0.5" fill={color} />
+          <line x1="-1.6" y1="-1" x2="1.6" y2="1" stroke={color} strokeWidth="0.3" />
+          <line x1="-1.6" y1="1" x2="1.6" y2="-1" stroke={color} strokeWidth="0.3" />
+          {[-1.5, 1.5].map((xx) =>
+            [-1, 1].map((yy) => (
+              <circle key={`${xx}-${yy}`} cx={xx} cy={yy} r="0.35" fill={color} opacity={0.7}>
+                <animate
+                  attributeName="opacity"
+                  values="0.3;0.8;0.3"
+                  dur="0.3s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+            )),
+          )}
+          <circle cx="0" cy="0" r="0.35" fill="oklch(0.95 0 0 / 0.9)" />
+        </>,
+      );
+    case "drone-combate":
+      return body(
+        <>
+          <ellipse rx="1.1" ry="0.65" fill={color} />
+          <line x1="-1.8" y1="-1.2" x2="1.8" y2="1.2" stroke={color} strokeWidth="0.3" />
+          <line x1="-1.8" y1="1.2" x2="1.8" y2="-1.2" stroke={color} strokeWidth="0.3" />
+          <rect
+            x="0.9"
+            y="-0.25"
+            width="1.6"
+            height="0.5"
+            fill="oklch(0.15 0 0)"
+            stroke={color}
+            strokeWidth="0.2"
+          />
+          <circle cx="0" cy="0" r="0.4" fill="var(--enemy)" opacity={0.8} />
+        </>,
+      );
+    case "aa":
+      return body(
+        <>
+          <rect x="-1.4" y="-1" width="2" height="2" fill={color} rx="0.25" />
+          <line x1="0.4" y1="-0.4" x2="2.6" y2="-0.6" stroke={color} strokeWidth="0.35" />
+          <line x1="0.4" y1="0.4" x2="2.6" y2="0.6" stroke={color} strokeWidth="0.35" />
+        </>,
+      );
+    case "fortificacao":
+      return body(
+        <>
+          <rect x="-2" y="-1.6" width="4" height="3.2" fill={color} rx="0.2" />
+          <rect
+            x="-1.4"
+            y="-1"
+            width="2.8"
+            height="2"
+            fill="oklch(0.18 0 0)"
+            stroke={color}
+            strokeWidth="0.2"
+          />
+          <line x1="0.4" y1="0" x2="2.6" y2="0" stroke={color} strokeWidth="0.4" />
+        </>,
+      );
+    case "posto":
+      return body(
+        <>
+          <rect x="-1.4" y="-1.4" width="2.8" height="2.8" fill={color} rx="0.2" />
+          <rect x="-0.4" y="-0.4" width="0.8" height="0.8" fill="var(--fact)" />
+        </>,
+      );
+    default:
+      return body(<circle r="1.4" fill={color} />);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Projéteis
+// ---------------------------------------------------------------------------
+
+function ProjectileGlyph({ projectile: p }: { projectile: Projectile }) {
+  const color = sideColor(p.side);
+  if (p.kind === "missile") {
+    const ang = (Math.atan2(p.vy, p.vx) * 180) / Math.PI;
+    return (
+      <g transform={`translate(${p.x} ${p.y}) rotate(${ang})`}>
+        <rect x="-0.9" y="-0.35" width="1.8" height="0.7" fill={color} rx="0.2" />
+        <line x1="-1.6" y1="0" x2="-0.9" y2="0" stroke="var(--doc)" strokeWidth="0.5" />
+      </g>
+    );
+  }
+  if (p.kind === "rocket") {
+    return (
+      <g>
+        <circle cx={p.x} cy={p.y} r="0.5" fill={color} />
+        <circle cx={p.x} cy={p.y} r="1.1" fill="var(--doc)" opacity={0.35} />
+      </g>
+    );
+  }
+  return <circle cx={p.x} cy={p.y} r="0.45" fill={color} />;
+}
+
+// ---------------------------------------------------------------------------
+// Efeitos visuais
+// ---------------------------------------------------------------------------
+
+function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
+  const life = Math.max(0, e.remaining / e.ttl);
+  switch (e.kind) {
+    case "tracer":
+      return (
+        <line
+          x1={e.x}
+          y1={e.y}
+          x2={e.x2 ?? e.x}
+          y2={e.y2 ?? e.y}
+          stroke="var(--doc)"
+          strokeWidth="0.28"
+          opacity={life}
+        />
+      );
+    case "muzzle":
+      return (
+        <circle cx={e.x} cy={e.y} r={0.9 * life + 0.3} fill="var(--doc)" opacity={life * 0.9} />
+      );
+    case "explosion":
+      return (
+        <g>
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * (1.2 - life * 0.5)}
+            fill="var(--enemy)"
+            opacity={life * 0.55}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * (0.6 - life * 0.3)}
+            fill="var(--doc)"
+            opacity={life * 0.7}
+          />
+        </g>
+      );
+    case "fire":
+      return (
+        <circle cx={e.x} cy={e.y} r={e.radius * 0.7} fill="var(--enemy)" opacity={life * 0.4}>
+          <animate
+            attributeName="r"
+            values={`${e.radius * 0.5};${e.radius * 0.9};${e.radius * 0.5}`}
+            dur="0.7s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      );
+    case "spark":
+      return (
+        <circle cx={e.x} cy={e.y} r={e.radius * life} fill="var(--primary)" opacity={life * 0.8} />
+      );
+    case "build":
+      return (
+        <circle
+          cx={e.x}
+          cy={e.y}
+          r={e.radius * 0.8}
+          fill="none"
+          stroke="var(--doc)"
+          strokeWidth="0.25"
+          opacity={life * 0.8}
+          strokeDasharray="0.8 0.8"
+        />
+      );
+    case "impact":
+    default:
+      return (
+        <circle
+          cx={e.x}
+          cy={e.y}
+          r={e.radius * life + 0.3}
+          fill="var(--doc)"
+          opacity={life * 0.7}
+        />
+      );
+  }
 }
 
 function obstacleFill(kind: string): string {

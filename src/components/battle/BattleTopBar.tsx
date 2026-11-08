@@ -82,15 +82,26 @@ function phaseLabel(phase: BattlePhase): string {
 
 export function ObjectiveStrip({ state }: { state: BattleState }) {
   const points = state.config.arena.controlPoints;
+  const terrBlue = state.territories.filter((t) => t.owner === "blue").length;
+  const terrRed = state.territories.filter((t) => t.owner === "red").length;
+  const advBlue = state.structures.filter(
+    (s) => s.side === "blue" && s.kind === "base-avancada",
+  ).length;
+  const advRed = state.structures.filter(
+    (s) => s.side === "red" && s.kind === "base-avancada",
+  ).length;
   return (
     <div className="flex items-center gap-2 overflow-x-auto border-b border-border bg-card/40 px-2 py-1.5 sm:px-4">
       <span className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
         {objectiveLabel(state.config.objectiveKind)}
       </span>
-      <span className="hidden whitespace-nowrap text-xs text-muted-foreground md:inline">
-        {state.config.objectiveText}
-      </span>
-      <span className="ml-auto flex gap-2">
+      <span className="ml-auto flex items-center gap-2">
+        <span className="whitespace-nowrap border border-ally px-1.5 py-0.5 font-mono text-[10px] uppercase text-ally">
+          Território {terrBlue}×{terrRed}
+        </span>
+        <span className="whitespace-nowrap border border-doc px-1.5 py-0.5 font-mono text-[10px] uppercase text-doc">
+          Bases avançadas {advBlue}×{advRed}
+        </span>
         {points.map((p) => (
           <span
             key={p.id}

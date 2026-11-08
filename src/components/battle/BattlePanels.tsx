@@ -9,6 +9,8 @@ const KIND_TONE: Record<BattleLogEntry["kind"], string> = {
   ordem: "text-muted-foreground",
   evento: "text-foreground",
   ia: "text-ai",
+  construcao: "text-fact",
+  destruicao: "text-destructive",
 };
 
 export function BattleLogPanel({ state }: { state: BattleState }) {

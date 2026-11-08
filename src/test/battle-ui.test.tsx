@@ -27,7 +27,7 @@ describe("interface da batalha", () => {
     // avança da preparação para a batalha
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
-    expect(screen.getByText("Pontos de Comando")).toBeInTheDocument();
+    expect(screen.getByText("Energia")).toBeInTheDocument();
     expect(screen.getByText("Comandante adversário · IA")).toBeInTheDocument();
     expect(screen.getByText("Registro tático")).toBeInTheDocument();
     expect(screen.getByText("Informações da unidade")).toBeInTheDocument();

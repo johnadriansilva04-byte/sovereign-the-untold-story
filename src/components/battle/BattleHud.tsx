@@ -25,7 +25,7 @@ export function CommandBar({ side, compact = false }: { side: SideState; compact
     <div className="flex items-center gap-3">
       <div className={compact ? "w-32 sm:w-40" : "w-40"}>
         <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>Pontos de Comando</span>
+          <span>Energia</span>
           <span className="text-primary">
             {Math.floor(side.command)} / {side.commandMax}
           </span>

@@ -72,7 +72,7 @@ export function GameShell({ children, full }: { children: ReactNode; full?: bool
       <main className={cn("flex-1", !full && "mx-auto w-full max-w-7xl px-5 py-8")}>
         {children}
       </main>
-      <Footer />
+      {!full && <Footer />}
     </div>
   );
 }

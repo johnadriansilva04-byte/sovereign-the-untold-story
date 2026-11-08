@@ -133,7 +133,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Proteja o centro de distribuição e sobreviva à pressão urbana.",
     duration: 300,
     missionNote: "Você luta sem saber contra quem. Vença para descobrir.",
-    brief: "Sem luz, sem sinal, boatos por todo lado. Mantenha o centro de distribuição do bairro sob controle até o fim da janela de crise.",
+    brief:
+      "Sem luz, sem sinal, boatos por todo lado. Mantenha o centro de distribuição do bairro sob controle até o fim da janela de crise.",
     enemyCountry: {
       id: "us",
       name: "Forças Irregulares",
@@ -152,7 +153,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Defenda o centro de dados e restabeleça as comunicações.",
     duration: 300,
     missionNote: "Quando a luz e o dado caem juntos, a cidade vira refém.",
-    brief: "Um ataque coordenado derruba energia e dados juntos. Segure o nó de comunicações enquanto as equipes restabelecem a rede.",
+    brief:
+      "Um ataque coordenado derruba energia e dados juntos. Segure o nó de comunicações enquanto as equipes restabelecem a rede.",
     enemyCountry: {
       id: "us",
       name: "Célula Cibernética",
@@ -171,7 +173,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Neutralize a capacidade de combate adversária — os núcleos de desinformação.",
     duration: 300,
     missionNote: "A primeira baixa de uma guerra híbrida é a verdade.",
-    brief: "Robôs e perfis falsos coordenam a narrativa. Derrube os núcleos que alimentam o caos antes que a rua se perca.",
+    brief:
+      "Robôs e perfis falsos coordenam a narrativa. Derrube os núcleos que alimentam o caos antes que a rua se perca.",
     enemyCountry: {
       id: "us",
       name: "Fábrica de Bots",
@@ -190,7 +193,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Domine as clareiras e negue a rede ao adversário.",
     duration: 300,
     missionNote: "A Amazônia não é cenário. É alvo.",
-    brief: "Sensores, drones e trilhas disputam a informação na maior fronteira do país. Reconhecimento vale mais que blindagem.",
+    brief:
+      "Sensores, drones e trilhas disputam a informação na maior fronteira do país. Reconhecimento vale mais que blindagem.",
     enemyCountry: {
       id: "us",
       name: "Rede Extrativista",
@@ -208,7 +212,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Segure os pontos do porto e impeça a operação fantasma.",
     duration: 300,
     missionNote: "O que entra e sai do porto conta uma história que ninguém lê.",
-    brief: "Um carregamento estratégico some dos registros oficiais. Controle o cais e os sistemas antes que a carga desapareça.",
+    brief:
+      "Um carregamento estratégico some dos registros oficiais. Controle o cais e os sistemas antes que a carga desapareça.",
     enemyCountry: {
       id: "us",
       name: "Sindicato Fantasma",
@@ -226,7 +231,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Avance montanha acima e capture o cume (Cume Norte).",
     duration: 360,
     missionNote: "A cobra vai fumar. Onde a FEB lutou quatro vezes.",
-    brief: "Neve, fogo vindo do alto e quatro ataques fracassados antes deste. Use as passagens e negue o cume ao inimigo.",
+    brief:
+      "Neve, fogo vindo do alto e quatro ataques fracassados antes deste. Use as passagens e negue o cume ao inimigo.",
     enemyCountry: {
       id: "de",
       name: "Defesa Alemã",
@@ -244,7 +250,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Proteja o desembarque e assegure a cabeça de ponte.",
     duration: 300,
     missionNote: "O Brasil entrou na guerra pelo mar, não pelo livro.",
-    brief: "O navio de transporte chega ao porto sob ameaça. Segure a cabeça de ponte até o último pracinha desembarcar.",
+    brief:
+      "O navio de transporte chega ao porto sob ameaça. Segure a cabeça de ponte até o último pracinha desembarcar.",
     enemyCountry: {
       id: "us",
       name: "Defesa Costeira",
@@ -301,7 +308,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Mantenha as posições enquanto os arquivos são preservados.",
     duration: 300,
     missionNote: "Vitória real, memória apagada. Não deixe apagarem de novo.",
-    brief: "Os arquivos dos veteranos estão sendo descartados enquanto o desfile acontece. Destrua o dispositivo que os escolta.",
+    brief:
+      "Os arquivos dos veteranos estão sendo descartados enquanto o desfile acontece. Destrua o dispositivo que os escolta.",
     enemyCountry: {
       id: "us",
       name: "Segurança Contratada",
@@ -320,7 +328,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Proteja o acervo e negue o avanço sobre a memória.",
     duration: 300,
     missionNote: "Quem apaga um povo começa apagando os seus arquivos.",
-    brief: "Uma operação tenta sumir com o acervo dos veteranos. Segure o prédio e as rotas até a retirada dos documentos.",
+    brief:
+      "Uma operação tenta sumir com o acervo dos veteranos. Segure o prédio e as rotas até a retirada dos documentos.",
     enemyCountry: {
       id: "us",
       name: "Departamento de Arquivo",
@@ -339,7 +348,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Mapeie e domine as redes de influência na região.",
     duration: 300,
     missionNote: "Da amizade nasce a doutrina. Nem tudo que ajuda é neutro.",
-    brief: "Parnamirim, ponte aérea para a África. Domine as trilhas e clareiras para revelar quem controla o fluxo.",
+    brief:
+      "Parnamirim, ponte aérea para a África. Domine as trilhas e clareiras para revelar quem controla o fluxo.",
     enemyCountry: {
       id: "us",
       name: "Missão Cultural",
@@ -357,7 +367,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Assuma o controle das narrativas culturais na cidade.",
     duration: 300,
     missionNote: "A boa vizinhança foi a primeira operação cultural do século.",
-    brief: "O imaginário é o campo. Domine os pontos de influência cultural antes que a versão oficial se consolide.",
+    brief:
+      "O imaginário é o campo. Domine os pontos de influência cultural antes que a versão oficial se consolide.",
     enemyCountry: {
       id: "us",
       name: "Departamento Cultural",
@@ -375,7 +386,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Rompa o cerco econômico e retome os poços.",
     duration: 300,
     missionNote: "Quem controla o combustível controla o movimento.",
-    brief: "Monopólio, preços e sabotagem. Rompa o cerco e retome o controle dos pontos de extração.",
+    brief:
+      "Monopólio, preços e sabotagem. Rompa o cerco e retome o controle dos pontos de extração.",
     enemyCountry: {
       id: "us",
       name: "Truste do Petróleo",
@@ -393,7 +405,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Neutralize a sabotagem e proteja as frentes de pesquisa.",
     duration: 300,
     missionNote: "Quem impede o poço não precisa invadir o país.",
-    brief: "Sabotagem, boatos e pressão sobre a pesquisa. Proteja as equipes e as frentes de perfuração.",
+    brief:
+      "Sabotagem, boatos e pressão sobre a pesquisa. Proteja as equipes e as frentes de perfuração.",
     enemyCountry: {
       id: "us",
       name: "Consórcio Estrangeiro",
@@ -412,7 +425,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Mantenha os poços sob controle popular até o fim.",
     duration: 300,
     missionNote: "O petróleo é nosso. A pressão vem de fora.",
-    brief: "Trustes sabotam a busca; o povo responde nas ruas. Segure os pontos de extração até a estabilidade aguentar.",
+    brief:
+      "Trustes sabotam a busca; o povo responde nas ruas. Segure os pontos de extração até a estabilidade aguentar.",
     enemyCountry: {
       id: "us",
       name: "Truste do Petróleo",
@@ -430,7 +444,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Segure o centro de decisão e negue a captura da agenda.",
     duration: 300,
     missionNote: "Ajuda real e influência real podem vir no mesmo envelope.",
-    brief: "O financiamento não é neutro. Segure os pontos de decisão antes que a agenda seja escrita por outro.",
+    brief:
+      "O financiamento não é neutro. Segure os pontos de decisão antes que a agenda seja escrita por outro.",
     enemyCountry: {
       id: "us",
       name: "Conselho Filantrópico",
@@ -449,7 +464,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Reorganize as posições econômicas sob crise.",
     duration: 300,
     missionNote: "Antes do tanque, passa o preço do café.",
-    brief: "A crise derruba preços e o poder. Reorganize as posições antes que o colapso vire ocupação.",
+    brief:
+      "A crise derruba preços e o poder. Reorganize as posições antes que o colapso vire ocupação.",
     enemyCountry: {
       id: "us",
       name: "Comitê Financeiro",
@@ -485,7 +501,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Contenha o surto e proteja a autonomia sanitária.",
     duration: 300,
     missionNote: "A ajuda chega no mesmo envelope da influência.",
-    brief: "Epidemia e influência avançam juntas. Contenha o surto sem entregar o comando sanitário.",
+    brief:
+      "Epidemia e influência avançam juntas. Contenha o surto sem entregar o comando sanitário.",
     enemyCountry: {
       id: "us",
       name: "Missão Sanitária",
@@ -522,7 +539,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Descubra e bloqueie o posto de mapeamento social.",
     duration: 300,
     missionNote: "Para conduzir um povo, primeiro é preciso descrevê-lo.",
-    brief: "Pesquisadores infiltrados mapeiam as províncias. Encontre o posto central e mantenha-o sob controle.",
+    brief:
+      "Pesquisadores infiltrados mapeiam as províncias. Encontre o posto central e mantenha-o sob controle.",
     enemyCountry: {
       id: "us",
       name: "Projeto Camelot",
@@ -541,7 +559,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Enfrente a doutrina importada e retome a formação militar.",
     duration: 300,
     missionNote: "Quem forma o oficial decide de que lado ele luta.",
-    brief: "Uma doutrina estrangeira forma os seus oficiais. Enfrente-a no campo e retome a formação.",
+    brief:
+      "Uma doutrina estrangeira forma os seus oficiais. Enfrente-a no campo e retome a formação.",
     enemyCountry: {
       id: "us",
       name: "Corpo de Oficiais",
@@ -560,7 +579,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Impeça a operação de desestabilização na região.",
     duration: 300,
     missionNote: "O roteiro do golpe foi escrito na Guatemala antes de ser lido no Brasil.",
-    brief: "Uma operação estrangeira desestabiliza o vizinho. Impeça o roteiro antes que ele chegue ao Brasil.",
+    brief:
+      "Uma operação estrangeira desestabiliza o vizinho. Impeça o roteiro antes que ele chegue ao Brasil.",
     enemyCountry: {
       id: "us",
       name: "Agentes Encobertos",
@@ -616,7 +636,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Proteja a estação de transmissão até a pesquisa concluir.",
     duration: 300,
     missionNote: "O que não pode ser medido não pode ser vendido.",
-    brief: "Wardenclyffe, 1901. O financiamento foi retirado. Segure a torre e as equipes até a pesquisa fechar.",
+    brief:
+      "Wardenclyffe, 1901. O financiamento foi retirado. Segure a torre e as equipes até a pesquisa fechar.",
     enemyCountry: {
       id: "us",
       name: "Consórcio Morgan",
@@ -635,7 +656,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Recupere os documentos e negue a captura do legado.",
     duration: 300,
     missionNote: "Um homem que iluminou o século morreu no escuro.",
-    brief: "O inventor morreu e o legado está em risco. Recupere os documentos antes que sejam apreendidos.",
+    brief:
+      "O inventor morreu e o legado está em risco. Recupere os documentos antes que sejam apreendidos.",
     enemyCountry: {
       id: "us",
       name: "Office of Alien Property",
@@ -690,7 +712,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Organize os bairros e bloqueie a via expressa.",
     duration: 300,
     missionNote: "Uma comunidade que se conhece resiste.",
-    brief: "Jane Jacobs enfrentou a via expressa e venceu. Segure as praças e o parque contra o projeto.",
+    brief:
+      "Jane Jacobs enfrentou a via expressa e venceu. Segure as praças e o parque contra o projeto.",
     enemyCountry: {
       id: "us",
       name: "Associação Empresarial",
@@ -726,7 +749,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Neutralize a rede de propaganda e retome a informação.",
     duration: 300,
     missionNote: "Quando a notícia é operação, o jornalista é soldado.",
-    brief: "Uma rede controla a notícia. Derrube os nós de propaganda antes que a versão oficial se fixe.",
+    brief:
+      "Uma rede controla a notícia. Derrube os nós de propaganda antes que a versão oficial se fixe.",
     enemyCountry: {
       id: "us",
       name: "Rede de Imprensa",
@@ -744,7 +768,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Proteja as organizações e negue a infiltração.",
     duration: 300,
     missionNote: "Chamar o adversário de 'interno' é o primeiro passo para persegui-lo.",
-    brief: "O aparato vigia e infiltra organizações legais. Proteja os núcleos e negue a infiltração.",
+    brief:
+      "O aparato vigia e infiltra organizações legais. Proteja os núcleos e negue a infiltração.",
     enemyCountry: {
       id: "us",
       name: "Departamento de Vigilância",
@@ -838,7 +863,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Segure o perímetro industrial e negue a coleta de dados.",
     duration: 300,
     missionNote: "A economia é alvo militar. O balanço é mapa de guerra.",
-    brief: "A maior empresa do país está sendo espionada. Segure o perímetro industrial e negue a coleta.",
+    brief:
+      "A maior empresa do país está sendo espionada. Segure o perímetro industrial e negue a coleta.",
     enemyCountry: {
       id: "us",
       name: "Célula de Coleta",
@@ -857,7 +883,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Bloqueie a sabotagem cibernética da instalação.",
     duration: 300,
     missionNote: "A primeira arma cibernética a causar dano físico mudou a guerra.",
-    brief: "Uma arma cibernética ataca instalações físicas. Bloqueie a sabotagem antes que a instalação caia.",
+    brief:
+      "Uma arma cibernética ataca instalações físicas. Bloqueie a sabotagem antes que a instalação caia.",
     enemyCountry: {
       id: "us",
       name: "Verme Industrial",
@@ -950,7 +977,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Proteja a verdade verificável e negue a falsificação.",
     duration: 300,
     missionNote: "A dúvida é mais barata que a verdade — e mais eficaz.",
-    brief: "Uma fala falsa pode derrubar um governo. Proteja a verdade verificável e negue a falsificação.",
+    brief:
+      "Uma fala falsa pode derrubar um governo. Proteja a verdade verificável e negue a falsificação.",
     enemyCountry: {
       id: "us",
       name: "Estúdio Sintético",
@@ -986,7 +1014,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Mapeie as operações e negue a infraestrutura oculta.",
     duration: 300,
     missionNote: "A guerra secreta deixou de ser secreta — e virou mapa.",
-    brief: "Vazamentos expõem a infraestrutura secreta. Mapeie as operações e negue os postos ocultos.",
+    brief:
+      "Vazamentos expõem a infraestrutura secreta. Mapeie as operações e negue os postos ocultos.",
     enemyCountry: {
       id: "us",
       name: "Rede de Bases",
@@ -1042,7 +1071,8 @@ export const missions: MissionDef[] = [
     objectiveText: "Vença a batalha final com a Doutrina de Montanha da FEB desbloqueada.",
     duration: 360,
     missionNote: "A guerra nunca acabou. Só trocou de uniforme.",
-    brief: "De volta ao presente, você conhece o terreno, as armas e os heróis. A guerra híbrida ganha nome — e resposta.",
+    brief:
+      "De volta ao presente, você conhece o terreno, as armas e os heróis. A guerra híbrida ganha nome — e resposta.",
     enemyCountry: {
       id: "us",
       name: "Rede Híbrida",
@@ -1051,7 +1081,6 @@ export const missions: MissionDef[] = [
       doctrine: "Poder de fogo",
     },
   },
-
 ];
 
 export const missionById = (id: string): MissionDef =>
@@ -1109,7 +1138,6 @@ export const chapterMission: Record<string, string> = {
   c48: "m-brics",
   c49: "m-tabuleiro",
   c50: "m-final",
-
 };
 
 export const missionForChapter = (chapterId: string): MissionDef | null => {
@@ -1127,6 +1155,7 @@ export function sideFromNation(
   commander: Commander,
   doctrine: Doctrine,
   mods?: SideModifiers,
+  cardLevels?: Record<string, number>,
 ): SideConfig {
   const cfg: SideConfig = {
     countryId: nation.countryId,
@@ -1140,6 +1169,7 @@ export function sideFromNation(
     economyBonus: economyBonus(nation),
   };
   if (mods) cfg.mods = mods;
+  if (cardLevels) cfg.cardLevels = cardLevels;
   return cfg;
 }
 
@@ -1154,13 +1184,13 @@ export function sideFromMission(mission: MissionDef): SideConfig {
     doctrine: mission.enemyCountry.doctrine,
     deck: [
       "inf-fuzileiros",
-      "inf-mecanizada",
-      "bld-leve",
-      "bld-pesado",
+      "inf-assalto",
+      "bld-vbld",
+      "bld-tanque",
       "art-obus",
       "def-aa",
       "def-fortificacao",
-      "rec-patrulha",
+      "rec-drone",
     ],
     commandMax: 12,
     regen: 1.0,
@@ -1178,12 +1208,15 @@ export interface BuildBattleOptions {
   mods?: SideModifiers;
   aiDifficulty?: AiDifficulty;
   redDeck?: string[];
+  cardLevels?: Record<string, number>;
+  redCardLevels?: Record<string, number>;
 }
 
 export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   const arena = cloneArena(arenaByTerrain(opts.mission.terrain));
   const red = sideFromMission(opts.mission);
   if (opts.redDeck && opts.redDeck.length >= 8) red.deck = opts.redDeck.slice(0, 8);
+  if (opts.redCardLevels) red.cardLevels = opts.redCardLevels;
   const config: BattleConfig = {
     id: opts.mission.id,
     missionName: opts.mission.name,
@@ -1191,7 +1224,14 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
     objectiveText: opts.mission.objectiveText,
     duration: opts.mission.duration,
     arena,
-    blue: sideFromNation(opts.nation, opts.deck, opts.commander, opts.doctrine, opts.mods),
+    blue: sideFromNation(
+      opts.nation,
+      opts.deck,
+      opts.commander,
+      opts.doctrine,
+      opts.mods,
+      opts.cardLevels,
+    ),
     red,
     seed: opts.seed ?? 20260101,
   };
@@ -1211,6 +1251,12 @@ function cloneArena(arena: Arena): Arena {
       owner: "neutro",
       progress: { blue: 0, red: 0 },
     })),
+    territories: arena.territories.map((t) => ({
+      ...t,
+      owner: "neutro",
+      progress: { blue: 0, red: 0 },
+    })),
+    structures: arena.structures.map((s) => ({ ...s })),
     obstacles: arena.obstacles.map((o) => ({ ...o })),
     routes: arena.routes.map((r) => ({ ...r })),
     deployZone: { blue: { ...arena.deployZone.blue }, red: { ...arena.deployZone.red } },

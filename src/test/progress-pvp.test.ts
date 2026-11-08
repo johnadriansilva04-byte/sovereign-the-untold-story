@@ -17,17 +17,27 @@ import {
   modsFromAccessories,
   ownsCard,
   removeCard,
+  unlockTiers,
 } from "@/game/progress/catalog";
 import {
   applyChapterResult,
+  cardLevelsForDeck,
   createProfile,
   effectiveDeck,
   grantReward,
+  isCardUnlocked,
   ownedCardIds,
+  syncUnlocks,
 } from "@/game/progress/profile";
 import { buildPvpConfig, localOpponents, pvpModeById, resolveStakes } from "@/game/progress/pvp";
 import { buildCommanderPrompt, parseCommanderDecision } from "@/game/battle/llm";
-import { commanders } from "@/game/battle/catalog";
+import {
+  allCards,
+  cardLevelMultiplier,
+  CARD_MAX_LEVEL,
+  commanders,
+  copiesToLevel,
+} from "@/game/battle/catalog";
 
 describe("progressão: inventário", () => {
   it("começa com 8 cartas e um baralho válido de 8", () => {
@@ -46,8 +56,8 @@ describe("progressão: inventário", () => {
 
   it("concede recompensa e registra cartas novas", () => {
     const p = createProfile();
-    const next = grantReward(p, { cards: ["bld-pesado"], research: 25, sovereigns: 100 });
-    expect(ownsCard(next.inventory, "bld-pesado")).toBe(true);
+    const next = grantReward(p, { cards: ["bld-tanque"], research: 25, sovereigns: 100 });
+    expect(ownsCard(next.inventory, "bld-tanque")).toBe(true);
     expect(next.research).toBe(p.research + 25);
     expect(next.sovereigns).toBe(p.sovereigns + 100);
   });
@@ -246,21 +256,21 @@ describe("comandante LLM: contrato de decisão", () => {
       ownUnits: [],
       deployZone: { x: 0, y: 80, w: 100, h: 20 },
       recentLog: [],
-      legalCardIds: ["inf-fuzileiros", "bld-leve"],
+      legalCardIds: ["inf-fuzileiros", "bld-vbld"],
     });
     expect(prompt).toContain("inf-fuzileiros");
   });
 
   it("aceita decisão válida e rejeita carta ilegal", () => {
     const ok = parseCommanderDecision(
-      '{"cardId":"bld-leve","x":50,"y":20,"reason":"romper o flanco"}',
-      ["inf-fuzileiros", "bld-leve"],
+      '{"cardId":"bld-vbld","x":50,"y":20,"reason":"romper o flanco"}',
+      ["inf-fuzileiros", "bld-vbld"],
     );
-    expect(ok?.cardId).toBe("bld-leve");
+    expect(ok?.cardId).toBe("bld-vbld");
 
     const bad = parseCommanderDecision('{"cardId":"nao-existe","x":50,"y":20}', [
       "inf-fuzileiros",
-      "bld-leve",
+      "bld-vbld",
     ]);
     expect(bad).toBeNull();
   });
@@ -268,5 +278,59 @@ describe("comandante LLM: contrato de decisão", () => {
   it("degrada com segurança quando a resposta não é JSON", () => {
     const res = parseCommanderDecision("desculpe, não posso ajudar", ["inf-fuzileiros"]);
     expect(res).toBeNull();
+  });
+});
+
+describe("progressão: níveis de carta e faixas de desbloqueio", () => {
+  it("o multiplicador de nível escala com o nível e satura no máximo", () => {
+    expect(cardLevelMultiplier(1)).toBe(1);
+    expect(cardLevelMultiplier(5)).toBeGreaterThan(cardLevelMultiplier(1));
+    expect(cardLevelMultiplier(99)).toBe(cardLevelMultiplier(CARD_MAX_LEVEL));
+  });
+
+  it("cada nível exige uma quantidade crescente de cópias", () => {
+    expect(copiesToLevel(1)).toBeGreaterThan(0);
+    expect(copiesToLevel(5)).toBeGreaterThan(copiesToLevel(1));
+  });
+
+  it("as faixas cobrem todas as cartas do catálogo, sem duplicatas", () => {
+    const seen = new Set<string>();
+    for (const t of unlockTiers) {
+      for (const id of t.cards) {
+        expect(allCards.some((c) => c.id === id)).toBe(true);
+        expect(seen.has(id)).toBe(false);
+        seen.add(id);
+      }
+    }
+    for (const c of allCards) expect(seen.has(c.id)).toBe(true);
+  });
+
+  it("syncUnlocks libera as cartas da faixa inicial na coleção", () => {
+    const p = createProfile();
+    const before = Object.keys(p.inventory.cards).length;
+    const synced = syncUnlocks(p);
+    expect(Object.keys(synced.inventory.cards).length).toBeGreaterThanOrEqual(before);
+    expect(synced.inventory.cards["sup-barricada"]).toBeGreaterThan(0);
+    expect(isCardUnlocked(synced, "sup-barricada")).toBe(true);
+  });
+
+  it("cartas de faixa alta ficam bloqueadas para um comandante iniciante", () => {
+    const p = createProfile();
+    expect(isCardUnlocked(p, "sup-bombardeiro")).toBe(false);
+    const leveled = { ...p, xp: 3000 };
+    expect(isCardUnlocked(leveled, "sup-bombardeiro")).toBe(true);
+  });
+
+  it("cardLevelsForDeck devolve um nível por carta do baralho ativo", () => {
+    const p = createProfile();
+    const levels = cardLevelsForDeck(p);
+    expect(Object.keys(levels).length).toBe(effectiveDeck(p).length);
+    for (const v of Object.values(levels)) expect(v).toBeGreaterThanOrEqual(1);
+  });
+
+  it("o nível do baralho é levado para a config de batalha", () => {
+    const p = { ...createProfile(), cardLevels: { "inf-fuzileiros": 7 } };
+    const config = battleConfigForChapter("c1", p);
+    expect(config?.blue.cardLevels?.["inf-fuzileiros"]).toBe(7);
   });
 });

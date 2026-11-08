@@ -10,6 +10,35 @@ controlado localmente e dados simulados.
 
 ---
 
+## 0. Motor implementado — bases, territórios, armas reais
+
+O motor é um sistema fechado e determinístico (`src/game/battle/engine.ts`). Tudo o que
+aparece na tela é simulado: nenhum botão decorativo, nenhum disparo só visual.
+
+- **Bases principais fixas** (`base-principal`): uma por lado, nas pontas opostas do campo.
+  Destruir a base principal adversária é vitória imediata. A base também dispara sozinha
+  contra unidades no seu alcance.
+- **Torres defensivas automáticas** (`torre`): duas por lado, simétricas, entre a base e o
+  centro. Atacam automaticamente qualquer unidade inimiga dentro do alcance.
+- **Territórios de expansão** (`territory`): círculos brancos luminosos no chão. São
+  conquistados por presença de unidades (a presença inimiga disputa e interrompe a captura).
+  Cada território pertence a um único lado.
+- **Bases avançadas** (`base-avancada`): um engenheiro militar posicionado sobre um território
+  conquistado inicia a obra; a construção é progressiva (barra + animação) e pode ser atacada e
+  destruída em obra. Ao concluir, a base vira nova posição defensiva e **amplia a área de
+  posicionamento** do lado — novas tropas podem nascer ali.
+- **Sistema universal de armas**: cada unidade tem uma arma com tipo, cadência, dano, alcance,
+  velocidade de projétil, dispersão e efeitos. Fuzis usam traçante instantâneo; canhões, obuses,
+  mísseis e lançadores múltiplos geram **projéteis reais** com trajetória (arco quando balístico),
+  perseguição (quando guiado), colisão com o mundo, explosão e dano em área.
+- **Destruição progressiva**: estruturas e unidades têm vida própria, barra visível e estados de
+  dano (fumaça/fogo conforme a vida cai). O dano é calculado pelo motor.
+
+Regra estratégica central: uma base avançada protege o caminho. Para chegar à base principal, o
+adversário precisa enfrentar e destruir as bases avançadas que estiverem na frente.
+
+---
+
 ## 1. Como funciona uma partida
 
 Arena vista de cima, dois exércitos em lados opostos, uma região de combate entre eles com
@@ -23,7 +52,7 @@ Durante a batalha:
 3. Posiciona a unidade na área permitida.
 4. A unidade entra em campo.
 5. Ela age conforme sua função e suas ordens.
-6. Os Pontos de Comando continuam regenerando.
+6. A Energia continua regenerando.
 7. O jogador decide quando atacar, defender, reforçar ou mudar de estratégia.
 
 O adversário faz o mesmo. Cada unidade tem comportamento próprio: um tanque não age como
@@ -33,14 +62,19 @@ infantaria; uma artilharia não avança como um blindado; reconhecimento não é
 
 Seis categorias de cartas:
 
-| Categoria      | Exemplos                            | Função                        |
-| -------------- | ----------------------------------- | ----------------------------- |
-| Infantaria     | Fuzileiros, infantaria mecanizada   | Capturar e defender posições  |
-| Blindados      | Blindado leve, VBTP anfíbio         | Romper defesas e avançar      |
-| Artilharia     | Morteiro, obus 155 mm               | Apoio de fogo à distância     |
-| Defesa         | Antiaérea, fortificações            | Proteger posições e unidades  |
-| Reconhecimento | Drones, patrulhas, blindado de rec. | Revelar informações           |
-| Apoio          | Engenharia, logística, evacuação    | Sustentar e ampliar operações |
+| Categoria      | Exemplos                                  | Função                              |
+| -------------- | ----------------------------------------- | ----------------------------------- |
+| Infantaria     | Fuzileiros, assalto, antitanque           | Capturar, combater e deter veículos |
+| Blindados      | Veículo blindado (VBTP), carro de combate | Romper defesas e avançar            |
+| Artilharia     | Canhão de campanha, obus 155 mm, mísseis  | Apoio de fogo à distância           |
+| Defesa         | Antiaérea, fortificações                  | Proteger posições e unidades        |
+| Reconhecimento | Drones de reconhecimento e de combate     | Revelar e atacar do ar              |
+| Apoio          | Engenheiros militares, posto de socorro   | Construir, reparar e sustentar      |
+
+Cada unidade tem **modelo próprio** (`UnitModel`) — silhueta, proporção e arma distintas. O
+jogador identifica à distância: soldado de fuzil, soldado de assalto, soldado antitanque,
+engenheiro, canhão, artilharia pesada, lançador múltiplo, carro de combate, veículo blindado,
+lançador de mísseis, drone de reconhecimento e drone de combate.
 
 Cartas especiais de apoio: ataque aéreo, fumaça, reforços, reparação de veículos, barricada,
 interferência eletrônica, evacuação aeromédica e reconhecimento avançado.
@@ -52,21 +86,27 @@ Baralho de **8 cartas**: **4 na mão** e **4 na fila de reposição**. Ao usar u
 da fila entra na mão. O jogador precisa pensar não só no que joga agora, mas no que estará
 disponível nas próximas jogadas.
 
-## 3. O recurso: Pontos de Comando
+## 3. O recurso: Energia
 
 O Sovereign é a moeda da economia mundial; misturá-la à velocidade das decisões táticas
 confundiria economia macroeconômica com comando de campo. Por isso a batalha tem um recurso
-próprio: os **Pontos de Comando**, com regeneração contínua.
+próprio: a **Energia**, com regeneração contínua.
 
-| Unidade        | Custo ilustrativo |
-| -------------- | ----------------- |
-| Infantaria     | 3                 |
-| Reconhecimento | 2                 |
-| Engenharia     | 3                 |
-| Antiaérea      | 4                 |
-| Blindado       | 5                 |
-| Artilharia     | 6                 |
-| Apoio aéreo    | 7                 |
+| Unidade                  | Custo |
+| ------------------------ | ----- |
+| Fuzileiros               | 3     |
+| Infantaria de assalto    | 4     |
+| Infantaria antitanque    | 4     |
+| Engenheiros militares    | 3     |
+| Canhão de campanha       | 4     |
+| Artilharia pesada 155 mm | 6     |
+| Lançador de mísseis      | 5     |
+| Lançador múltiplo (LMF)  | 7     |
+| Veículo blindado         | 4     |
+| Carro de combate         | 6     |
+| Drone de reconhecimento  | 2     |
+| Drone de combate         | 4     |
+| Defesa antiaérea         | 4     |
 
 O desempenho econômico do país influencia os parâmetros iniciais (reserva máxima, taxa de
 regeneração, bônus de custo), mas não permite comprar vitória: os limites são apertados e o
@@ -86,28 +126,30 @@ Ordens gerais disponíveis: avançar, defender, manter posição, recuar e prior
 
 ### Como vencer
 
-Três possibilidades de vitória, escolhidas pela missão:
+Quatro possibilidades de vitória:
 
+- **Destruição da base principal**: derrubar a base principal adversária vence imediatamente.
+  As torres e as bases avançadas protegem o caminho — é preciso rompê-las antes.
 - **Superioridade territorial**: controlar a maioria dos pontos estratégicos.
 - **Superioridade militar**: eliminar ou neutralizar a capacidade de combate adversária.
 - **Objetivo operacional**: cumprir uma missão específica (proteger uma instalação, impedir
   uma travessia, sobreviver sob pressão).
 
-Duração de 4 a 6 minutos, com **fase final de pressão** em que os Pontos de Comando regeneram
+Duração de 4 a 6 minutos, com **fase final de pressão** em que a Energia regenera
 mais rápido — a virada dramática, sem copiar o "elixir dobrado".
 
 ## 5. A arena conversa com o mapa geopolítico
 
 A batalha não acontece numa arena genérica. O terreno muda rotas, obstáculos e o que funciona:
 
-| Terreno               | Característica                                              |
-| --------------------- | ----------------------------------------------------------- |
-| Amazônia / floresta   | Vegetação, mobilidade limitada e reconhecimento decisivo    |
-| Deserto / campo aberto| Longas distâncias, exposição e logística                    |
-| Área urbana           | Construções, ruas, posições defensivas e obstáculos         |
-| Montanha              | Passagens, elevações e rotas restritas                      |
-| Travessia de rio      | Pontes como gargalos e pontos de controle                   |
-| Região fortificada    | Defesas preparadas e avanço custoso                         |
+| Terreno                | Característica                                           |
+| ---------------------- | -------------------------------------------------------- |
+| Amazônia / floresta    | Vegetação, mobilidade limitada e reconhecimento decisivo |
+| Deserto / campo aberto | Longas distâncias, exposição e logística                 |
+| Área urbana            | Construções, ruas, posições defensivas e obstáculos      |
+| Montanha               | Passagens, elevações e rotas restritas                   |
+| Travessia de rio       | Pontes como gargalos e pontos de controle                |
+| Região fortificada     | Defesas preparadas e avanço custoso                      |
 
 Consequência de design: o jogador escolhe o baralho considerando onde vai lutar. Um baralho
 urbano pode não servir para floresta.
@@ -181,7 +223,7 @@ obrigar todo conflito a terminar na destruição de um exército.
 | Superior central  | Cronômetro e objetivo da batalha         |
 | Superior direita  | Pontuação e situação dos objetivos       |
 | Centro            | Campo de batalha                         |
-| Inferior esquerda | Pontos de Comando                        |
+| Inferior esquerda | Energia                                  |
 | Inferior central  | Quatro cartas disponíveis                |
 | Inferior direita  | Próximas cartas e informações da unidade |
 | Laterais          | Comandos contextuais e minimapa          |
@@ -229,7 +271,7 @@ capacidade de sustentar operações.
 | ----------- | ----------------- | ---------------------------------- |
 | Partidas    | Curtas            | Curtas, 4–6 minutos                |
 | Cartas      | Tropas e feitiços | Unidades e apoio militar           |
-| Recurso     | Elixir            | Pontos de Comando                  |
+| Recurso     | Elixir            | Energia                            |
 | Arena       | Pistas e torres   | Terreno e objetivos militares      |
 | Progressão  | Cartas e níveis   | Pesquisa, doutrina e indústria     |
 | Estratégia  | Ataque e defesa   | Território, composição e operações |
@@ -254,6 +296,12 @@ multiplayer e economia real.
 Feito:
 
 - Motor determinístico com comando, cartas, captura, visão, terreno e vitória.
+- **Bases principais + torres defensivas automáticas** por lado; destruir a base principal é
+  vitória imediata.
+- **Territórios de expansão** conquistados por presença e **bases avançadas** construídas por
+  engenheiros, que ampliam a zona de posicionamento e protegem o caminho até a base.
+- **Armas reais**: fuzis com traçante, canhões/obuses com projétil em arco, mísseis guiados e
+  lançador múltiplo em salva — todos com colisão, explosão e dano calculado pelo motor.
 - Catálogo de cartas, doutrinas, comandantes e arenas por terreno.
 - Comandante de IA local com personalidades, jogando sob as mesmas regras.
 - Dificuldade em cinco níveis (Recruta → Comandante IA/LLM) que altera o ritmo de decisão,
@@ -266,7 +314,9 @@ Feito:
 - Interface: preparação, arena ao vivo, HUD, mão de cartas, painéis e tela de resultado.
 - Testes do motor, da interface, da progressão e do PvP.
 
-Ver também: `docs/progressao-e-multiplayer.md` (campanha, inventário, PvP e persistência).
+Ver também: `docs/progressao-e-multiplayer.md` (campanha, inventário, PvP e persistência) e
+`docs/cartas-e-arquitetura.md` (**lista completa de todas as cartas, unidades, arenas e da
+arquitetura do motor**).
 
 Próximo:
 
