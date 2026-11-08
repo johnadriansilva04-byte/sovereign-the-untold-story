@@ -440,20 +440,19 @@ recortadas por painéis com rolagem própria e o detalhe abre numa tela nova (di
 | Tela                                | Padrão aplicado                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------- |
 | Home (`/`)                          | Hero + menu em uma tela (`h-[calc(100dvh-3.5rem)]`).                       |
-| Campanha (`CampaignScreen`)         | Atos em abas; capítulos em cartões; "Expandir" abre o briefing em diálogo. |
+| Campanha (`CampaignScreen`)         | Visão geral: atos em abas, só a missão atual em destaque (concluídas somem). Clicar abre a **Operação** em tela própria com "Começar batalha". |
 | Coleção (`CollectionScreen`)        | Abas cartas/acessórios/baralhos; cartão abre detalhe em diálogo.           |
 | Batalha · preparação (`BattlePrep`) | Baralho/dificuldade/comandante/doutrina numa tela; missão em diálogo.      |
 | Multiplayer (`MultiplayerScreen`)   | Modos em abas; adversários em cartões; apostas em tela própria.            |
 | Batalha em si (`BattleArena`)       | Arena + HUD fixos; `overflow-hidden`, sem rolagem de página.               |
 | Mapa/Nacão/IA/Perfil/Config         | Cabeçalho compacto + métricas fixas; painéis internos com rolagem contida. |
 
-**Armadilha da arena (já corrigida):** um SVG inline com apenas `viewBox` não tem largura
-intrínseca — `w-auto`/`max-h-full` colapsa a arena para ~2×2 px e a tela fica preta. A arena
-é dimensionada por **container query** na célula flex (`[container-type:size]` +
-`h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)]`), garantindo um quadrado em qualquer tela,
-com ou sem letterbox. O toque→arena usa `svg.getScreenCTM()` (correto com
-`preserveAspectRatio`), com fallback por `getBoundingClientRect()` só para ambientes sem CTM
-(jsdom). Não reintroduzir `w-auto` nem remover o fallback.
+**Armadilha de altura fixa (já corrigida):** telas que usam `h-[calc(100dvh-3.5rem)]` só
+cabem se forem filhas diretas do `<main>` (`GameShell full`). Se houver um cabeçalho extra
+ou um wrapper antes (ex.: `BattleScreen` com `modeLabel`), a soma ultrapassa a viewport e a
+barra de ação inferior (o botão de iniciar) é recortada. Solução: o wrapper usa
+`flex h-full min-h-0 flex-col` e a tela interna `h-full min-h-0` — a altura é herdada, não
+recalculada.
 
 ---
 

@@ -100,10 +100,11 @@ verdade durante o jogo. `ProfileProvider` (`store.tsx`) expõe o perfil e as aç
 inicial é determinístico (mesmo no servidor e no cliente) para não quebrar a hidratação — o
 perfil real entra num `useEffect`.
 
-**Sincronização opcional.** Quando `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` estão
-definidos, o jogo faz login anônimo e envia o perfil em segundo plano
-(`src/game/progress/sync.ts`). Falha de rede é silenciosa: nunca interrompe uma batalha nem
-perde progresso local. Sem as variáveis, o jogo roda 100% offline.
+**Sincronização sem login.** Quando `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`
+estão definidos, o jogo cria uma **sessão anônima** (sem cadastro, sem senha) e envia o
+perfil em segundo plano (`src/game/progress/sync.ts`). Cada dispositivo ganha uma identidade
+anônima própria e o progresso sincroniza sozinho; falha de rede é silenciosa e nunca
+interrompe uma batalha nem perde progresso local. Sem as variáveis, o jogo roda 100% offline.
 
 Tabelas (Supabase, ver `supabase/migrations/0001_sovereign_schema.sql`): `profiles`,
 `nation_state`, `inventory`, `decks`, `campaign_progress`, `battle_records`, `pvp_matches`. Um
@@ -116,12 +117,12 @@ trigger de bootstrap cria perfil, nação, cartas iniciais e baralho ao criar o 
 O jogo é jogável sozinho, sem rede:
 
 1. `npm run dev` e abrir `/campanha`.
-2. Iniciar o capítulo 1 → briefing → "Entrar no teatro".
-3. Na preparação, escolher missão, baralho, comandante, doutrina e dificuldade.
-4. Jogar. Sem configuração de LLM, a IA tática local assume; sem Supabase, tudo fica local.
-5. Vencer concede recompensa e desbloqueia o próximo capítulo.
+2. Clicar no capítulo atual → tela **Operação** → "Começar batalha".
+3. Vencer concede recompensa; "Próximo capítulo" avança direto para a batalha seguinte.
+4. A missão atual aparece sozinha na visão geral — capítulos vencidos somem da trilha.
 
-O LLM é um extra: `SOVEREIGN_LLM_BASE_URL`, `SOVEREIGN_LLM_API_KEY` e `SOVEREIGN_LLM_MODEL`
+Sem configuração de LLM, a IA tática local assume; sem Supabase, tudo fica local. O LLM é um
+extra: `SOVEREIGN_LLM_BASE_URL`, `SOVEREIGN_LLM_API_KEY` e `SOVEREIGN_LLM_MODEL`
 (ou `OPENAI_*`). Sem eles, a dificuldade "Comandante IA (LLM)" cai para a IA local.
 
 ---

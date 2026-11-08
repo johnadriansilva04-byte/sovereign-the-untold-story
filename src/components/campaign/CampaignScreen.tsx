@@ -1,111 +1,165 @@
 import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { GameShell, Panel } from "@/components/game/shell";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BattleScreen } from "@/components/battle/BattleScreen";
+import { GameShell } from "@/components/game/shell";
+import { BattleScreen, toAiDifficulty } from "@/components/battle/BattleScreen";
 import { chapters, archives } from "@/game/campaign";
-import { missionById } from "@/game/battle/missions";
-import { chapterMeta, chapterOutro, totalChapters } from "@/game/progress/campaign";
-import { difficultyById, terrainHint } from "@/game/progress/catalog";
+import { commanders } from "@/game/battle/catalog";
+import { buildBattleConfig, missionById } from "@/game/battle/missions";
+import {
+  chapterMeta,
+  chapterMetaById,
+  chapterOutro,
+  totalChapters,
+} from "@/game/progress/campaign";
+import { difficultyById, modsFromAccessories, terrainHint } from "@/game/progress/catalog";
 import type { Reward } from "@/game/progress/catalog";
+import { activeAccessories, effectiveDeck } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
 import type { BattleResult } from "@/game/battle/types";
 
 type View =
-  | { kind: "map" }
+  | { kind: "overview" }
+  | { kind: "operation"; chapterId: string }
   | { kind: "battle"; chapterId: string }
   | { kind: "reward"; chapterId: string; result: BattleResult; reward: Reward };
 
 export function CampaignScreen() {
   const { profile, completeChapter } = useProfile();
-  const [view, setView] = useState<View>({ kind: "map" });
+  const [view, setView] = useState<View>({ kind: "overview" });
   const [lastReward, setLastReward] = useState<Reward | null>(null);
 
-  const metaById = useMemo(() => new Map(chapterMeta.map((m) => [m.id, m])), []);
+  // Missão atual: o próximo capítulo ainda não concluído. Concluídos somem da trilha.
+  const currentMeta = useMemo(
+    () => chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido"),
+    [profile.chapters],
+  );
 
-  if (view.kind === "battle") {
-    const meta = metaById.get(view.chapterId)!;
+  const autoConfig = useMemo(() => {
+    if (view.kind !== "battle") return undefined;
+    const meta = chapterMetaById(view.chapterId);
+    if (!meta) return undefined;
     const mission = missionById(meta.missionId);
+    const deck = profile.decks.find((d) => d.id === profile.activeDeckId) ?? profile.decks[0];
+    const commander = commanders.find((c) => c.id === deck?.commanderId) ?? commanders[0]!;
+    return buildBattleConfig({
+      nation: profile.nation,
+      mission,
+      deck: effectiveDeck(profile),
+      commander,
+      doctrine: deck?.doctrine ?? commander.doctrine,
+      mods: modsFromAccessories(activeAccessories(profile)),
+      aiDifficulty: toAiDifficulty(meta.difficulty),
+      seed: seedOf(`${mission.id}:${meta.difficulty}`),
+    });
+  }, [view, profile]);
+
+  if (view.kind === "battle" && autoConfig) {
+    const meta = chapterMetaById(view.chapterId)!;
     return (
       <GameShell full>
-        <div className="mx-auto max-w-6xl px-5 py-6">
-          <BattleScreen
-            modeLabel={`Campanha · Cap. ${meta.number}`}
-            initialMissionId={mission.id}
-            initialDifficulty={meta.difficulty}
-            onExit={() => setView({ kind: "map" })}
-            onComplete={(result) => {
-              const reward = completeChapter({
-                chapterId: view.chapterId,
-                result,
-                difficulty: meta.difficulty,
-              });
-              setLastReward(reward);
-              setView({ kind: "reward", chapterId: view.chapterId, result, reward });
+        <BattleScreen
+          modeLabel={`Campanha · Cap. ${meta.number}`}
+          presetConfig={autoConfig}
+          onExit={() => setView({ kind: "overview" })}
+          onComplete={(result) => {
+            const reward = completeChapter({
+              chapterId: view.chapterId,
+              result,
+              difficulty: meta.difficulty,
+            });
+            setLastReward(reward);
+            setView({ kind: "reward", chapterId: view.chapterId, result, reward });
+          }}
+        />
+      </GameShell>
+    );
+  }
+
+  if (view.kind === "reward") {
+    const meta = chapterMetaById(view.chapterId)!;
+    const chapter = chapters.find((c) => c.id === view.chapterId)!;
+    return (
+      <GameShell full>
+        <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4">
+          <RewardScreen
+            chapter={chapter}
+            meta={meta}
+            result={view.result}
+            reward={view.reward}
+            onNext={() => {
+              if (view.result.outcome !== "vitoria") {
+                setView({ kind: "battle", chapterId: view.chapterId });
+                return;
+              }
+              // Avanço automático para o próximo capítulo ainda não concluído.
+              const next = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
+              setView(next ? { kind: "battle", chapterId: next.id } : { kind: "overview" });
             }}
+            onMap={() => setView({ kind: "overview" })}
           />
         </div>
       </GameShell>
     );
   }
 
-  if (view.kind === "reward") {
-    const meta = metaById.get(view.chapterId)!;
-    const chapter = chapters.find((c) => c.id === view.chapterId)!;
+  if (view.kind === "operation") {
     return (
-      <GameShell>
-        <RewardScreen
-          chapter={chapter}
-          meta={meta}
-          result={view.result}
-          reward={view.reward}
-          onNext={() => {
-            if (view.result.outcome !== "vitoria") {
-              setView({ kind: "battle", chapterId: view.chapterId });
-              return;
-            }
-            const next = chapterMeta.find((m) => m.number === meta.number + 1);
-            setView(next ? { kind: "battle", chapterId: next.id } : { kind: "map" });
-          }}
-          onMap={() => setView({ kind: "map" })}
+      <GameShell full>
+        <OperationScreen
+          chapterId={view.chapterId}
+          onBack={() => setView({ kind: "overview" })}
+          onLaunch={() => setView({ kind: "battle", chapterId: view.chapterId })}
         />
       </GameShell>
     );
   }
 
   return (
-    <CampaignMap
+    <CampaignOverview
       profile={profile}
+      currentMeta={currentMeta}
       lastReward={lastReward}
-      onLaunch={(chapterId) => setView({ kind: "battle", chapterId })}
+      onOpen={(chapterId) => setView({ kind: "operation", chapterId })}
+      onContinue={() => currentMeta && setView({ kind: "battle", chapterId: currentMeta.id })}
     />
   );
 }
 
+function seedOf(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 // ---------------------------------------------------------------------------
-// Mapa da campanha — UMA tela, sem rolagem: atos em colunas, capítulos em cartões.
-// Clicar em "Expandir" abre uma tela nova (diálogo) com o briefing completo.
+// Visão geral — UMA tela, sem rolagem: atos em abas, capítulos em nós compactos.
+// Concluídos viram um selo; só a missão atual fica em destaque. Tudo automático:
+// clicar num capítulo abre a operação, que começa com um botão.
 // ---------------------------------------------------------------------------
 
 type Profile = ReturnType<typeof useProfile>["profile"];
 
-function CampaignMap({
+function CampaignOverview({
   profile,
+  currentMeta,
   lastReward,
-  onLaunch,
+  onOpen,
+  onContinue,
 }: {
   profile: Profile;
+  currentMeta: (typeof chapterMeta)[number] | undefined;
   lastReward: Reward | null;
-  onLaunch: (chapterId: string) => void;
+  onOpen: (chapterId: string) => void;
+  onContinue: () => void;
 }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-
   const completed = chapterMeta.filter(
     (m) => profile.chapters[m.id]?.status === "concluido",
   ).length;
   const pct = Math.round((completed / totalChapters) * 100);
-  const nextMeta = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
 
   const actGroups = useMemo(() => {
     const groups: { act: string; metas: typeof chapterMeta }[] = [];
@@ -119,198 +173,184 @@ function CampaignMap({
   }, []);
 
   const activeGroup =
-    actGroups.find((g) => g.metas.some((m) => m.id === nextMeta?.id)) ?? actGroups[0]!;
+    actGroups.find((g) => g.metas.some((m) => m.id === currentMeta?.id)) ?? actGroups[0]!;
   const [act, setAct] = useState(activeGroup.act);
   const group = actGroups.find((g) => g.act === act) ?? activeGroup;
-  const openMeta = openId ? chapterMeta.find((m) => m.id === openId) : null;
+  const currentChapter = currentMeta ? chapters.find((c) => c.id === currentMeta.id) : null;
 
   return (
-    <GameShell full>
-      <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-4">
-        {/* Cabeçalho compacto: progresso em uma linha */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-3">
-          <div>
-            <p className="label-mono text-primary">Campanha · A história que não te contaram</p>
-            <h1 className="font-display text-2xl font-black uppercase leading-none">Campanha</h1>
+    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-4">
+      {/* Cabeçalho compacto */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-3">
+        <div>
+          <p className="label-mono text-primary">Campanha · A história que não te contaram</p>
+          <h1 className="font-display text-2xl font-black uppercase leading-none">
+            {currentMeta ? `Capítulo ${currentMeta.number}` : "Campanha concluída"}
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-display text-3xl font-black leading-none">
+            {completed}
+            <span className="text-muted-foreground">/{totalChapters}</span>
+          </span>
+          <div className="h-2 w-40 overflow-hidden border border-border bg-muted">
+            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <div className="flex items-center gap-3">
-            <span className="font-display text-3xl font-black leading-none">
-              {completed}
-              <span className="text-muted-foreground">/{totalChapters}</span>
-            </span>
-            <div className="h-2 w-40 overflow-hidden border border-border bg-muted">
-              <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+          <span>
+            SOVEREIGNS <b className="text-foreground">{profile.sovereigns}</b>
+          </span>
+          <span>
+            PESQUISA <b className="text-foreground">{profile.research}</b>
+          </span>
+          <span>
+            CARTAS <b className="text-foreground">{Object.keys(profile.inventory.cards).length}</b>
+          </span>
+        </div>
+      </div>
+
+      {/* Seletor de atos */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {actGroups.map((g) => {
+          const done = g.metas.filter((m) => profile.chapters[m.id]?.status === "concluido").length;
+          const isActive = g.act === act;
+          const hasCurrent = g.metas.some((m) => m.id === currentMeta?.id);
+          return (
+            <button
+              key={g.act}
+              onClick={() => setAct(g.act)}
+              className={cn(
+                "relative border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition",
+                isActive
+                  ? "border-primary bg-accent text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
+              )}
+            >
+              {g.act.replace(/^Ato /, "A")} · {done}/{g.metas.length}
+              {hasCurrent && !isActive && (
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 bg-primary" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Trilha do ato — só a missão atual em destaque; concluídas somem, o resto é
+          um marcador discreto. Cabe na tela, sem rolagem. */}
+      <div className="mt-3 min-h-0 flex-1">
+        {group.metas.every((m) => profile.chapters[m.id]?.status === "concluido") ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="hud-panel hud-corners px-6 py-5 text-center">
+              <p className="label-mono text-fact">Ato concluído</p>
+              <p className="mt-1 font-display text-xl font-black uppercase">
+                {group.metas.length} capítulos vencidos
+              </p>
             </div>
           </div>
-          <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
-            <span>
-              SOVEREIGNS <b className="text-foreground">{profile.sovereigns}</b>
-            </span>
-            <span>
-              PESQUISA <b className="text-foreground">{profile.research}</b>
-            </span>
-            <span>
-              CARTAS{" "}
-              <b className="text-foreground">{Object.keys(profile.inventory.cards).length}</b>
-            </span>
+        ) : (
+          <div className="grid h-full auto-rows-fr grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+            {group.metas
+              .filter((m) => profile.chapters[m.id]?.status !== "concluido")
+              .map((meta) => (
+                <ChapterNode
+                  key={meta.id}
+                  meta={meta}
+                  isCurrent={meta.id === currentMeta?.id}
+                  onOpen={() => onOpen(meta.id)}
+                />
+              ))}
           </div>
-        </div>
-
-        {/* Seletor de atos */}
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {actGroups.map((g) => {
-            const done = g.metas.filter(
-              (m) => profile.chapters[m.id]?.status === "concluido",
-            ).length;
-            return (
-              <button
-                key={g.act}
-                onClick={() => setAct(g.act)}
-                className={cn(
-                  "border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition",
-                  g.act === act
-                    ? "border-primary bg-accent text-primary"
-                    : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
-                )}
-              >
-                {g.act.replace(/^Ato /, "A")} · {done}/{g.metas.length}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Grade de capítulos do ato — cabe na tela, sem rolagem */}
-        <div className="mt-3 min-h-0 flex-1">
-          <div className="grid h-full auto-rows-fr grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
-            {group.metas.map((meta) => (
-              <ChapterCard
-                key={meta.id}
-                meta={meta}
-                profile={profile}
-                isNext={meta.id === nextMeta?.id}
-                onExpand={() => setOpenId(meta.id)}
-                onLaunch={() => onLaunch(meta.id)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {lastReward && (
-          <p className="pt-2 font-mono text-[10px] text-fact">
-            Última recompensa recebida e sincronizada com a sua conta.
-          </p>
         )}
       </div>
 
-      {openMeta && (
-        <BriefDialog
-          meta={openMeta}
-          onClose={() => setOpenId(null)}
-          onLaunch={() => {
-            setOpenId(null);
-            onLaunch(openMeta.id);
-          }}
-        />
-      )}
-    </GameShell>
+      {/* Barra de ação: iniciar a missão atual com um clique */}
+      <div className="mt-3 flex shrink-0 flex-wrap items-center gap-3 border-t border-border pt-3">
+        <button
+          onClick={onContinue}
+          disabled={!currentMeta}
+          className={cn(
+            "px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] transition",
+            currentMeta
+              ? "bg-primary text-primary-foreground shadow-brass hover:brightness-110"
+              : "cursor-not-allowed border border-border text-muted-foreground",
+          )}
+        >
+          {currentMeta ? "Iniciar missão" : "Tudo concluído"}
+        </button>
+        {currentMeta && currentChapter && (
+          <p className="font-mono text-[11px] text-muted-foreground">
+            Cap. {currentMeta.number} · {currentChapter.title} ·{" "}
+            {difficultyById(currentMeta.difficulty).name}
+          </p>
+        )}
+        {lastReward && (
+          <span className="ml-auto font-mono text-[10px] text-fact">
+            Progresso salvo e sincronizado.
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
-function ChapterCard({
+function ChapterNode({
   meta,
-  profile,
-  isNext,
-  onExpand,
-  onLaunch,
+  isCurrent,
+  onOpen,
 }: {
   meta: (typeof chapterMeta)[number];
-  profile: Profile;
-  isNext: boolean;
-  onExpand: () => void;
-  onLaunch: () => void;
+  isCurrent: boolean;
+  onOpen: () => void;
 }) {
   const chapter = chapters.find((c) => c.id === meta.id)!;
-  const state = profile.chapters[meta.id];
-  const done = state?.status === "concluido";
-  const locked = !done && !isNext;
-  const diff = difficultyById(meta.difficulty);
 
-  if (locked) {
+  if (!isCurrent) {
     return (
-      <div className="hud-panel flex flex-col justify-between p-3 opacity-55">
-        <div className="flex items-center justify-between">
-          <span className="font-display text-3xl font-black text-muted-foreground/30">
-            {String(meta.number).padStart(2, "0")}
-          </span>
-          <span className="border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-            🔒
-          </span>
-        </div>
-        <p className="font-mono text-[10px] leading-snug text-muted-foreground">
-          Conclua o capítulo anterior para liberar.
-        </p>
+      <div className="hud-panel flex flex-col items-center justify-center gap-1 p-3 opacity-40">
+        <span className="font-display text-2xl font-black text-muted-foreground/30">
+          {String(meta.number).padStart(2, "0")}
+        </span>
+        <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+          bloqueado
+        </span>
       </div>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "hud-panel hud-corners flex min-h-0 flex-col justify-between p-3",
-        done && "border-fact/40",
-        isNext && "border-primary/60",
-      )}
+    <button
+      onClick={onOpen}
+      className="hud-panel hud-corners flex flex-col items-center justify-center gap-1.5 border-primary/60 p-3 text-center transition hover:border-primary"
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-display text-3xl font-black text-muted-foreground/40">
-          {String(meta.number).padStart(2, "0")}
-        </span>
-        <span
-          className={cn(
-            "border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
-            done ? "border-fact text-fact" : "border-primary text-primary",
-          )}
-        >
-          {done ? "Feito" : "Em curso"}
-        </span>
-      </div>
-      <div className="mt-1 min-h-0">
-        <h3 className="line-clamp-2 font-display text-sm font-bold uppercase leading-tight">
-          {chapter.title}
-        </h3>
-        <p className="mt-0.5 line-clamp-1 font-mono text-[9px] text-muted-foreground">
-          {chapter.era} · {missionById(meta.missionId).terrain}
-        </p>
-      </div>
-      <div className="mt-2 flex items-center gap-1.5">
-        <button
-          onClick={onExpand}
-          className="flex-1 border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary"
-        >
-          Expandir
-        </button>
-        <button
-          onClick={onLaunch}
-          className="flex-1 bg-primary px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary-foreground transition hover:brightness-110"
-        >
-          {done ? "Rejogar" : "Iniciar"}
-        </button>
-      </div>
-      <p className="mt-1 truncate font-mono text-[9px] text-ai">{diff.name}</p>
-    </div>
+      <span className="font-display text-3xl font-black text-primary">
+        {String(meta.number).padStart(2, "0")}
+      </span>
+      <span className="line-clamp-2 font-display text-sm font-bold uppercase leading-tight">
+        {chapter.title}
+      </span>
+      <span className="border border-primary px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-primary">
+        em curso
+      </span>
+    </button>
   );
 }
 
-function BriefDialog({
-  meta,
-  onClose,
+// ---------------------------------------------------------------------------
+// Operação — tela nova (sem rolagem): briefing + botão de começar
+// ---------------------------------------------------------------------------
+
+function OperationScreen({
+  chapterId,
+  onBack,
   onLaunch,
 }: {
-  meta: (typeof chapterMeta)[number];
-  onClose: () => void;
+  chapterId: string;
+  onBack: () => void;
   onLaunch: () => void;
 }) {
-  const chapter = chapters.find((c) => c.id === meta.id)!;
+  const meta = chapterMetaById(chapterId)!;
+  const chapter = chapters.find((c) => c.id === chapterId)!;
   const mission = missionById(meta.missionId);
   const diff = difficultyById(meta.difficulty);
   const evidence = chapter.archives
@@ -318,111 +358,100 @@ function BriefDialog({
     .filter((a): a is NonNullable<typeof a> => Boolean(a));
 
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-h-[88vh] max-w-3xl overflow-hidden border-primary/40 bg-background">
-        <DialogHeader>
-          <DialogTitle className="text-left">
-            <span className="label-mono text-primary">
-              {chapter.act} · Capítulo {chapter.number}
-            </span>
-            <span className="mt-1 block font-display text-3xl font-black uppercase leading-none">
-              {chapter.title}
-            </span>
-          </DialogTitle>
-        </DialogHeader>
+    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-5xl flex-col px-4 py-4">
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div>
+          <p className="label-mono text-primary">
+            {chapter.act} · Capítulo {chapter.number}
+          </p>
+          <h1 className="font-display text-3xl font-black uppercase leading-none">
+            {chapter.title}
+          </h1>
+        </div>
+        <button
+          onClick={onBack}
+          className="border border-border px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground"
+        >
+          Voltar
+        </button>
+      </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <p className="font-mono text-[11px] text-muted-foreground">
-                {chapter.era} · {chapter.place}
+      <div className="mt-4 grid min-h-0 flex-1 gap-5 overflow-y-auto pr-1 lg:grid-cols-2">
+        <div>
+          <p className="font-mono text-[11px] text-muted-foreground">
+            {chapter.era} · {chapter.place}
+          </p>
+          <p className="mt-3 border-l-2 border-primary pl-4 font-serif text-base italic text-foreground/90">
+            {meta.intro}
+          </p>
+          <div className="mt-3 space-y-1.5">
+            {chapter.dialogue.map((d, i) => (
+              <p key={i} className="text-sm">
+                <span className="font-mono text-[11px] uppercase text-primary">{d.speaker}:</span>{" "}
+                <span className="text-muted-foreground">{d.text}</span>
               </p>
-
-              <p className="mt-3 border-l-2 border-primary pl-4 font-serif text-base italic text-foreground/90">
-                {meta.intro}
-              </p>
-
-              <div className="mt-3 space-y-1.5">
-                {chapter.dialogue.map((d, i) => (
-                  <p key={i} className="text-sm">
-                    <span className="font-mono text-[11px] uppercase text-primary">
-                      {d.speaker}:
-                    </span>{" "}
-                    <span className="text-muted-foreground">{d.text}</span>
-                  </p>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div>
-                <p className="label-mono mb-1">Missão</p>
-                <p className="font-display text-lg font-bold uppercase">{mission.name}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{mission.brief}</p>
-                <dl className="mt-2 grid grid-cols-2 gap-2 font-mono text-[11px]">
-                  <Info label="Terreno" value={mission.terrain} />
-                  <Info label="Objetivo" value={mission.objectiveKind} />
-                  <Info label="Duração" value={`${Math.round(mission.duration / 60)} min`} />
-                  <Info label="Adversário" value={diff.name} />
-                </dl>
-                <p className="mt-1 font-mono text-[11px] text-doc">
-                  {terrainHint[mission.terrain]}
-                </p>
-              </div>
-
-              {evidence.length > 0 && (
-                <div className="mt-3 border-t border-border pt-3">
-                  <p className="label-mono mb-2">Dossiê · fato e tese</p>
-                  <div className="space-y-2">
-                    {evidence.map((a) => (
-                      <div key={a.id} className="border-l-2 border-border pl-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "border px-1.5 py-0.5 font-mono text-[9px] uppercase",
-                              a.kind === "fato" && "border-fact text-fact",
-                              a.kind === "documento" && "border-doc text-doc",
-                              a.kind === "ficcao" && "border-fiction text-fiction",
-                            )}
-                          >
-                            {a.kind}
-                          </span>
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {a.date}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm font-semibold">{a.title}</p>
-                        <p className="text-xs text-muted-foreground">{a.text}</p>
-                        {a.source && (
-                          <p className="font-mono text-[10px] text-muted-foreground/70">
-                            Fonte: {a.source}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            ))}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3 border-t border-border pt-3">
-          <button
-            onClick={onLaunch}
-            className="bg-primary px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"
-          >
-            Entrar no teatro
-          </button>
-          <button
-            onClick={onClose}
-            className="border border-border px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
-          >
-            Fechar
-          </button>
+        <div>
+          <p className="label-mono mb-1">Missão</p>
+          <p className="font-display text-lg font-bold uppercase">{mission.name}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{mission.brief}</p>
+          <dl className="mt-2 grid grid-cols-2 gap-2 font-mono text-[11px]">
+            <Info label="Terreno" value={mission.terrain} />
+            <Info label="Objetivo" value={mission.objectiveKind} />
+            <Info label="Duração" value={`${Math.round(mission.duration / 60)} min`} />
+            <Info label="Adversário" value={diff.name} />
+          </dl>
+          <p className="mt-1 font-mono text-[11px] text-doc">{terrainHint[mission.terrain]}</p>
+
+          {evidence.length > 0 && (
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="label-mono mb-2">Dossiê · fato e tese</p>
+              <div className="space-y-2">
+                {evidence.map((a) => (
+                  <div key={a.id} className="border-l-2 border-border pl-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "border px-1.5 py-0.5 font-mono text-[9px] uppercase",
+                          a.kind === "fato" && "border-fact text-fact",
+                          a.kind === "documento" && "border-doc text-doc",
+                          a.kind === "ficcao" && "border-fiction text-fiction",
+                        )}
+                      >
+                        {a.kind}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{a.date}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold">{a.title}</p>
+                    <p className="text-xs text-muted-foreground">{a.text}</p>
+                    {a.source && (
+                      <p className="font-mono text-[10px] text-muted-foreground/70">
+                        Fonte: {a.source}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+
+      <div className="mt-4 flex shrink-0 flex-wrap items-center gap-3 border-t border-border pt-3">
+        <button
+          onClick={onLaunch}
+          className="bg-primary px-6 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"
+        >
+          Começar batalha
+        </button>
+        <p className="font-mono text-[11px] text-muted-foreground">
+          {mission.name} · {terrainHint[mission.terrain]} · {diff.name}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -443,11 +472,11 @@ function RewardScreen({
 }) {
   const won = result.outcome === "vitoria";
   return (
-    <div className="mx-auto max-w-3xl space-y-5 text-center">
+    <div className="space-y-4 text-center">
       <p className="label-mono text-primary">
         {chapter.act} · Capítulo {chapter.number}
       </p>
-      <h1 className="font-display text-6xl font-black uppercase">
+      <h1 className="font-display text-5xl font-black uppercase">
         {won ? "Vitória" : result.outcome === "empate" ? "Empate" : "Derrota"}
       </h1>
       <p className="font-mono text-xs text-muted-foreground">{result.reason}</p>
@@ -457,8 +486,9 @@ function RewardScreen({
       </p>
 
       {won ? (
-        <Panel title="Recompensas conquistadas">
-          <ul className="space-y-1 text-left font-mono text-xs">
+        <div className="hud-panel hud-corners mx-auto max-w-xl p-4 text-left">
+          <p className="label-mono mb-2">Recompensas conquistadas</p>
+          <ul className="space-y-1 font-mono text-xs">
             {reward.cards?.map((c) => (
               <li key={c} className="text-fact">
                 + Carta desbloqueada: {c}
@@ -481,23 +511,24 @@ function RewardScreen({
               <li className="text-muted-foreground">+ {reward.sovereigns} Sovereigns</li>
             ) : null}
           </ul>
-          <p className="mt-3 text-left text-xs text-muted-foreground">{meta.rewardNote}</p>
-        </Panel>
+          <p className="mt-3 text-xs text-muted-foreground">{meta.rewardNote}</p>
+        </div>
       ) : (
-        <Panel title="Sem recompensas">
+        <div className="hud-panel hud-corners mx-auto max-w-xl p-4 text-left">
+          <p className="label-mono mb-2">Sem recompensas</p>
           <p className="text-sm text-muted-foreground">
-            Uma derrota obriga a reorganizar as forças antes de uma nova ofensiva. Ajuste o baralho
-            para o terreno e tente de novo.
+            A derrota obriga a reorganizar as forças. Ajuste o baralho para o terreno e tente de
+            novo.
           </p>
-        </Panel>
+        </div>
       )}
 
-      <div className="flex flex-wrap justify-center gap-3">
+      <div className="flex flex-wrap justify-center gap-3 pt-1">
         <button
           onClick={onNext}
           className="bg-primary px-6 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground hover:brightness-110"
         >
-          {won ? "Continuar" : "Tentar de novo"}
+          {won ? "Próximo capítulo" : "Tentar de novo"}
         </button>
         <button
           onClick={onMap}

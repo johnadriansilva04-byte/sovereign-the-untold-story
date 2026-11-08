@@ -97,19 +97,19 @@ export function SettingsScreen() {
             )}
           </Panel>
 
-          <Panel title="Conta e dados">
+          <Panel title="Dados">
             <div className="space-y-3 font-mono text-[11px]">
               <Row label="Armazenamento" plain>
                 <span className="text-foreground">local (offline-first)</span>
               </Row>
-              <Row label="Supabase" plain>
+              <Row label="Nuvem" plain>
                 <span className={isSupabaseConfigured ? "text-fact" : "text-muted-foreground"}>
-                  {isSupabaseConfigured ? "configurado" : "não configurado"}
+                  {isSupabaseConfigured ? "conectada (sem login)" : "não configurada"}
                 </span>
               </Row>
-              <Row label="Sessão" plain>
+              <Row label="Progresso" plain>
                 <span className={signedIn ? "text-fact" : "text-muted-foreground"}>
-                  {signedIn ? "ativa" : "local"}
+                  {signedIn ? "sincronizado" : "somente neste dispositivo"}
                 </span>
               </Row>
             </div>

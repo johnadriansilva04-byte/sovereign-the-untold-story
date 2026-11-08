@@ -14,7 +14,8 @@ export function ProfileScreen() {
     <GameShell>
       <div className="flex h-full min-h-0 flex-col gap-3">
         <PageTitle kicker="Comandante" title="Perfil" compact>
-          Progresso salvo neste dispositivo e sincronizado com a sua conta quando há conexão.
+          Seu progresso fica salvo neste dispositivo e é sincronizado automaticamente quando há
+          conexão. Sem cadastro, sem senha.
         </PageTitle>
 
         <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
@@ -33,14 +34,18 @@ export function ProfileScreen() {
             </div>
           </Panel>
 
-          <Panel title="Sincronização">
+          <Panel title="Sincronização automática">
             <div className="space-y-3 font-mono text-[11px]">
               <Row
-                label="Supabase"
-                value={isSupabaseConfigured ? "configurado" : "offline"}
+                label="Nuvem"
+                value={isSupabaseConfigured ? "conectada" : "offline"}
                 ok={isSupabaseConfigured}
               />
-              <Row label="Sessão" value={signedIn ? "ativa" : "local"} ok={signedIn} />
+              <Row
+                label="Progresso"
+                value={signedIn ? "salvo na nuvem" : "salvo neste dispositivo"}
+                ok={signedIn}
+              />
               <Row label="Registros de batalha" value={profile.records.length} ok />
               <Row label="Cartas" value={Object.keys(profile.inventory.cards).length} ok />
               <Row
@@ -49,6 +54,10 @@ export function ProfileScreen() {
                 ok
               />
             </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Sem login: cada dispositivo recebe uma identidade anônima e o progresso sincroniza
+              sozinho.
+            </p>
             {lastError && (
               <p className="mt-3 text-[11px] text-destructive">
                 Última falha de sincronização: {lastError}. O progresso local está intacto.

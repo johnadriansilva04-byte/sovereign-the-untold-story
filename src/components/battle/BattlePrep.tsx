@@ -92,7 +92,7 @@ export function BattlePrep({
   };
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-3">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-3">
       {/* Cabeçalho compacto — sem rolagem de página */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
         <div>
@@ -133,8 +133,45 @@ export function BattlePrep({
             </span>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Quatro cartas na mão, quatro na fila. Só entram cartas que você possui.
+            Só entram cartas que você possui. A ordem define a mão inicial.
           </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <span className="label-mono text-muted-foreground">Mão</span>
+            {Array.from({ length: 4 }).map((_, i) => {
+              const id = deck[i];
+              return (
+                <span
+                  key={`h${i}`}
+                  className={cn(
+                    "border px-1.5 py-0.5 font-mono text-[9px] uppercase",
+                    id
+                      ? "border-primary text-primary"
+                      : "border-dashed border-border text-muted-foreground/50",
+                  )}
+                >
+                  {id ? cardById(id).short : "—"}
+                </span>
+              );
+            })}
+            <span className="mx-0.5 text-muted-foreground">|</span>
+            <span className="label-mono text-muted-foreground">Fila</span>
+            {Array.from({ length: 4 }).map((_, i) => {
+              const id = deck[i + 4];
+              return (
+                <span
+                  key={`q${i}`}
+                  className={cn(
+                    "border px-1.5 py-0.5 font-mono text-[9px] uppercase",
+                    id
+                      ? "border-border text-muted-foreground"
+                      : "border-dashed border-border text-muted-foreground/50",
+                  )}
+                >
+                  {id ? cardById(id).short : "—"}
+                </span>
+              );
+            })}
+          </div>
           <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
             {available.map((id) => {
               const card = cardById(id);

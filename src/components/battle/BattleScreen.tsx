@@ -94,8 +94,10 @@ export function BattleScreen(props: BattleScreenProps) {
 
   if (phase === "preparacao" || !config) {
     return (
-      <div className="space-y-4">
-        {props.modeLabel && <p className="label-mono text-primary">Modo · {props.modeLabel}</p>}
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        {props.modeLabel && (
+          <p className="shrink-0 label-mono text-primary">Modo · {props.modeLabel}</p>
+        )}
         <BattlePrep
           profile={profile}
           initialMissionId={props.initialMissionId}
