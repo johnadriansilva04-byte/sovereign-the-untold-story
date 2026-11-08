@@ -56,97 +56,99 @@ export function SettingsScreen() {
 
   return (
     <GameShell>
-      <PageTitle kicker="Preferências" title="Configurações">
-        Ajustes locais de jogo. Tudo fica salvo neste dispositivo — nada disso depende de conexão.
-      </PageTitle>
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <PageTitle kicker="Preferências" title="Configurações" compact>
+          Ajustes locais de jogo, salvos neste dispositivo.
+        </PageTitle>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Batalha">
-          <Row label="Velocidade padrão da batalha">
-            <div className="flex gap-1">
-              {([1, 2, 3] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => update("battleSpeed", s)}
-                  className={cn(
-                    "border px-3 py-1 font-mono text-xs",
-                    settings.battleSpeed === s
-                      ? "border-primary text-primary"
-                      : "border-border text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {s}×
-                </button>
-              ))}
+        <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto pr-1 lg:grid-cols-2">
+          <Panel title="Batalha">
+            <Row label="Velocidade padrão da batalha">
+              <div className="flex gap-1">
+                {([1, 2, 3] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => update("battleSpeed", s)}
+                    className={cn(
+                      "border px-3 py-1 font-mono text-xs",
+                      settings.battleSpeed === s
+                        ? "border-primary text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {s}×
+                  </button>
+                ))}
+              </div>
+            </Row>
+            <Row label="Mostrar dicas táticas">
+              <Toggle value={settings.showHints} onChange={(v) => update("showHints", v)} />
+            </Row>
+            <Row label="Sons de interface">
+              <Toggle value={settings.sound} onChange={(v) => update("sound", v)} />
+            </Row>
+            <Row label="Reduzir animações">
+              <Toggle value={settings.reduceMotion} onChange={(v) => update("reduceMotion", v)} />
+            </Row>
+            {saved && (
+              <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-fact">
+                preferências salvas
+              </p>
+            )}
+          </Panel>
+
+          <Panel title="Conta e dados">
+            <div className="space-y-3 font-mono text-[11px]">
+              <Row label="Armazenamento" plain>
+                <span className="text-foreground">local (offline-first)</span>
+              </Row>
+              <Row label="Supabase" plain>
+                <span className={isSupabaseConfigured ? "text-fact" : "text-muted-foreground"}>
+                  {isSupabaseConfigured ? "configurado" : "não configurado"}
+                </span>
+              </Row>
+              <Row label="Sessão" plain>
+                <span className={signedIn ? "text-fact" : "text-muted-foreground"}>
+                  {signedIn ? "ativa" : "local"}
+                </span>
+              </Row>
             </div>
-          </Row>
-          <Row label="Mostrar dicas táticas">
-            <Toggle value={settings.showHints} onChange={(v) => update("showHints", v)} />
-          </Row>
-          <Row label="Sons de interface">
-            <Toggle value={settings.sound} onChange={(v) => update("sound", v)} />
-          </Row>
-          <Row label="Reduzir animações">
-            <Toggle value={settings.reduceMotion} onChange={(v) => update("reduceMotion", v)} />
-          </Row>
-          {saved && (
-            <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-fact">
-              preferências salvas
-            </p>
-          )}
-        </Panel>
+            {lastError && (
+              <p className="mt-3 text-[11px] text-destructive">
+                Última falha de sincronização: {lastError}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={() => void syncNow()}
+                className="border border-primary px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                Sincronizar agora
+              </button>
+              <Link
+                to="/perfil"
+                className="border border-border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-foreground hover:border-primary hover:text-primary"
+              >
+                Abrir perfil
+              </Link>
+            </div>
+          </Panel>
 
-        <Panel title="Conta e dados">
-          <div className="space-y-3 font-mono text-[11px]">
-            <Row label="Armazenamento" plain>
-              <span className="text-foreground">local (offline-first)</span>
-            </Row>
-            <Row label="Supabase" plain>
-              <span className={isSupabaseConfigured ? "text-fact" : "text-muted-foreground"}>
-                {isSupabaseConfigured ? "configurado" : "não configurado"}
-              </span>
-            </Row>
-            <Row label="Sessão" plain>
-              <span className={signedIn ? "text-fact" : "text-muted-foreground"}>
-                {signedIn ? "ativa" : "local"}
-              </span>
-            </Row>
-          </div>
-          {lastError && (
-            <p className="mt-3 text-[11px] text-destructive">
-              Última falha de sincronização: {lastError}
+          <Panel title="Zona de risco" className="lg:col-span-2">
+            <p className="text-sm text-muted-foreground">
+              Recomeçar apaga o progresso local (campanha, cartas, acessórios). Esta ação não pode
+              ser desfeita.
             </p>
-          )}
-          <div className="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={() => void syncNow()}
-              className="border border-primary px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-primary hover:bg-primary hover:text-primary-foreground"
+              onClick={() => {
+                if (confirm("Apagar todo o progresso local e recomeçar?")) hardReset();
+              }}
+              className="mt-3 border border-destructive px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-destructive hover:bg-destructive hover:text-destructive-foreground"
             >
-              Sincronizar agora
+              Recomeçar campanha
             </button>
-            <Link
-              to="/perfil"
-              className="border border-border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-foreground hover:border-primary hover:text-primary"
-            >
-              Abrir perfil
-            </Link>
-          </div>
-        </Panel>
-
-        <Panel title="Zona de risco" className="lg:col-span-2">
-          <p className="text-sm text-muted-foreground">
-            Recomeçar apaga o progresso local (campanha, cartas, acessórios). Esta ação não pode ser
-            desfeita.
-          </p>
-          <button
-            onClick={() => {
-              if (confirm("Apagar todo o progresso local e recomeçar?")) hardReset();
-            }}
-            className="mt-3 border border-destructive px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-destructive hover:bg-destructive hover:text-destructive-foreground"
-          >
-            Recomeçar campanha
-          </button>
-        </Panel>
+          </Panel>
+        </div>
       </div>
     </GameShell>
   );

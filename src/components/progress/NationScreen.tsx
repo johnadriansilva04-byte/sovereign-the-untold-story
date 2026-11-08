@@ -21,77 +21,78 @@ export function NationScreen() {
 
   return (
     <GameShell>
-      <PageTitle kicker="Administração nacional" title="Nação">
-        A pesquisa não só aumenta números — ela desbloqueia novas possibilidades de jogo e libera
-        cartas para o seu baralho.
-      </PageTitle>
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <PageTitle kicker="Administração nacional" title="Nação" compact>
+          A pesquisa desbloqueia cartas e possibilidades de jogo.
+        </PageTitle>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Metric label="Militar" value={nation.military} />
-        <Metric label="Estabilidade" value={nation.stability} />
-        <Metric label="Indústria" value={nation.industry} />
-        <Metric label="Logística" value={nation.logistics} />
-        <Metric label="Influência" value={nation.influence} />
-        <Metric label="Pesquisa" value={profile.research} raw />
+        <div className="grid shrink-0 grid-cols-3 gap-2 lg:grid-cols-6">
+          <Metric label="Militar" value={nation.military} />
+          <Metric label="Estabilidade" value={nation.stability} />
+          <Metric label="Indústria" value={nation.industry} />
+          <Metric label="Logística" value={nation.logistics} />
+          <Metric label="Influência" value={nation.influence} />
+          <Metric label="Pesquisa" value={profile.research} raw />
+        </div>
+
+        <div className="grid shrink-0 grid-cols-3 gap-2">
+          <Info label="Comando máx." value={commandCapacity(nation)} />
+          <Info label="Regeneração" value={`+${regenRate(nation).toFixed(2)}/s`} />
+          <Info label="Bônus econômico" value={`+${(economyBonus(nation) * 100).toFixed(1)}%`} />
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-3">
+          {BRANCHES.map((b) => (
+            <Panel key={b.id} title={b.label}>
+              <div className="space-y-2">
+                {techsByBranch(b.id).map((t) => {
+                  const has = owned.includes(t.id);
+                  const requiresOk = (t.requires ?? []).every((r) => owned.includes(r));
+                  const affordable = profile.research >= t.cost;
+                  const available = !has && requiresOk && affordable;
+                  return (
+                    <button
+                      key={t.id}
+                      disabled={!available}
+                      onClick={() => research(t)}
+                      className={cn(
+                        "w-full border p-3 text-left transition",
+                        has
+                          ? "border-fact/50 bg-fact/5"
+                          : available
+                            ? "border-border hover:border-primary"
+                            : "border-border/50 opacity-60",
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-display text-sm font-bold uppercase">{t.name}</p>
+                        <span
+                          className={cn(
+                            "font-mono text-[9px] uppercase",
+                            has ? "text-fact" : "text-muted-foreground",
+                          )}
+                        >
+                          {has ? "pesquisado" : requiresOk ? `${t.cost} pts` : "bloqueado"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{t.summary}</p>
+                      {t.unlocksCards && (
+                        <p className="font-mono text-[10px] text-primary">
+                          Libera: {t.unlocksCards.join(", ")}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </Panel>
+          ))}
+        </div>
+
+        <p className="shrink-0 font-mono text-[11px] text-muted-foreground">
+          Total de tecnologias: {owned.length}/{techs.length}
+        </p>
       </div>
-
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Info label="Comando máx." value={commandCapacity(nation)} />
-        <Info label="Regeneração" value={`+${regenRate(nation).toFixed(2)}/s`} />
-        <Info label="Bônus econômico" value={`+${(economyBonus(nation) * 100).toFixed(1)}%`} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        {BRANCHES.map((b) => (
-          <Panel key={b.id} title={b.label}>
-            <div className="space-y-2">
-              {techsByBranch(b.id).map((t) => {
-                const has = owned.includes(t.id);
-                const requiresOk = (t.requires ?? []).every((r) => owned.includes(r));
-                const affordable = profile.research >= t.cost;
-                const available = !has && requiresOk && affordable;
-                return (
-                  <button
-                    key={t.id}
-                    disabled={!available}
-                    onClick={() => research(t)}
-                    className={cn(
-                      "w-full border p-3 text-left transition",
-                      has
-                        ? "border-fact/50 bg-fact/5"
-                        : available
-                          ? "border-border hover:border-primary"
-                          : "border-border/50 opacity-60",
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="font-display text-sm font-bold uppercase">{t.name}</p>
-                      <span
-                        className={cn(
-                          "font-mono text-[9px] uppercase",
-                          has ? "text-fact" : "text-muted-foreground",
-                        )}
-                      >
-                        {has ? "pesquisado" : requiresOk ? `${t.cost} pts` : "bloqueado"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-muted-foreground">{t.summary}</p>
-                    {t.unlocksCards && (
-                      <p className="font-mono text-[10px] text-primary">
-                        Libera: {t.unlocksCards.join(", ")}
-                      </p>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </Panel>
-        ))}
-      </div>
-
-      <p className="mt-6 font-mono text-[11px] text-muted-foreground">
-        Total de tecnologias: {owned.length}/{techs.length}
-      </p>
     </GameShell>
   );
 }

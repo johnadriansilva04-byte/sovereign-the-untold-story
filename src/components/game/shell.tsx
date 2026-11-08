@@ -39,8 +39,8 @@ export function Logo({ className }: { className?: string }) {
 
 export function GameShell({ children, full }: { children: ReactNode; full?: boolean }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
+    <div className="flex h-[100dvh] flex-col overflow-hidden">
+      <header className="sticky top-0 z-40 shrink-0 border-b border-border bg-background/90 backdrop-blur">
         <div className="flex h-14 items-center gap-6 px-5">
           <Logo />
           <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
@@ -69,7 +69,13 @@ export function GameShell({ children, full }: { children: ReactNode; full?: bool
           </div>
         </div>
       </header>
-      <main className={cn("flex-1", !full && "mx-auto w-full max-w-7xl px-5 py-8")}>
+      <main
+        className={cn(
+          "min-h-0 flex-1",
+          full ? "overflow-hidden" : "overflow-y-auto",
+          !full && "mx-auto w-full max-w-7xl px-5 py-6",
+        )}
+      >
         {children}
       </main>
       {!full && <Footer />}
@@ -120,16 +126,20 @@ export function PageTitle({
   kicker,
   title,
   children,
+  compact,
 }: {
   kicker: string;
   title: string;
   children?: ReactNode;
+  compact?: boolean;
 }) {
   return (
-    <div className="mb-8 animate-rise">
+    <div className={cn("shrink-0 animate-rise", compact ? "mb-3" : "mb-6")}>
       <p className="label-mono text-primary">{kicker}</p>
-      <h1 className="mt-1 text-5xl font-black uppercase">{title}</h1>
-      {children && <p className="mt-2 max-w-2xl text-muted-foreground">{children}</p>}
+      <h1 className={cn("mt-1 font-black uppercase", compact ? "text-2xl" : "text-4xl")}>
+        {title}
+      </h1>
+      {children && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{children}</p>}
     </div>
   );
 }
