@@ -223,7 +223,7 @@ export function LiveBattle({
       )}
 
       <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-h-0 items-center justify-center overflow-hidden">
+        <div className="flex min-h-0 items-center justify-center overflow-hidden [container-type:size]">
           <BattleArena
             state={state}
             pendingCardId={pendingCardId}

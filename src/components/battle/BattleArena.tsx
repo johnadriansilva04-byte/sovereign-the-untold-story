@@ -41,11 +41,22 @@ export function BattleArena({
   const toArenaCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
     if (!svg) return null;
+    // getScreenCTM cobre letterbox/preserveAspectRatio; o fallback por retângulo
+    // mantém o mapeamento funcional em ambientes sem CTM (ex.: jsdom).
+    const ctm = typeof svg.getScreenCTM === "function" ? svg.getScreenCTM() : null;
+    if (ctm) {
+      const point = svg.createSVGPoint();
+      point.x = clientX;
+      point.y = clientY;
+      const local = point.matrixTransform(ctm.inverse());
+      return { x: local.x, y: local.y };
+    }
     const rect = svg.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    const x = ((clientX - rect.left) / rect.width) * 100;
-    const y = ((clientY - rect.top) / rect.height) * 100;
-    return { x, y };
+    return {
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
+    };
   };
 
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -62,12 +73,12 @@ export function BattleArena({
   void pendingCard;
 
   return (
-    <div className="relative">
+    <div className="relative h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)]">
       <svg
         ref={svgRef}
         viewBox="0 0 100 100"
         className={cn(
-          "aspect-square max-h-full w-auto max-w-full touch-none select-none rounded-sm border border-border",
+          "h-full w-full touch-none select-none rounded-sm border border-border",
           pendingCardId ? "cursor-crosshair" : "cursor-default",
         )}
         onPointerDown={handlePointer}
