@@ -12,12 +12,7 @@ import {
   type MissionDef,
 } from "@/game/battle/missions";
 import type { Commander, Doctrine } from "@/game/battle/types";
-import {
-  difficulties,
-  difficultyById,
-  modsFromAccessories,
-  type Difficulty,
-} from "@/game/progress/catalog";
+import { difficultyById, modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
 import { missionDifficulty } from "@/game/progress/catalog";
 import {
   activeAccessories,
@@ -71,7 +66,7 @@ export function BattlePrep({
   const [doctrine, setDoctrine] = useState<Doctrine>(
     profile.decks[0]?.doctrine ?? commander.doctrine,
   );
-  const [difficulty, setDifficulty] = useState<Difficulty>(
+  const [difficulty] = useState<Difficulty>(
     initialDifficulty ?? missionDifficulty[mission.id] ?? "veterano",
   );
   const [showMissions, setShowMissions] = useState(false);
@@ -93,7 +88,6 @@ export function BattlePrep({
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-3">
-      {/* Cabeçalho compacto — sem rolagem de página */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
         <div>
           <p className="label-mono text-primary">Preparação para a batalha</p>
@@ -109,9 +103,6 @@ export function BattlePrep({
           </span>
           <span>
             ECONOMIA <b className="text-foreground">+{(economyBonus(nation) * 100).toFixed(1)}%</b>
-          </span>
-          <span>
-            CARTAS <b className="text-foreground">{available.length}</b>
           </span>
         </div>
         <button
@@ -132,10 +123,7 @@ export function BattlePrep({
               {deck.length}/8
             </span>
           </div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Só entram cartas que você possui. A ordem define a mão inicial.
-          </p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             <span className="label-mono text-muted-foreground">Mão</span>
             {Array.from({ length: 4 }).map((_, i) => {
               const id = deck[i];
@@ -203,27 +191,7 @@ export function BattlePrep({
           </div>
         </section>
 
-        <div className="grid min-h-0 grid-rows-[auto_auto_1fr] gap-2.5">
-          <section className="hud-panel hud-corners p-3">
-            <p className="label-mono mb-1.5">Dificuldade</p>
-            <div className="flex flex-wrap gap-1.5">
-              {difficulties.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setDifficulty(d.id)}
-                  className={cn(
-                    "border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition",
-                    d.id === difficulty
-                      ? "border-primary bg-accent text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
-                  )}
-                >
-                  {d.name} <span className="text-muted-foreground">×{d.rewardMult}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
+        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2.5">
           <section className="hud-panel hud-corners p-3">
             <p className="label-mono mb-1.5">Comandante</p>
             <div className="flex flex-wrap gap-1.5">
@@ -263,21 +231,6 @@ export function BattlePrep({
                 </button>
               ))}
             </div>
-            {equipped.length > 0 && (
-              <div className="mt-2 border-t border-border pt-2">
-                <p className="label-mono mb-1">Acessórios</p>
-                <div className="flex flex-wrap gap-1">
-                  {equipped.map((id) => (
-                    <span
-                      key={id}
-                      className="border border-doc px-1.5 py-0.5 font-mono text-[9px] uppercase text-doc"
-                    >
-                      {id.replace("acc-", "")}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </section>
         </div>
       </div>
@@ -332,7 +285,6 @@ export function BattlePrep({
                       key={m.id}
                       onClick={() => {
                         setMissionId(m.id);
-                        setDifficulty(missionDifficulty[m.id] ?? "veterano");
                         setShowMissions(false);
                       }}
                       className={cn(

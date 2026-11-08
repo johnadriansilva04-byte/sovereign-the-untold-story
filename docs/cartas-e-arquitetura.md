@@ -440,9 +440,9 @@ recortadas por painéis com rolagem própria e o detalhe abre numa tela nova (di
 | Tela                                | Padrão aplicado                                                            |
 | ----------------------------------- | -------------------------------------------------------------------------- |
 | Home (`/`)                          | Hero + menu em uma tela (`h-[calc(100dvh-3.5rem)]`).                       |
-| Campanha (`CampaignScreen`)         | Visão geral: atos em abas, só a missão atual em destaque (concluídas somem). Clicar abre a **Operação** em tela própria com "Começar batalha". |
+| Campanha (`CampaignScreen`)         | Visão geral: barra de progresso, atos em abas, só a missão atual em destaque (vencidas somem). "Iniciar missão" entra direto na batalha — sem texto nem escolhas. |
 | Coleção (`CollectionScreen`)        | Abas cartas/acessórios/baralhos; cartão abre detalhe em diálogo.           |
-| Batalha · preparação (`BattlePrep`) | Baralho/dificuldade/comandante/doutrina numa tela; missão em diálogo.      |
+| Batalha · preparação (`BattlePrep`) | Baralho, comandante e doutrina numa tela; missão em diálogo. Sem texto longo. |
 | Multiplayer (`MultiplayerScreen`)   | Modos em abas; adversários em cartões; apostas em tela própria.            |
 | Batalha em si (`BattleArena`)       | Arena + HUD fixos; `overflow-hidden`, sem rolagem de página.               |
 | Mapa/Nacão/IA/Perfil/Config         | Cabeçalho compacto + métricas fixas; painéis internos com rolagem contida. |
