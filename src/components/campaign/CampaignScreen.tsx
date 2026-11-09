@@ -50,7 +50,7 @@ export function CampaignScreen() {
   if (view.kind === "battle" && autoConfig) {
     const meta = chapterMetaById(view.chapterId)!;
     return (
-      <GameShell full>
+      <GameShell full bare>
         <BattleScreen
           modeLabel={`Campanha · Cap. ${meta.number}`}
           presetConfig={autoConfig}
@@ -72,7 +72,7 @@ export function CampaignScreen() {
     const meta = chapterMetaById(view.chapterId)!;
     return (
       <GameShell full>
-        <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-2xl flex-col items-center justify-center px-4 text-center">
+        <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center px-4 text-center">
           <RewardScreen
             meta={meta}
             result={view.result}
@@ -93,11 +93,13 @@ export function CampaignScreen() {
   }
 
   return (
-    <CampaignOverview
-      profile={profile}
-      currentMeta={currentMeta}
-      onLaunch={() => currentMeta && setView({ kind: "battle", chapterId: currentMeta.id })}
-    />
+    <GameShell full>
+      <CampaignOverview
+        profile={profile}
+        currentMeta={currentMeta}
+        onLaunch={() => currentMeta && setView({ kind: "battle", chapterId: currentMeta.id })}
+      />
+    </GameShell>
   );
 }
 
@@ -111,8 +113,9 @@ function seedOf(s: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Visão geral — UMA tela, sem rolagem e sem texto: barra de progresso, atos em
-// abas, a missão atual em destaque e um botão para entrar na guerra.
+// Visão geral — UMA tela, sem rolagem e sem texto longo: progresso da guerra,
+// a MISSÃO ATUAL em destaque e um botão para entrar na guerra. As fases não
+// aparecem todas de uma vez; o jogo avança missão a missão.
 // ---------------------------------------------------------------------------
 
 type Profile = ReturnType<typeof useProfile>["profile"];
@@ -131,28 +134,14 @@ function CampaignOverview({
   ).length;
   const pct = Math.round((completed / totalChapters) * 100);
 
-  const actGroups = useMemo(() => {
-    const groups: { act: string; metas: typeof chapterMeta }[] = [];
-    for (const meta of chapterMeta) {
-      const act = chapters.find((c) => c.id === meta.id)!.act;
-      const last = groups[groups.length - 1];
-      if (last && last.act === act) last.metas.push(meta);
-      else groups.push({ act, metas: [meta] });
-    }
-    return groups;
-  }, []);
-
-  const activeGroup =
-    actGroups.find((g) => g.metas.some((m) => m.id === currentMeta?.id)) ?? actGroups[0]!;
-  const [act, setAct] = useState(activeGroup.act);
-  const group = actGroups.find((g) => g.act === act) ?? activeGroup;
   const currentChapter = currentMeta ? chapters.find((c) => c.id === currentMeta.id) : null;
   const mission = currentMeta ? missionById(currentMeta.missionId) : null;
+  const won = completed === totalChapters;
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-5xl flex-col px-4 py-4">
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-5 px-4 py-4">
       {/* Progresso da guerra */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border pb-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-baseline gap-3">
           <span className="font-display text-4xl font-black leading-none">
             {completed}
@@ -172,66 +161,45 @@ function CampaignOverview({
         </div>
       </div>
 
-      {/* Atos */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {actGroups.map((g) => {
-          const done = g.metas.filter((m) => profile.chapters[m.id]?.status === "concluido").length;
-          const isActive = g.act === act;
-          const hasCurrent = g.metas.some((m) => m.id === currentMeta?.id);
-          return (
-            <button
-              key={g.act}
-              onClick={() => setAct(g.act)}
-              className={cn(
-                "relative border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition",
-                isActive
-                  ? "border-primary bg-accent text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/60 hover:text-foreground",
-              )}
-            >
-              {g.act.replace(/^Ato /, "A")} {done}/{g.metas.length}
-              {hasCurrent && !isActive && (
-                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 bg-primary" />
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {won || !currentMeta || !currentChapter ? (
+        <div className="hud-panel hud-corners p-8 text-center">
+          <p className="label-mono text-primary">Campanha concluída</p>
+          <p className="mt-2 font-display text-4xl font-black uppercase">A guerra foi vencida</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Todas as operações foram cumpridas. O teatro segue disponível no Multiplayer.
+          </p>
+        </div>
+      ) : (
+        <button
+          onClick={onLaunch}
+          className="hud-panel hud-corners group flex flex-col items-start gap-3 border-primary/60 p-6 text-left transition hover:border-primary"
+        >
+          <div className="flex w-full items-center justify-between">
+            <span className="label-mono text-primary">
+              {currentChapter.act} · Capítulo {currentMeta.number}
+            </span>
+            <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {difficultyById(currentMeta.difficulty).name}
+            </span>
+          </div>
+          <span className="font-display text-4xl font-black uppercase leading-none sm:text-5xl">
+            {currentChapter.title}
+          </span>
+          <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+            {mission?.terrain} · {Math.round((mission?.duration ?? 0) / 60)} min
+          </span>
+          <span className="max-w-2xl font-serif text-sm italic text-foreground/85">
+            {currentMeta.intro}
+          </span>
+          <span className="mt-1 bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition group-hover:brightness-110">
+            Iniciar operação
+          </span>
+        </button>
+      )}
 
-      {/* Só a missão atual; as outras são marcadores discretos */}
-      <div className="mt-3 grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {group.metas
-          .filter((m) => profile.chapters[m.id]?.status !== "concluido")
-          .map((meta) =>
-            meta.id === currentMeta?.id ? (
-              <button
-                key={meta.id}
-                onClick={onLaunch}
-                className="hud-panel hud-corners col-span-2 row-span-2 flex flex-col items-center justify-center gap-2 border-primary/60 p-4 text-center transition hover:border-primary sm:col-span-2"
-              >
-                <span className="label-mono text-primary">Capítulo {meta.number}</span>
-                <span className="font-display text-4xl font-black uppercase leading-none">
-                  {chapters.find((c) => c.id === meta.id)!.title}
-                </span>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {mission?.terrain} · {difficultyById(meta.difficulty).name}
-                </span>
-                <span className="mt-2 bg-primary px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass">
-                  Iniciar missão
-                </span>
-              </button>
-            ) : (
-              <div
-                key={meta.id}
-                className="hud-panel flex items-center justify-center p-3 opacity-40"
-              >
-                <span className="font-display text-2xl font-black text-muted-foreground/30">
-                  {String(meta.number).padStart(2, "0")}
-                </span>
-              </div>
-            ),
-          )}
-      </div>
+      <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+        Missão a missão — cada vitória libera a próxima operação.
+      </p>
     </div>
   );
 }

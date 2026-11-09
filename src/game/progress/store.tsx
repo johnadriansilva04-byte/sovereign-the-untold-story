@@ -16,6 +16,18 @@ import {
 import type { NationState } from "@/game/battle/missions";
 import { applyConsequences, consequencesOf, missionById } from "@/game/battle/missions";
 import type { BattleResult } from "@/game/battle/types";
+import {
+  loadAccount,
+  loadSession,
+  restoreSession,
+  signIn,
+  signOut,
+  signUp,
+  type Account,
+  type AuthResult,
+  type AuthSession,
+  type Credentials,
+} from "@/lib/auth";
 import type { Difficulty, Reward, TechDef } from "./catalog";
 import { copiesToLevel } from "@/game/battle/catalog";
 import {
@@ -50,6 +62,16 @@ export interface ProfileContextValue {
   profile: ProfileState;
   signedIn: boolean;
   lastError: string | null;
+  /** Conta ativa (nula quando o jogador ainda não entrou). */
+  account: Account | null;
+  /** Sessão autenticada (nula antes do login). */
+  session: AuthSession | null;
+  /** Cria a conta do jogador e inicia a sessão. */
+  signUpAccount: (c: Credentials) => Promise<AuthResult>;
+  /** Entra numa conta existente. */
+  signInAccount: (email: string, password: string) => Promise<AuthResult>;
+  /** Encerra a sessão (mantém o progresso local). */
+  signOutAccount: () => Promise<void>;
   /** Conclui um capítulo, aplicando recompensa e desbloqueando o próximo. */
   completeChapter: (opts: {
     chapterId: string;
@@ -81,6 +103,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<ProfileState>(() => createProfile());
   const [signedIn, setSignedIn] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [ready, setReady] = useState(false);
   const profileRef = useRef<ProfileState>(profile);
   profileRef.current = profile;
 
@@ -89,13 +114,25 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     setProfile(loaded);
     profileRef.current = loaded;
     saveProfile(loaded);
+    // Sessão: entra direto se já houver conta/sessão neste dispositivo.
+    setAccount(loadAccount());
+    setSession(loadSession());
     void (async () => {
+      const restored = await restoreSession();
+      if (restored) {
+        setSession(restored);
+        // O nome de exibição do perfil segue a conta, quando ainda é o padrão.
+        const named = { ...profileRef.current };
+        if (restored.username) named.displayName = restored.username;
+        saveProfile(named);
+        profileRef.current = named;
+        setProfile(named);
+      }
       const { userId, error } = await ensureSession();
-      // Offline ou limitação temporária (rede/rate limit) não é erro visível:
-      // o jogo roda local e tenta sincronizar de novo depois.
       setLastError(userId || isTransientSyncError(error) ? null : error);
       setSignedIn(Boolean(userId));
-      if (userId) await pushProfile(loaded);
+      if (userId) await pushProfile(profileRef.current);
+      setReady(true);
     })();
   }, []);
 
@@ -274,6 +311,43 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     void pushProfile(fresh);
   }, []);
 
+  const signUpAccount = useCallback<ProfileContextValue["signUpAccount"]>(
+    async (c) => {
+      const res = await signUp(c);
+      if (!res.ok || !res.session) return res;
+      setSession(res.session);
+      setAccount(loadAccount());
+      const next = { ...profileRef.current, displayName: res.session.username };
+      persist(next);
+      const { userId } = await ensureSession();
+      setSignedIn(Boolean(userId));
+      return res;
+    },
+    [persist],
+  );
+
+  const signInAccount = useCallback<ProfileContextValue["signInAccount"]>(
+    async (email, password) => {
+      const res = await signIn(email, password);
+      if (!res.ok || !res.session) return res;
+      setSession(res.session);
+      setAccount(loadAccount());
+      const next = { ...profileRef.current, displayName: res.session.username };
+      persist(next);
+      const { userId } = await ensureSession();
+      setSignedIn(Boolean(userId));
+      if (userId) await pushProfile(profileRef.current);
+      return res;
+    },
+    [persist],
+  );
+
+  const signOutAccount = useCallback(async () => {
+    await signOut();
+    setSession(null);
+    setSignedIn(false);
+  }, []);
+
   const syncNow = useCallback(async () => {
     const current = profileRef.current;
     if (!current) return;
@@ -286,10 +360,15 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ProfileContextValue>(() => {
     return {
-      ready: true,
+      ready,
       profile,
       signedIn,
       lastError,
+      account,
+      session,
+      signUpAccount,
+      signInAccount,
+      signOutAccount,
       completeChapter,
       recordBattle,
       setNation,
@@ -303,9 +382,15 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       syncNow,
     };
   }, [
+    ready,
     profile,
     signedIn,
     lastError,
+    account,
+    session,
+    signUpAccount,
+    signInAccount,
+    signOutAccount,
     completeChapter,
     recordBattle,
     setNation,

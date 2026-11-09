@@ -1493,9 +1493,7 @@ function checkVictory(state: BattleState, dt: number): void {
     if (blueBase < redBase - 0.02)
       return finish(state, "derrota", "Janela encerrada: sua base ficou mais exposta.");
     if (objectiveKind === "territorial") {
-      const blueHeld = allPoints
-        .filter((p) => p.owner === "blue")
-        .reduce((a, p) => a + p.value, 0);
+      const blueHeld = allPoints.filter((p) => p.owner === "blue").reduce((a, p) => a + p.value, 0);
       const redHeld = allPoints.filter((p) => p.owner === "red").reduce((a, p) => a + p.value, 0);
       if (blueHeld > redHeld)
         return finish(state, "vitoria", "Janela encerrada: superioridade territorial.");

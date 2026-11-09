@@ -19,25 +19,45 @@ const CATEGORY_LABEL: Record<string, string> = {
   apoio: "Apoio",
 };
 
+// Ícone por categoria: leitura instantânea da carta durante o combate.
+const CATEGORY_ICON: Record<string, string> = {
+  infantaria: "🪖",
+  blindado: "🛡",
+  artilharia: "🎯",
+  defesa: "🏰",
+  reconhecimento: "🛰",
+  apoio: "✈",
+};
+
+// Cores por categoria para o fundo da carta (identidade visual).
+const CATEGORY_BG: Record<string, string> = {
+  infantaria: "from-fact/25",
+  blindado: "from-primary/25",
+  artilharia: "from-doc/25",
+  defesa: "from-ally/25",
+  reconhecimento: "from-ai/25",
+  apoio: "from-fiction/25",
+};
+
 export function CommandBar({ side, compact = false }: { side: SideState; compact?: boolean }) {
   const pct = (side.command / side.commandMax) * 100;
   return (
     <div className="flex items-center gap-3">
-      <div className={compact ? "w-32 sm:w-40" : "w-40"}>
+      <div className={compact ? "w-36 sm:w-52" : "w-40"}>
         <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           <span>Energia</span>
           <span className="text-primary">
             {Math.floor(side.command)} / {side.commandMax}
           </span>
         </div>
-        <div className="h-2 w-full bg-muted">
+        <div className="h-2.5 w-full border border-border bg-muted">
           <div
             className="h-full bg-primary transition-[width] duration-100"
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
       </div>
-      <span className="font-mono text-[10px] text-muted-foreground">
+      <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
         +{side.regen.toFixed(2)}/s
       </span>
     </div>
@@ -56,7 +76,7 @@ interface HandBarProps {
 export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover }: HandBarProps) {
   const queue = side.deck.queue.map((id) => cardMeta(id));
   return (
-    <div className="flex items-stretch gap-4">
+    <div className="flex items-stretch gap-3">
       <div className="-mx-1 flex flex-1 gap-2 overflow-x-auto px-1 pb-1">
         {side.deck.hand.map((h) => {
           const card = cardMeta(h.cardId);
@@ -70,36 +90,37 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               onMouseEnter={() => onHover(card)}
               onMouseLeave={() => onHover(null)}
               className={cn(
-                "hud-panel relative flex min-w-[104px] flex-1 flex-col items-start gap-1 border p-2 text-left transition",
+                "relative flex min-w-[92px] flex-1 flex-col items-start justify-between gap-1 border bg-gradient-to-b to-transparent p-2 text-left transition sm:min-w-[120px]",
+                CATEGORY_BG[card.category] ?? "from-card",
                 selected
                   ? "-translate-y-1 border-primary shadow-brass"
                   : "border-border hover:border-primary/60",
                 !affordable && "opacity-45",
               )}
             >
+              <span className="flex w-full items-center justify-between">
+                <span className="text-lg leading-none">{CATEGORY_ICON[card.category] ?? "★"}</span>
+                <span
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center font-mono text-sm font-bold",
+                    affordable
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {cost}
+                </span>
+              </span>
+              <span className="font-display text-sm font-bold uppercase leading-none sm:text-base">
+                {card.name}
+              </span>
               <span
                 className={cn(
                   "border px-1 font-mono text-[9px] uppercase tracking-wider",
                   CATEGORY_TONE[card.category] ?? "border-border",
                 )}
               >
-                {card.short}
-              </span>
-              <span className="font-display text-sm font-bold uppercase leading-none">
-                {card.name}
-              </span>
-              <span className="font-mono text-[9px] text-muted-foreground">
-                {CATEGORY_LABEL[card.category]}
-              </span>
-              <span
-                className={cn(
-                  "absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center font-mono text-xs font-bold",
-                  affordable
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground",
-                )}
-              >
-                {cost}
+                {CATEGORY_LABEL[card.category] ?? card.category}
               </span>
               {selected && (
                 <span className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-primary px-1 font-mono text-[8px] uppercase tracking-wider text-primary-foreground">
@@ -110,14 +131,15 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
           );
         })}
       </div>
-      <div className="hidden w-40 flex-col border-l border-border pl-3 sm:flex">
+      <div className="hidden w-36 flex-col border-l border-border pl-3 md:flex">
         <p className="label-mono mb-1">Próximas</p>
         <div className="flex flex-wrap gap-1">
           {queue.map((c, i) => (
             <span
               key={`${c.id}-${i}`}
-              className="border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+              className="flex items-center gap-1 border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
             >
+              <span>{CATEGORY_ICON[c.category] ?? "★"}</span>
               {c.short}
             </span>
           ))}

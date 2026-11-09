@@ -3,14 +3,18 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { EvidenceKind } from "@/game/types";
 
-const nav = [
-  { to: "/mapa", label: "Mapa" },
-  { to: "/nacao", label: "Nação" },
-  { to: "/ia", label: "Agentes IA" },
-  { to: "/batalha", label: "Batalha" },
+// Navegação principal: só o essencial de guerra. O resto fica no menu secundário.
+const primaryNav = [
   { to: "/campanha", label: "Campanha" },
   { to: "/multiplayer", label: "Multiplayer" },
   { to: "/colecao", label: "Coleção" },
+  { to: "/perfil", label: "Perfil" },
+] as const;
+
+const secondaryNav = [
+  { to: "/mapa", label: "Mapa" },
+  { to: "/nacao", label: "Nação" },
+  { to: "/ia", label: "Agentes IA" },
 ] as const;
 
 export function pageHead(title: string, description: string) {
@@ -37,38 +41,61 @@ export function Logo({ className }: { className?: string }) {
   );
 }
 
-export function GameShell({ children, full }: { children: ReactNode; full?: boolean }) {
+export function GameShell({
+  children,
+  full,
+  bare,
+}: {
+  children: ReactNode;
+  full?: boolean;
+  bare?: boolean;
+}) {
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden">
-      <header className="sticky top-0 z-40 shrink-0 border-b border-border bg-background/90 backdrop-blur">
-        <div className="flex h-14 items-center gap-6 px-5">
-          <Logo />
-          <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
-            {nav.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                className="whitespace-nowrap px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
-                activeProps={{ className: "!text-primary border-b-2 border-primary" }}
-              >
-                {n.label}
+      {!bare && (
+        <header className="sticky top-0 z-40 shrink-0 border-b border-border bg-background/90 backdrop-blur">
+          <div className="flex h-14 items-center gap-5 px-4 md:px-5">
+            <Logo />
+            <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
+              {primaryNav.map((n) => (
+                <Link
+                  key={n.to}
+                  to={n.to}
+                  className="whitespace-nowrap px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
+                  activeProps={{ className: "!text-primary border-b-2 border-primary" }}
+                >
+                  {n.label}
+                </Link>
+              ))}
+              <details className="relative">
+                <summary className="cursor-pointer list-none whitespace-nowrap px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground">
+                  Mais ▾
+                </summary>
+                <div className="absolute left-0 top-full z-50 mt-1 min-w-40 border border-border bg-popover p-1 shadow-lg">
+                  {secondaryNav.map((n) => (
+                    <Link
+                      key={n.to}
+                      to={n.to}
+                      className="block px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      activeProps={{ className: "!text-primary" }}
+                    >
+                      {n.label}
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            </nav>
+            <div className="hidden items-center gap-3 font-mono text-[11px] text-muted-foreground lg:flex">
+              <Link to="/perfil" className="hover:text-primary">
+                PERFIL
               </Link>
-            ))}
-          </nav>
-          <div className="hidden items-center gap-4 font-mono text-[11px] text-muted-foreground lg:flex">
-            <span>
-              TURNO <b className="text-foreground">14</b>
-            </span>
-            <span>🇧🇷 BRASIL</span>
-            <Link to="/perfil" className="hover:text-primary">
-              PERFIL
-            </Link>
-            <Link to="/configuracoes" className="hover:text-primary">
-              ⚙
-            </Link>
+              <Link to="/configuracoes" className="hover:text-primary">
+                ⚙
+              </Link>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
       <main
         className={cn(
           "min-h-0 flex-1",
@@ -78,7 +105,7 @@ export function GameShell({ children, full }: { children: ReactNode; full?: bool
       >
         {children}
       </main>
-      {!full && <Footer />}
+      {!full && !bare && <Footer />}
     </div>
   );
 }

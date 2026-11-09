@@ -8,6 +8,7 @@ import { routeTree } from "@/routeTree.gen";
 // network the test run lacks, and jsdom never loads the stylesheets React waits on.
 const PAGES = [
   "/",
+  "/entrar",
   "/mapa",
   "/nacao",
   "/ia",

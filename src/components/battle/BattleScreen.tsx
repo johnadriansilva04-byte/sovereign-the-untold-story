@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { GameButton } from "@/components/game/shell";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BattleArena } from "./BattleArena";
 import { AiCommanderPanel, BattleLogPanel } from "./BattlePanels";
 import { BattlePrep } from "./BattlePrep";
@@ -157,7 +158,8 @@ export function LiveBattle({
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [hovered, setHovered] = useState<Card | null>(null);
-  const [showIntel, setShowIntel] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [confirmExit, setConfirmExit] = useState(false);
   const completedRef = useRef(false);
 
   useEffect(() => {
@@ -214,61 +216,104 @@ export function LiveBattle({
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden">
-      <BattleTopBar state={state} />
-      <ObjectiveStrip state={state} />
-
-      {battle.llmActive && (
-        <p className="border-b border-ai/40 bg-ai/10 px-4 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ai">
-          Comandante IA (LLM) ativo · o modelo decide em tempo real
-        </p>
-      )}
-
-      <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-h-0 items-center justify-center overflow-hidden [container-type:size]">
-          <BattleArena
-            state={state}
-            pendingCardId={pendingCardId}
-            pendingIsGlobal={Boolean(pendingIsGlobal)}
-            selectedUnitId={selectedUnitId}
-            onPlace={handlePlace}
-            onSelectUnit={setSelectedUnitId}
-            onSelectPoint={() => undefined}
-          />
-        </div>
-
-        {/* Intel tática: no mobile só abre pelo botão "Intel"; no desktop é a coluna lateral */}
-        <div
-          className={cn(
-            "min-h-0 space-y-3 overflow-y-auto pr-1",
-            showIntel ? "block" : "hidden lg:block",
-          )}
-        >
-          <UnitInspector unit={selectedUnit} />
-          {hovered && <CardDetail card={hovered} cost={battle.costOf(hovered.id)} />}
-          <AiCommanderPanel state={state} />
-          <BattleLogPanel state={state} />
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Barra superior compacta: relógio, bandeiras e vida da base */}
+      <div className="flex items-stretch">
+        {onExit && (
+          <button
+            onClick={() => setConfirmExit(true)}
+            aria-label="Abandonar operação"
+            className="shrink-0 border-b border-r border-border bg-background/95 px-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:text-destructive"
+          >
+            ✕ Sair
+          </button>
+        )}
+        <div className="min-w-0 flex-1">
+          <BattleTopBar state={state} />
         </div>
       </div>
 
-      {/* Dock de controle: sempre visível dentro da tela, sem rolagem */}
+      {/* Diálogo de confirmação de saída */}
+      <Dialog open={confirmExit} onOpenChange={setConfirmExit}>
+        <DialogContent className="max-w-sm border-destructive/40 bg-background">
+          <DialogHeader>
+            <DialogTitle className="text-left font-display uppercase">
+              Abandonar a operação?
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            A partida em andamento será perdida e o progresso desta operação não será registrado.
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <GameButton variant="ghost" onClick={() => setConfirmExit(false)}>
+              Continuar lutando
+            </GameButton>
+            <GameButton onClick={onExit}>Abandonar</GameButton>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Teatro de operações: ocupa TODO o espaço restante, sem rolagem */}
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))] p-1 [container-type:size] sm:p-2">
+        <BattleArena
+          state={state}
+          pendingCardId={pendingCardId}
+          pendingIsGlobal={Boolean(pendingIsGlobal)}
+          selectedUnitId={selectedUnitId}
+          onPlace={handlePlace}
+          onSelectUnit={setSelectedUnitId}
+          onSelectPoint={() => undefined}
+        />
+
+        {/* Aviso de comandante LLM, sobreposto no topo do campo */}
+        {battle.llmActive && (
+          <p className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 border border-ai/40 bg-background/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-ai">
+            Comandante IA (LLM) ativo
+          </p>
+        )}
+
+        {/* Inspeção da unidade selecionada, flutuante */}
+        {selectedUnit && (
+          <div className="absolute bottom-2 left-2 w-56 max-w-[45%]">
+            <UnitInspector unit={selectedUnit} />
+          </div>
+        )}
+
+        {/* Relatório de batalha: log tático + leitura da IA, sob demanda */}
+        <Dialog open={showReport} onOpenChange={setShowReport}>
+          <DialogContent className="max-h-[80vh] max-w-lg overflow-hidden border-primary/40 bg-background">
+            <DialogHeader>
+              <DialogTitle className="text-left">
+                <span className="label-mono text-primary">Relatório de batalha</span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              <ObjectiveStrip state={state} />
+              <AiCommanderPanel state={state} />
+              <BattleLogPanel state={state} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Dock de controle: relógio/pausa + energia + cartas + ordens, sem rolagem */}
       <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
-        <div className="space-y-2">
+        <div className="mx-auto flex max-w-5xl flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <CommandBar side={state.blue} compact />
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setShowIntel((v) => !v)}
-                className="border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary lg:hidden"
+                onClick={() => setShowReport(true)}
+                className="border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary"
               >
-                Intel
+                Relatório
               </button>
               <GameButton
                 variant="ghost"
                 aria-label={battle.paused ? "Retomar" : "Pausar"}
                 onClick={() => battle.setPaused(!battle.paused)}
               >
-                {battle.paused ? "▶ Retomar" : "❚❚ Pausar"}
+                {battle.paused ? "▶" : "❚❚"}
               </GameButton>
               <div className="flex border border-border">
                 {[1, 2, 3].map((s) => (
@@ -300,37 +345,14 @@ export function LiveBattle({
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <OrderBar onOrder={handleOrder} hasSelection={Boolean(selectedUnitId)} />
+            {hovered && (
+              <span className="hidden font-mono text-[10px] text-muted-foreground sm:block">
+                {hovered.name} · {hovered.role}
+              </span>
+            )}
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function CardDetail({ card, cost }: { card: Card; cost: number }) {
-  return (
-    <div className="hud-panel hud-corners p-3">
-      <div className="flex items-center justify-between">
-        <p className="font-display text-sm font-bold uppercase">{card.name}</p>
-        <span className="bg-primary px-2 font-mono text-xs font-bold text-primary-foreground">
-          {cost}
-        </span>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{card.role}</p>
-      {card.kind === "militar" && (
-        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[10px]">
-          <dt className="text-muted-foreground">Vida</dt>
-          <dd className="text-right">{card.hp}</dd>
-          <dt className="text-muted-foreground">Dano</dt>
-          <dd className="text-right">{card.dmg}</dd>
-          <dt className="text-muted-foreground">Alcance</dt>
-          <dd className="text-right">{card.range}</dd>
-          <dt className="text-muted-foreground">Velocidade</dt>
-          <dd className="text-right">{card.speed}</dd>
-          <dt className="text-muted-foreground">Alvos</dt>
-          <dd className="text-right">{card.targets === "ambos" ? "Terra/Aéreo" : card.targets}</dd>
-        </dl>
-      )}
     </div>
   );
 }

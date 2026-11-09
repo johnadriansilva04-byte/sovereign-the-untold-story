@@ -101,23 +101,36 @@
   --sidebar-accent-foreground: oklch(0.92 0.02 90);
   --sidebar-border: oklch(0.32 0.02 110);
   --sidebar-ring: oklch(0.76 0.13 78);
-  --gradient-vignette: radial-gradient(ellipse at center, transparent 30%, oklch(0.1 0.01 120 / 0.95) 100%);
+  --gradient-vignette: radial-gradient(
+    ellipse at center,
+    transparent 30%,
+    oklch(0.1 0.01 120 / 0.95) 100%
+  );
   --gradient-fade-up: linear-gradient(to top, var(--background) 10%, transparent 70%);
-  --shadow-brass: 0 0 0 1px oklch(0.76 0.13 78 / 0.35), 0 10px 30px -12px oklch(0.76 0.13 78 / 0.35);
+  --shadow-brass:
+    0 0 0 1px oklch(0.76 0.13 78 / 0.35), 0 10px 30px -12px oklch(0.76 0.13 78 / 0.35);
 }
 
 @layer base {
-  * { border-color: var(--color-border); }
-  html { color-scheme: dark; }
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    color-scheme: dark;
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
-    background-image:
-      radial-gradient(oklch(1 0 0 / 0.025) 1px, transparent 1px);
+    background-image: radial-gradient(oklch(1 0 0 / 0.025) 1px, transparent 1px);
     background-size: 22px 22px;
   }
-  h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0.02em; }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: 0.02em;
+  }
 }
 
 @utility hud-panel {
@@ -127,12 +140,27 @@
   position: relative;
 }
 @utility hud-corners {
-  &::before, &::after {
-    content: ""; position: absolute; width: 10px; height: 10px; pointer-events: none;
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
     border-color: var(--primary);
   }
-  &::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
-  &::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+  &::before {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid;
+    border-left: 2px solid;
+  }
+  &::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 2px solid;
+    border-right: 2px solid;
+  }
 }
 @utility label-mono {
   font-family: var(--font-mono);
@@ -141,15 +169,71 @@
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
-@utility shadow-brass { box-shadow: var(--shadow-brass); }
-@utility bg-vignette { background: var(--gradient-vignette); }
-@utility bg-fade-up { background: var(--gradient-fade-up); }
+@utility shadow-brass {
+  box-shadow: var(--shadow-brass);
+}
+@utility input-line {
+  width: 100%;
+  background: var(--color-background);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 0.55rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+  &:focus {
+    border-color: var(--primary);
+  }
+}
+@utility bg-vignette {
+  background: var(--gradient-vignette);
+}
+@utility bg-fade-up {
+  background: var(--gradient-fade-up);
+}
 @utility scanlines {
   background-image: repeating-linear-gradient(0deg, oklch(1 0 0 / 0.03) 0 1px, transparent 1px 3px);
 }
 
-@keyframes flicker { 0%,100% { opacity: 1 } 48% { opacity: .92 } 50% { opacity: .7 } 52% { opacity: .95 } }
-@keyframes rise { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
-@keyframes pulse-ring { 0% { r: 4; opacity: .9 } 100% { r: 16; opacity: 0 } }
-@utility animate-flicker { animation: flicker 4s infinite; }
-@utility animate-rise { animation: rise .7s ease-out both; }
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.92;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  52% {
+    opacity: 0.95;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    r: 4;
+    opacity: 0.9;
+  }
+  100% {
+    r: 16;
+    opacity: 0;
+  }
+}
+@utility animate-flicker {
+  animation: flicker 4s infinite;
+}
+@utility animate-rise {
+  animation: rise 0.7s ease-out both;
+}

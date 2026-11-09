@@ -6,7 +6,17 @@ import { totalXpForLevel } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
 
 export function ProfileScreen() {
-  const { profile, signedIn, lastError, syncNow, setDisplayName, hardReset } = useProfile();
+  const {
+    profile,
+    signedIn,
+    lastError,
+    syncNow,
+    setDisplayName,
+    hardReset,
+    account,
+    session,
+    signOutAccount,
+  } = useProfile();
   const lvl = totalXpForLevel(profile.xp);
   const completed = Object.values(profile.chapters).filter((c) => c.status === "concluido").length;
 
@@ -14,11 +24,24 @@ export function ProfileScreen() {
     <GameShell>
       <div className="flex h-full min-h-0 flex-col gap-3">
         <PageTitle kicker="Comandante" title="Perfil" compact>
-          Seu progresso fica salvo neste dispositivo e é sincronizado automaticamente quando há
-          conexão. Sem cadastro, sem senha.
+          Seu progresso fica salvo na sua conta e sincroniza automaticamente quando há conexão.
         </PageTitle>
 
         <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
+          <Panel title="Conta">
+            <div className="space-y-3 font-mono text-[11px]">
+              <Row label="Usuário" value={account?.username ?? session?.username ?? "—"} ok />
+              <Row label="E-mail" value={account?.email ?? session?.email ?? "—"} ok />
+              <Row label="Sessão" value={session ? "ativa" : "encerrada"} ok={Boolean(session)} />
+            </div>
+            <button
+              onClick={() => void signOutAccount()}
+              className="mt-4 border border-border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary"
+            >
+              Sair da conta
+            </button>
+          </Panel>
+
           <Panel title="Identidade">
             <label className="label-mono">Nome de guerra</label>
             <input
@@ -55,8 +78,8 @@ export function ProfileScreen() {
               />
             </div>
             <p className="mt-3 text-[11px] text-muted-foreground">
-              Sem login: cada dispositivo recebe uma identidade anônima e o progresso sincroniza
-              sozinho.
+              O progresso fica salvo na sua conta e volta quando você entrar de novo em qualquer
+              dispositivo.
             </p>
             {lastError && (
               <p className="mt-3 text-[11px] text-destructive">

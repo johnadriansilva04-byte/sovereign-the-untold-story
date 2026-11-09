@@ -68,7 +68,7 @@ export function CollectionScreen() {
 
   return (
     <GameShell full>
-      <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-3">
+      <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-3">
         {/* Cabeçalho compacto — progresso e recursos numa linha, sem rolagem */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
           <div>

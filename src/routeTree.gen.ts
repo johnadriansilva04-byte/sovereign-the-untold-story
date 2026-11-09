@@ -16,6 +16,7 @@ import { Route as ColecaoRouteImport } from './routes/colecao'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as CreditosRouteImport } from './routes/creditos'
 import { Route as DossieRouteImport } from './routes/dossie'
+import { Route as EntrarRouteImport } from './routes/entrar'
 import { Route as EventosRouteImport } from './routes/eventos'
 import { Route as IaRouteImport } from './routes/ia'
 import { Route as MapaRouteImport } from './routes/mapa'
@@ -58,6 +59,11 @@ const DossieRoute = DossieRouteImport.update({
   path: '/dossie',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EntrarRoute = EntrarRouteImport.update({
+  id: '/entrar',
+  path: '/entrar',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventosRoute = EventosRouteImport.update({
   id: '/eventos',
   path: '/eventos',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/configuracoes': typeof ConfiguracoesRoute
   '/creditos': typeof CreditosRoute
   '/dossie': typeof DossieRoute
+  '/entrar': typeof EntrarRoute
   '/eventos': typeof EventosRoute
   '/ia': typeof IaRoute
   '/mapa': typeof MapaRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/configuracoes': typeof ConfiguracoesRoute
   '/creditos': typeof CreditosRoute
   '/dossie': typeof DossieRoute
+  '/entrar': typeof EntrarRoute
   '/eventos': typeof EventosRoute
   '/ia': typeof IaRoute
   '/mapa': typeof MapaRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/configuracoes': typeof ConfiguracoesRoute
   '/creditos': typeof CreditosRoute
   '/dossie': typeof DossieRoute
+  '/entrar': typeof EntrarRoute
   '/eventos': typeof EventosRoute
   '/ia': typeof IaRoute
   '/mapa': typeof MapaRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/creditos'
     | '/dossie'
+    | '/entrar'
     | '/eventos'
     | '/ia'
     | '/mapa'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/creditos'
     | '/dossie'
+    | '/entrar'
     | '/eventos'
     | '/ia'
     | '/mapa'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/creditos'
     | '/dossie'
+    | '/entrar'
     | '/eventos'
     | '/ia'
     | '/mapa'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   CreditosRoute: typeof CreditosRoute
   DossieRoute: typeof DossieRoute
+  EntrarRoute: typeof EntrarRoute
   EventosRoute: typeof EventosRoute
   IaRoute: typeof IaRoute
   MapaRoute: typeof MapaRoute
@@ -250,6 +263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DossieRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/entrar': {
+      id: '/entrar'
+      path: '/entrar'
+      fullPath: '/entrar'
+      preLoaderRoute: typeof EntrarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/eventos': {
       id: '/eventos'
       path: '/eventos'
@@ -303,6 +323,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfiguracoesRoute: ConfiguracoesRoute,
   CreditosRoute: CreditosRoute,
   DossieRoute: DossieRoute,
+  EntrarRoute: EntrarRoute,
   EventosRoute: EventosRoute,
   IaRoute: IaRoute,
   MapaRoute: MapaRoute,

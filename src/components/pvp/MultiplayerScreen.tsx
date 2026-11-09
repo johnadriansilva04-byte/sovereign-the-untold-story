@@ -88,8 +88,8 @@ export function MultiplayerScreen() {
 
   if (view.kind === "battle") {
     return (
-      <GameShell full>
-        <div className="mx-auto max-w-6xl px-5 py-6">
+      <GameShell full bare>
+        <div className="flex h-full w-full flex-col">
           <BattleScreen
             presetConfig={view.config}
             modeLabel={`PvP · ${pvpModeById(mode).name}`}
@@ -103,10 +103,10 @@ export function MultiplayerScreen() {
 
   if (view.kind === "result") {
     return (
-      <GameShell>
-        <div className="mx-auto max-w-2xl space-y-5 text-center">
+      <GameShell full>
+        <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-3 overflow-y-auto px-4 text-center">
           <p className="label-mono text-primary">Resultado PvP</p>
-          <h1 className="font-display text-6xl font-black uppercase">
+          <h1 className="font-display text-5xl font-black uppercase leading-none">
             {view.result.outcome === "vitoria"
               ? "Vitória"
               : view.result.outcome === "empate"
@@ -170,7 +170,7 @@ export function MultiplayerScreen() {
   if (view.kind === "stakes") {
     return (
       <GameShell full>
-        <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-5xl flex-col px-4 py-3">
+        <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-4 py-3">
           <div className="border-b border-border pb-2.5">
             <p className="label-mono text-primary">PvP · {modeDef.name} · Risco de cartas</p>
             <h1 className="font-display text-2xl font-black uppercase leading-none">
@@ -241,7 +241,7 @@ export function MultiplayerScreen() {
 
   return (
     <GameShell full>
-      <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-7xl flex-col px-4 py-3">
+      <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-3">
         {/* Cabeçalho compacto — recursos numa linha, sem rolagem */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
           <div>

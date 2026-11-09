@@ -23,18 +23,9 @@ export async function ensureSession(): Promise<{ userId: string | null; error: s
   try {
     const { data } = await sb.auth.getSession();
     if (data.session?.user) return { userId: data.session.user.id, error: null };
-    // login anônimo: jogador começa a jogar sem cadastro.
-    // O Supabase limita a taxa de signups anônimos (429); tentamos algumas vezes
-    // com recuo antes de desistir — o jogo continua offline nesse meio-tempo.
-    let last = "Falha de sessão.";
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data: signIn, error } = await sb.auth.signInAnonymously();
-      if (!error) return { userId: signIn.user?.id ?? null, error: null };
-      last = error.message;
-      if (!/rate limit|429/i.test(error.message)) break;
-      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
-    }
-    return { userId: null, error: last };
+    // Sem conta conectada: o jogo segue 100% local. Nada de login anônimo aqui —
+    // a conta é criada na tela de entrada, de forma explícita.
+    return { userId: null, error: null };
   } catch (e) {
     return { userId: null, error: e instanceof Error ? e.message : "Falha de sessão." };
   }

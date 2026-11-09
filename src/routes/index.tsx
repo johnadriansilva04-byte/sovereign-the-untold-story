@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 import hero from "@/assets/hero-sovereign.jpg";
 import { Footer, pageHead } from "@/components/game/shell";
+import { useProfile } from "@/game/progress/store";
 
 export const Route = createFileRoute("/")({
   head: () =>
@@ -14,14 +15,13 @@ export const Route = createFileRoute("/")({
 
 const menu = [
   { to: "/campanha", label: "Campanha", sub: "50 operações" },
-  { to: "/batalha", label: "Batalha livre", sub: "Teatro tático" },
   { to: "/multiplayer", label: "Multiplayer", sub: "Salas e países" },
   { to: "/colecao", label: "Coleção", sub: "Cartas e baralhos" },
-  { to: "/perfil", label: "Perfil", sub: "Progresso" },
-  { to: "/configuracoes", label: "Configurações", sub: "Áudio, vídeo" },
+  { to: "/perfil", label: "Perfil", sub: "Progresso e conta" },
 ] as const;
 
 function Index() {
+  const { profile } = useProfile();
   return (
     <div className="relative flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden">
       <img
@@ -36,7 +36,9 @@ function Index() {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between px-5 py-4 md:px-16 md:py-10">
         <div className="flex items-center justify-between label-mono">
           <span>SOVEREIGN · motor de batalha</span>
-          <span className="animate-flicker text-primary">● teatro ativo</span>
+          <span className="animate-flicker text-primary">
+            ● {profile.displayName || "Comandante"}
+          </span>
         </div>
 
         <div className="grid min-h-0 items-end gap-6 lg:grid-cols-[1.2fr_1fr] lg:gap-12">

@@ -28,10 +28,12 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
     expect(screen.getByText("Energia")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
+
+    // as leituras táticas ficam no relatório, aberto sob demanda (sem rolagem na tela principal)
+    fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText("Comandante adversário · IA")).toBeInTheDocument();
     expect(screen.getByText("Registro tático")).toBeInTheDocument();
-    expect(screen.getByText("Informações da unidade")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
   });
 
   it("permite selecionar uma carta da mão", () => {
@@ -67,8 +69,10 @@ describe("interface da batalha", () => {
     // jsdom não tem PointerEvent; um MouseEvent com o tipo "pointerdown" carrega clientX/Y.
     fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
 
-    expect(screen.getByText(/Brasil posiciona Fuzileiros/)).toBeInTheDocument();
     // a instrução de posicionamento some após o desdobramento
     expect(screen.queryByText(/Clique na sua zona/)).not.toBeInTheDocument();
+    // o registro tático confirma o desdobramento (fica no relatório, aberto sob demanda)
+    fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
+    expect(screen.getByText(/Brasil posiciona Fuzileiros/)).toBeInTheDocument();
   });
 });
