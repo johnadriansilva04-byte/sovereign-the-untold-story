@@ -74,6 +74,15 @@ export interface WeaponSpec {
   tracer?: boolean; // raio instantâneo (fuzil/automática)
 }
 
+// Uma carta militar representa uma FORÇA, não um único personagem. O tamanho da força
+// cresce com o nível da carta, dentro de limites rígidos de equilíbrio.
+export interface SquadSpec {
+  base: number; // unidades no nível 1
+  perLevel: number; // unidades adicionais por nível acima de 1
+  max: number; // teto de unidades (protege desempenho e equilíbrio)
+  spacing: number; // espaçamento da formação visual (unidades de mundo)
+}
+
 export interface MilitaryCard {
   id: string;
   kind: "militar";
@@ -98,6 +107,8 @@ export interface MilitaryCard {
   ability?: string;
   role: string;
   unlocksTech?: string[]; // ids de tecnologia necessária (ponte com a campanha)
+  // composição da força gerada por esta carta (1 = unidade única, ex.: tanque)
+  squad?: SquadSpec;
 }
 
 export interface SupportCard {
@@ -292,6 +303,18 @@ export interface BattleUnit {
   targetId?: string; // alvo atual (unidade)
   targetStructureId?: string; // alvo atual (estrutura)
   buildTerritoryId?: string; // território onde o engenheiro constrói
+  // esquadrão: todas as unidades de uma mesma carta/ordem compartilham o grupo.
+  groupId: string;
+  // destino explícito definido pelo jogador (clique no mapa). Tem prioridade sobre
+  // o objetivo automático enquanto a força não chega nem encontra combate.
+  goalX?: number;
+  goalY?: number;
+  // estrutura/território que o grupo deve atacar (ordem sobre um alvo do mapa)
+  attackStructureId?: string;
+  attackTerritoryId?: string;
+  // quando true, ao chegar no destino a força assume posição defensiva (segura o
+  // local) em vez de retomar o avanço automático. Ordens do jogador marcam true.
+  holdAtGoal?: boolean;
   aim: number; // ângulo de mira (radianos)
   recoil: number; // recuo visual após disparo
   alive: boolean;
@@ -382,6 +405,11 @@ export interface SideState {
   command: number;
   commandMax: number;
   regen: number; // por segundo
+  // Moeda da partida: renda das bases avançadas + recompensa por combate. Serve de
+  // placar econômico e é convertida em prêmio ao fim da operação.
+  coins: number;
+  // Renda passiva atual (energia/s vinda das bases avançadas), para exibir no HUD.
+  income: number;
   mods?: SideModifiers | undefined; // bônus de acessórios equipados
   cardLevels: Record<string, number>; // nível por carta (1-15)
   deck: DeckState;
@@ -493,6 +521,8 @@ export interface BattleResult {
   kills: Record<Side, number>;
   losses: Record<Side, number>;
   remainingCommand: Record<Side, number>;
+  coins: Record<Side, number>;
+  income: Record<Side, number>;
   pointsHeld: { id: string; name: string; sector: string; owner: Side | "neutro" }[];
 }
 
@@ -504,8 +534,12 @@ export interface DeployAction {
   type: "deploy";
   side: Side;
   cardId: string;
-  x: number;
+  x: number; // destino da ordem (ponto de clique), NÃO ponto de nascimento
   y: number;
+  /** Alvo explícito do clique (unidade/estrutura/território do mapa). */
+  targetUnitId?: string;
+  targetStructureId?: string;
+  targetTerritoryId?: string;
 }
 
 export interface SupportAction {
@@ -524,4 +558,18 @@ export interface OrderAction {
   objectiveId?: string;
 }
 
-export type BattleAction = DeployAction | SupportAction | OrderAction;
+// Reposicionamento de uma força que JÁ está no campo: o jogador seleciona o
+// esquadrão e indica um novo destino/alvo. É o que transforma o jogo em tabuleiro.
+export interface RepositionAction {
+  type: "reposicionar";
+  side: Side;
+  groupId?: string;
+  unitId?: string;
+  x: number;
+  y: number;
+  targetUnitId?: string;
+  targetStructureId?: string;
+  targetTerritoryId?: string;
+}
+
+export type BattleAction = DeployAction | SupportAction | OrderAction | RepositionAction;

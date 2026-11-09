@@ -256,7 +256,7 @@ export function BattleArena({
         <div className="pointer-events-none absolute left-2 top-2 border border-primary bg-background/90 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary">
           {pendingIsGlobal
             ? "Clique em qualquer ponto do teatro"
-            : "Clique na sua zona ou numa base avançada"}
+            : "Clique no objetivo: a força parte da base e avança"}
         </div>
       )}
     </div>

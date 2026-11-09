@@ -69,10 +69,9 @@ describe("motor de batalha", () => {
     expect(state.blue.deck.hand).toHaveLength(4);
   });
 
-  it("recusa desdobramento fora da zona e sem comando suficiente", () => {
+  it("recusa desdobramento sem comando suficiente", () => {
     const state = createBattle(testConfig());
     const cardId = state.blue.deck.hand[0]!.cardId;
-    expect(deploy(state, "blue", cardId, 50, 5)).toBe(false); // zona inimiga
     state.blue.command = 0;
     expect(deploy(state, "blue", cardId, 50, 85)).toBe(false);
   });
@@ -159,10 +158,17 @@ describe("motor de batalha", () => {
     const before = state.blue.units.length;
     const ok = deploy(state, "blue", "inf-fuzileiros", 50, 90);
     expect(ok).toBe(true);
-    expect(state.blue.units.length).toBe(before + 1);
-    const u = state.blue.units[state.blue.units.length - 1]!;
-    const base = militaryById("inf-fuzileiros").hp;
-    expect(u.maxHp).toBeGreaterThan(base);
+    const spawned = state.blue.units.length - before;
+    // a carta é um esquadrão: várias unidades nascem de uma só ordem
+    expect(spawned).toBeGreaterThan(0);
+    // o acessório aumenta a vida de cada unidade em relação à batalha sem modificador
+    const plain = createBattle(testConfig());
+    const plainOk = deploy(plain, "blue", "inf-fuzileiros", 50, 90);
+    expect(plainOk).toBe(true);
+    const plainHp = plain.blue.units[plain.blue.units.length - 1]!.maxHp;
+    for (const u of state.blue.units.slice(before)) {
+      expect(u.maxHp).toBeGreaterThan(plainHp);
+    }
   });
 
   it("dificuldade mais alta deixa a IA mais agressiva (intervalo menor)", () => {

@@ -54,6 +54,8 @@ export const militaryCards: MilitaryCard[] = [
       muzzle: 1.6,
       tracer: true,
     },
+    // A carta representa um PELOTÃO: ~9 soldados no nível 1, teto de 16.
+    squad: { base: 9, perLevel: 0.5, max: 16, spacing: 2.6 },
     role: "Linha de frente barata. Avança, captura e segura posições.",
   },
   {
@@ -81,6 +83,8 @@ export const militaryCards: MilitaryCard[] = [
       muzzle: 1.6,
       tracer: true,
     },
+    // Grupo de assalto: 5 soldados pesados no nível 1, teto de 10.
+    squad: { base: 5, perLevel: 0.34, max: 10, spacing: 3.0 },
     role: "Equipamento pesado e arma automática. Resistente no combate próximo.",
     unlocksTech: ["t3"],
   },
@@ -109,6 +113,8 @@ export const militaryCards: MilitaryCard[] = [
       muzzle: 1.8,
     },
     priority: [BLD],
+    // Equipe antitanque: 3 operadores no nível 1, teto de 6.
+    squad: { base: 3, perLevel: 0.22, max: 6, spacing: 3.4 },
     role: "Foguete portátil guiado. Devastador contra blindados e estruturas.",
   },
   {
@@ -137,6 +143,8 @@ export const militaryCards: MilitaryCard[] = [
       tracer: true,
     },
     builder: true,
+    // Equipe de engenharia: 3 no nível 1, teto de 6 (trabalham juntos na mesma obra).
+    squad: { base: 3, perLevel: 0.2, max: 6, spacing: 2.8 },
     role: "Captura territórios e constrói bases avançadas. Repara estruturas aliadas.",
   },
 
@@ -165,6 +173,8 @@ export const militaryCards: MilitaryCard[] = [
       homing: false,
       muzzle: 2.6,
     },
+    // Bateria de campanha: 1 peça no nível 1, até 3 em níveis altos.
+    squad: { base: 1, perLevel: 0.12, max: 3, spacing: 4.5 },
     role: "Peça de fogo direto. Alcance maior que a infantaria, cadência menor.",
   },
   {
@@ -191,6 +201,8 @@ export const militaryCards: MilitaryCard[] = [
       homing: false,
       muzzle: 3.2,
     },
+    // Bateria pesada: 1 obus no nível 1, até 3.
+    squad: { base: 1, perLevel: 0.12, max: 3, spacing: 5.0 },
     role: "Fogo indireto de longo alcance com grande explosão em área.",
     unlocksTech: ["t4"],
   },
@@ -220,6 +232,7 @@ export const militaryCards: MilitaryCard[] = [
       homing: true,
       muzzle: 3.0,
     },
+    squad: { base: 1, perLevel: 0.1, max: 2, spacing: 5.5 },
     role: "Caminhão lançador. Míssil guiado com trajetória e explosão no impacto.",
     unlocksTech: ["t7"],
   },
@@ -247,6 +260,7 @@ export const militaryCards: MilitaryCard[] = [
       homing: false,
       muzzle: 3.0,
     },
+    squad: { base: 1, perLevel: 0.1, max: 2, spacing: 6.0 },
     role: "Saturação de área: dispara uma salva de foguetes de uma só vez.",
     unlocksTech: ["t7"],
   },
@@ -277,6 +291,8 @@ export const militaryCards: MilitaryCard[] = [
       muzzle: 3.4,
     },
     priority: [BLD, ART],
+    // Seção blindada: 1 carro no nível 1, até 3 (veículos são muito poderosos).
+    squad: { base: 1, perLevel: 0.14, max: 3, spacing: 5.0 },
     role: "Torre giratória e canhão principal. Prioriza alvos estratégicos.",
     unlocksTech: ["t6"],
   },
@@ -306,6 +322,8 @@ export const militaryCards: MilitaryCard[] = [
       tracer: true,
     },
     priority: [INF],
+    // Pelotão mecanizado: 2 VBTP no nível 1, até 4.
+    squad: { base: 2, perLevel: 0.16, max: 4, spacing: 4.4 },
     role: "Blindado leve rápido. Metralhadora contra infantaria e reconhecimento.",
     unlocksTech: ["t2"],
   },
@@ -336,6 +354,8 @@ export const militaryCards: MilitaryCard[] = [
       muzzle: 1.0,
       tracer: true,
     },
+    // Esquadrilha de reconhecimento: 2 drones no nível 1, até 5.
+    squad: { base: 2, perLevel: 0.2, max: 5, spacing: 3.6 },
     role: "Voa sobre obstáculos e revela uma área ampla. Inteligência aérea.",
     unlocksTech: ["t8"],
   },
@@ -364,6 +384,8 @@ export const militaryCards: MilitaryCard[] = [
       muzzle: 1.2,
     },
     priority: [INF, ART],
+    // Esquadrilha de combate: 2 drones no nível 1, até 4.
+    squad: { base: 2, perLevel: 0.16, max: 4, spacing: 3.6 },
     role: "Drone armado. Ataca unidades terrestres e não pode ser tocado por armas de terra.",
     unlocksTech: ["t8"],
   },
@@ -617,6 +639,35 @@ export function cardLevelMultiplier(level: number): number {
   return 1 + 0.05 * (lvl - 1);
 }
 
+// Teto rígido de unidades por esquadrão. Mesmo que uma carta defina um valor maior,
+// o motor nunca passa deste limite — protege o desempenho e o equilíbrio.
+export const SQUAD_HARD_CAP = 20;
+
+/**
+ * Tamanho da força (esquadrão) que uma carta militar gera em um dado nível.
+ * É a ÚNICA fonte de verdade para "quantas unidades esta carta envia": a progressão
+ * de quantidade fica centralizada aqui, nunca espalhada pelo código.
+ */
+export function squadCount(card: MilitaryCard, level: number): number {
+  const spec = card.squad;
+  if (!spec) return 1;
+  const lvl = Math.max(1, Math.min(CARD_MAX_LEVEL, Math.round(level)));
+  const n = spec.base + spec.perLevel * (lvl - 1);
+  return Math.max(1, Math.min(SQUAD_HARD_CAP, Math.min(spec.max, Math.round(n))));
+}
+
+/**
+ * O balanceamento histórico do catálogo foi calibrado assumindo UMA unidade por
+ * carta. Ao transformar a carta em esquadrão, reduzimos os atributos de cada
+ * membro para manter o poder TOTAL controlado: o poder total cresce apenas como
+ * a raiz quarta do tamanho do esquadrão (n^0,25), o que dá aos enxames uma leve
+ * vantagem — compensada por armas de área (artilharia, bombardeiro, drones).
+ */
+export function squadPowerScale(count: number): number {
+  if (count <= 1) return 1;
+  return 1 / Math.pow(count, 0.75);
+}
+
 /** Cópias necessárias para ir do nível n ao n+1 (índice 0 = 1→2). */
 export const LEVEL_UP_COPIES = [2, 4, 6, 10, 15, 20, 30, 40, 55, 70, 90, 110, 140, 175] as const;
 
@@ -772,7 +823,7 @@ const terr = (id: string, name: string, x: number, y: number, radius = 5): Terri
   progress: { blue: 0, red: 0 },
 });
 
-// Bases principais + uma torre defensiva inicial por lado. O azul defende a metade
+// Bases principais + duas torres defensivas por lado. O azul defende a metade
 // sul, o vermelho a metade norte; os territórios neutros ficam entre eles.
 // As demais posições defensivas NÃO nascem construídas: são conquistadas no campo
 // (territórios) e transformadas em bases avançadas pelos engenheiros durante a partida.
@@ -793,17 +844,31 @@ function standardStructures(): StructureSpec[] {
       targets: "ambos",
     },
     {
-      id: "torre-blue",
+      id: "torre-blue-w",
       kind: "torre",
       side: "blue",
-      name: "Torre de Comando",
-      x: 50,
-      y: 74,
-      radius: 5.5,
-      hp: 2200,
-      dmg: 70,
-      range: 20,
-      cooldown: 0.8,
+      name: "Bunker Oeste",
+      x: 34,
+      y: 78,
+      radius: 5,
+      hp: 1700,
+      dmg: 60,
+      range: 18,
+      cooldown: 0.9,
+      targets: "ambos",
+    },
+    {
+      id: "torre-blue-e",
+      kind: "torre",
+      side: "blue",
+      name: "Bunker Leste",
+      x: 66,
+      y: 78,
+      radius: 5,
+      hp: 1700,
+      dmg: 60,
+      range: 18,
+      cooldown: 0.9,
       targets: "ambos",
     },
     {
@@ -821,17 +886,31 @@ function standardStructures(): StructureSpec[] {
       targets: "ambos",
     },
     {
-      id: "torre-red",
+      id: "torre-red-w",
       kind: "torre",
       side: "red",
-      name: "Torre de Comando",
-      x: 50,
-      y: 26,
-      radius: 5.5,
-      hp: 2200,
-      dmg: 70,
-      range: 20,
-      cooldown: 0.8,
+      name: "Bunker Oeste",
+      x: 34,
+      y: 22,
+      radius: 5,
+      hp: 1700,
+      dmg: 60,
+      range: 18,
+      cooldown: 0.9,
+      targets: "ambos",
+    },
+    {
+      id: "torre-red-e",
+      kind: "torre",
+      side: "red",
+      name: "Bunker Leste",
+      x: 66,
+      y: 22,
+      radius: 5,
+      hp: 1700,
+      dmg: 60,
+      range: 18,
+      cooldown: 0.9,
       targets: "ambos",
     },
   ];

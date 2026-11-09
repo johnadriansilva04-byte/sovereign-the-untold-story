@@ -125,14 +125,23 @@ function stepAi(
     const card = cardById(d.cardId);
     const cost = effectiveCost(card, cfg.doctrine);
     if (cfg.command - cost < 0) break;
-    if (deploy(state, side, d.cardId, d.x, d.y)) {
+    const order: {
+      x: number;
+      y: number;
+      targetStructureId?: string;
+      targetTerritoryId?: string;
+    } = { x: d.x, y: d.y };
+    if (d.targetStructureId) order.targetStructureId = d.targetStructureId;
+    if (d.targetTerritoryId) order.targetTerritoryId = d.targetTerritoryId;
+    if (deploy(state, side, d.cardId, d.x, d.y, order)) {
       spent += cost;
       pushAiLog(state, side, d.reason);
     }
   }
   if (spent > 0 && state.t - mem.lastOrderAt > 12) {
     mem.lastOrderAt = state.t;
-    issueOrder(state, side, plan.order);
+    // A IA define a postura geral, mas preserva os destinos que já atribuiu às forças.
+    issueOrder(state, side, plan.order, undefined, undefined, { preserveGoals: true });
   }
 }
 
@@ -141,6 +150,8 @@ interface AiDecision {
   x: number;
   y: number;
   reason: string;
+  targetStructureId?: string;
+  targetTerritoryId?: string;
 }
 
 interface AiPlan {
@@ -542,8 +553,15 @@ function makeDecision(
     return { cardId: card.id, x: pos.x, y: pos.y, reason: reasoning(card, target, read) };
   }
   const m = card as MilitaryCard;
-  const pos = placement(state, side, m, target, read, defensive);
-  return { cardId: card.id, x: pos.x, y: pos.y, reason: reasoning(card, target, read) };
+  const decision = placement(state, side, m, target, read, defensive);
+  return {
+    cardId: card.id,
+    x: decision.x,
+    y: decision.y,
+    reason: reasoning(card, target, read),
+    ...(decision.targetStructureId ? { targetStructureId: decision.targetStructureId } : {}),
+    ...(decision.targetTerritoryId ? { targetTerritoryId: decision.targetTerritoryId } : {}),
+  };
 }
 
 // Território neutro/inimigo mais próximo que ainda não tem base avançada do lado.
@@ -568,7 +586,6 @@ function supportTarget(
   target: ControlPoint,
   defensive: boolean,
 ): { x: number; y: number } {
-  const zone = state.config.arena.deployZone[side];
   const global: SupportAbility[] = [
     "ataque_aereo",
     "fumaca",
@@ -597,10 +614,13 @@ function supportTarget(
     }
     return clampToWorld(cluster ?? target);
   }
+  // Cartas locais: empregadas onde estão as forças próprias (ou sobre o objetivo, na defesa).
   const anchor = defensive ? target : frontCentroid(state, side);
-  return clampToZone(zone, anchor);
+  return clampToWorld(anchor);
 }
 
+// Destino da força: o objetivo militar real no mapa (estrutura inimiga, território
+// a conquistar ou o ponto de controle disputado), com leve flanqueamento.
 function placement(
   state: BattleState,
   side: Side,
@@ -608,47 +628,36 @@ function placement(
   target: ControlPoint,
   read: BattleRead,
   defensive: boolean,
-): { x: number; y: number } {
-  const zone = state.config.arena.deployZone[side];
-  const cx = zone.x + zone.w / 2;
-  const cy = zone.y + zone.h / 2;
-
-  // engenheiros: posicionar na direção do território a conquistar
+): { x: number; y: number; targetStructureId?: string; targetTerritoryId?: string } {
+  // Engenheiros: destino = território a conquistar/construir.
   if (card.builder) {
     const terr = buildTerritory(state, side);
-    const anchor = terr ? { x: terr.x, y: terr.y } : { x: target.x, y: target.y };
-    const dx = anchor.x - cx;
-    const dy = anchor.y - cy;
-    const len = Math.hypot(dx, dy) || 1;
-    const reach = Math.min(zone.w, zone.h) / 2 - 2;
-    return clampToZone(
-      zone,
-      { x: cx + (dx / len) * reach, y: cy + (dy / len) * reach },
-      card.radius,
-    );
+    if (terr) return { x: terr.x, y: terr.y, targetTerritoryId: terr.id };
+    return { x: target.x, y: target.y };
   }
 
-  const threat = read.visible
-    .map((u) => ({ u, d: dist(u.x, u.y, target.x, target.y) }))
-    .filter((x) => x.d <= target.radius + 18)
-    .sort((a, b) => a.d - b.d)[0];
+  // Defesa: mantém posição perto do objetivo ameaçado.
+  if (defensive) return clampToWorld({ x: target.x, y: target.y });
 
-  if (defensive && threat) {
-    const mid = { x: (threat.u.x + target.x) / 2, y: (threat.u.y + target.y) / 2 };
-    return clampToZone(zone, mid, card.radius);
+  // Ofensiva: atacar estrutura inimiga mais próxima do objetivo, se houver.
+  const enemy = other(side);
+  const structures = state.structures
+    .filter((s) => s.alive && s.side === enemy)
+    .sort((a, b) => dist(a.x, a.y, target.x, target.y) - dist(b.x, b.y, target.x, target.y));
+  const struct = structures[0];
+  if (struct) {
+    const flank = card.category === "blindado" ? 4 : card.category === "infantaria" ? 2 : 0;
+    const jitter = (nextRandom(state) - 0.5) * 2;
+    const px = -(struct.y - target.y) || 1;
+    const py = struct.x - target.x || 0;
+    const len = Math.hypot(px, py) || 1;
+    return {
+      x: clamp(struct.x + (px / len) * flank * jitter, 4, 96),
+      y: clamp(struct.y + (py / len) * flank * jitter, 4, 96),
+      targetStructureId: struct.id,
+    };
   }
-
-  const dx = target.x - cx;
-  const dy = target.y - cy;
-  const len = Math.hypot(dx, dy) || 1;
-  const reach = Math.min(zone.w, zone.h) / 2 - 2;
-  const flank = card.category === "blindado" ? 0.35 : card.category === "infantaria" ? 0.15 : 0;
-  const px = -dy / len;
-  const py = dx / len;
-  const jitter = (nextRandom(state) - 0.5) * 2;
-  const x = cx + (dx / len) * reach + px * flank * reach * jitter;
-  const y = cy + (dy / len) * reach + py * flank * reach * jitter;
-  return clampToZone(zone, { x, y }, card.radius);
+  return clampToWorld({ x: target.x, y: target.y });
 }
 
 function frontCentroid(state: BattleState, side: Side): { x: number; y: number } {

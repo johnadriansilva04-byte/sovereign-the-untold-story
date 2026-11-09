@@ -2,7 +2,7 @@
 //
 // Regras gerais:
 //  * Energia regenera continuamente; unidades agem sozinhas conforme a ordem geral.
-//  * Duas bases principais + UMA torre inicial por lado ficam fixas no campo.
+//  * Duas bases principais + DUAS torres defensivas por lado ficam fixas no campo.
 //  * Pontos de controle e territórios são disputados por presença de unidades.
 //  * Territórios conquistados permitem que engenheiros construam bases avançadas,
 //    que passam a operar como novas posições defensivas e de lançamento.
@@ -12,7 +12,15 @@
 //
 // O motor não conhece React nem rede — é testável de forma isolada.
 
-import { cardById, cardLevelMultiplier, doctrines, militaryById, startingDeck } from "./catalog";
+import {
+  cardById,
+  cardLevelMultiplier,
+  doctrines,
+  militaryById,
+  squadCount,
+  squadPowerScale,
+  startingDeck,
+} from "./catalog";
 import type {
   Arena,
   BattleAction,
@@ -50,6 +58,9 @@ const BUILD_TIME = 10; // segundos para erguer uma base avançada
 const HEAL_PER_PULSE = 14; // vida curada por pulso do Posto de Socorro
 const FORT_COVER = 0.25; // cobertura concedida por fortificação a aliados próximos
 const FORT_COVER_RADIUS = 10; // raio da cobertura concedida
+const BASE_INCOME = 0.14; // energia/s gerada por cada base avançada operacional
+const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
+const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
 
 export const other = (s: Side): Side => (s === "blue" ? "red" : "blue");
 
@@ -147,6 +158,8 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
     command: side === "blue" ? 7 : 7,
     commandMax: cfg.commandMax,
     regen: cfg.regen * (1 + cfg.economyBonus),
+    coins: 0,
+    income: 0,
     mods: cfg.mods,
     cardLevels: cfg.cardLevels ?? {},
     deck: { hand, queue, cycle: 0 },
@@ -175,8 +188,12 @@ export function cardCostFor(state: BattleState, side: Side, cardId: string): num
 }
 
 // ---------------------------------------------------------------------------
-// Zonas de desdobramento (território controlado + bases avançadas conquistadas)
+// Área de operações (SEM zona azul de posicionamento)
 // ---------------------------------------------------------------------------
+//
+// Não existe mais "zona de desdobramento": o mapa inteiro recebe ORDENS. O clique
+// no campo define o DESTINO da força, que sempre nasce na Base Principal (ou numa
+// base avançada aliada próxima do destino) e caminha fisicamente até lá.
 
 function insideRect(
   z: { x: number; y: number; w: number; h: number },
@@ -186,8 +203,8 @@ function insideRect(
   return x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h;
 }
 
-// Uma posição é válida para desdobramento se está na zona inicial do lado ou
-// dentro do raio de uma base avançada operacional já pertencente ao lado.
+// Mantida apenas para compatibilidade de leitura (missões/testes antigos): uma
+// coordenada está "na área inicial" do lado se cair na metade de campo dele.
 export function insideDeployZone(state: BattleState, side: Side, x: number, y: number): boolean {
   const z = state.config.arena.deployZone[side];
   if (insideRect(z, x, y)) return true;
@@ -199,8 +216,18 @@ export function insideDeployZone(state: BattleState, side: Side, x: number, y: n
 }
 
 // ---------------------------------------------------------------------------
-// Deploy
+// Ordem de força: a carta nasce na base e caminha até o destino clicado
 // ---------------------------------------------------------------------------
+
+export interface DeployOrder {
+  /** Ponto clicado no mapa (destino da força). */
+  x: number;
+  y: number;
+  /** Alvo explícito do clique, quando o jogador clicou sobre algo do mapa. */
+  targetUnitId?: string | undefined;
+  targetStructureId?: string | undefined;
+  targetTerritoryId?: string | undefined;
+}
 
 export function deploy(
   state: BattleState,
@@ -208,6 +235,7 @@ export function deploy(
   cardId: string,
   x: number,
   y: number,
+  order: DeployOrder = { x, y },
 ): boolean {
   const cfg = side === "blue" ? state.blue : state.red;
   const card = cardById(cardId);
@@ -215,17 +243,20 @@ export function deploy(
   if (cfg.command < cost) return false;
   const inHand = cfg.deck.hand.find((h) => h.cardId === cardId);
   if (!inHand) return false;
-  const needsOwnZone =
-    card.kind === "militar" || !GLOBAL_SUPPORT.includes((card as SupportCard).ability);
-  if (needsOwnZone && !insideDeployZone(state, side, x, y)) return false;
-  if (card.kind === "militar" && advancedBaseAt(state, x, y, card.radius)) return false;
 
   if (card.kind === "militar") {
-    const u = spawnUnit(state, side, card.id, x, y);
-    cfg.units.push(u);
+    const force = deployForce(state, side, card.id, order);
+    if (force === 0) return false;
     cfg.command -= cost;
     advanceDeck(cfg, cardId);
-    pushLog(state, side, "deploy", `${cfg.countryName} posiciona ${card.name}.`);
+    pushLog(
+      state,
+      side,
+      "deploy",
+      force > 1
+        ? `${cfg.countryName} envia ${card.name} (${force} unidades) para o setor ${Math.round(order.x)},${Math.round(order.y)}.`
+        : `${cfg.countryName} envia ${card.name} para o setor ${Math.round(order.x)},${Math.round(order.y)}.`,
+    );
     return true;
   }
   if (!applySupport(state, side, card as SupportCard, x, y)) return false;
@@ -233,6 +264,80 @@ export function deploy(
   advanceDeck(cfg, cardId);
   pushLog(state, side, "apoio", `${cfg.countryName} emprega ${card.name}.`);
   return true;
+}
+
+// Ponto de origem da força: a base principal do lado (ou a base avançada aliada
+// operacional mais próxima do destino — a expansão cria novas posições de lançamento).
+export function originFor(
+  state: BattleState,
+  side: Side,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  const base = state.structures.find(
+    (s) => s.alive && s.side === side && s.kind === "base-principal",
+  );
+  let best: { x: number; y: number; d: number } | null = null;
+  for (const s of state.structures) {
+    if (!s.alive || s.side !== side || s.kind !== "base-avancada" || s.underConstruction) continue;
+    const d = dist(s.x, s.y, x, y);
+    if (!best || d < best.d) best = { x: s.x, y: s.y, d };
+  }
+  const basePoint = base ? { x: base.x, y: base.y } : { x: 50, y: side === "blue" ? 92 : 8 };
+  if (best && best.d < dist(basePoint.x, basePoint.y, x, y)) {
+    return { x: best.x, y: best.y };
+  }
+  return basePoint;
+}
+
+// Gera a força da carta em formação, na origem, com a ordem de destino. Devolve o
+// número de unidades efetivamente criadas (0 = carta sem efeito).
+function deployForce(state: BattleState, side: Side, cardId: string, order: DeployOrder): number {
+  const card = militaryById(cardId);
+  const cfg = side === "blue" ? state.blue : state.red;
+  const level = cfg.cardLevels?.[cardId] ?? 1;
+  const count = squadCount(card, level);
+  const spacing = card.squad?.spacing ?? 2.4;
+  const origin = originFor(state, side, order.x, order.y);
+  const groupId = `g${state.nextId++}`;
+
+  const offsets = formationOffsets(count, spacing);
+  for (let i = 0; i < count; i++) {
+    const off = offsets[i]!;
+    const u = spawnUnit(
+      state,
+      side,
+      cardId,
+      clamp(origin.x + off.dx, 1, 99),
+      clamp(origin.y + off.dy, 1, 99),
+    );
+    u.groupId = groupId;
+    u.goalX = clamp(order.x, 1, 99);
+    u.goalY = clamp(order.y, 1, 99);
+    u.holdAtGoal = true;
+    if (order.targetUnitId) u.targetId = order.targetUnitId;
+    if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
+    if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
+    u.order = "avancar";
+    cfg.units.push(u);
+  }
+  return count;
+}
+
+// Formação visual: linha de frente com fileiras, para o jogador identificar o
+// pelotão/coluna/esquadrilha como um conjunto e não como um pixel empilhado.
+function formationOffsets(count: number, spacing: number): { dx: number; dy: number }[] {
+  const out: { dx: number; dy: number }[] = [];
+  const perRow = Math.min(count, Math.max(2, Math.ceil(Math.sqrt(count))));
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / perRow);
+    const col = i % perRow;
+    const rowCount = Math.min(perRow, count - row * perRow);
+    const dx = (col - (rowCount - 1) / 2) * spacing;
+    const dy = row * spacing * 0.85;
+    out.push({ dx, dy });
+  }
+  return out;
 }
 
 // Habilidades de área podem ser lançadas sobre qualquer ponto do teatro.
@@ -263,7 +368,7 @@ function spawnUnit(
   cardId: string,
   x: number,
   y: number,
-  name?: string,
+  opts: { name?: string; groupId?: string; powerScale?: number } = {},
 ): BattleUnit {
   const card = militaryById(cardId);
   const cfg = side === "blue" ? state.blue : state.red;
@@ -271,24 +376,29 @@ function spawnUnit(
   const sideMods = cfg.mods;
   const level = cfg.cardLevels?.[cardId] ?? 1;
   const levelMult = cardLevelMultiplier(level);
+  // Escala de esquadrão: cada membro fica mais fraco que a unidade "carta única"
+  // histórica, de modo que a força total permaneça equilibrada.
+  const squadScale = opts.powerScale ?? squadPowerScale(squadCount(card, level));
   const hpMult =
     (mod?.hpMultiplier[card.category as UnitCategory] ?? 1) *
     (1 + (sideMods?.hp?.[card.category] ?? 0)) *
-    levelMult;
+    levelMult *
+    squadScale;
   const dmgMult =
     (mod?.dmgMultiplier[card.category as UnitCategory] ?? 1) *
     (1 + (sideMods?.dmg?.[card.category] ?? 0)) *
-    levelMult;
+    levelMult *
+    squadScale;
   const speedMult =
     (mod?.speedMultiplier[card.category as UnitCategory] ?? 1) *
     (1 + (sideMods?.speed?.[card.category] ?? 0));
-  const maxHp = Math.round(card.hp * hpMult);
+  const maxHp = Math.max(1, Math.round(card.hp * hpMult));
   cfg.deployed += 1;
   return {
     id: `u${state.nextId++}`,
     side,
     cardId,
-    name: name ?? card.name,
+    name: opts.name ?? card.name,
     short: card.short,
     category: card.category,
     model: card.model,
@@ -307,6 +417,7 @@ function spawnUnit(
     targets: card.targets,
     domain: card.domain,
     order: "avancar",
+    groupId: opts.groupId ?? `g${state.nextId}`,
     aim: side === "blue" ? -Math.PI / 2 : Math.PI / 2,
     recoil: 0,
     alive: true,
@@ -323,6 +434,51 @@ function spawnUnit(
 // ---------------------------------------------------------------------------
 // Cartas de apoio
 // ---------------------------------------------------------------------------
+
+// Seleciona as unidades de um lado afetadas por uma ordem de movimento: um grupo
+// (esquadrão) ou uma unidade avulsa. Sem alvo, devolve todas as unidades vivas.
+function unitsForSelection(
+  state: BattleState,
+  side: Side,
+  sel: { groupId?: string; unitId?: string },
+): BattleUnit[] {
+  const cfg = side === "blue" ? state.blue : state.red;
+  if (sel.groupId) return cfg.units.filter((u) => u.alive && u.groupId === sel.groupId);
+  if (sel.unitId) return cfg.units.filter((u) => u.alive && u.id === sel.unitId);
+  return cfg.units.filter((u) => u.alive);
+}
+
+// Reposiciona uma força existente para um novo destino/alvo no mapa.
+export function reposition(
+  state: BattleState,
+  side: Side,
+  sel: { groupId?: string; unitId?: string },
+  order: DeployOrder,
+): boolean {
+  const targets = unitsForSelection(state, side, sel);
+  if (targets.length === 0) return false;
+  for (const u of targets) {
+    u.goalX = clamp(order.x, 1, 99);
+    u.goalY = clamp(order.y, 1, 99);
+    delete u.attackStructureId;
+    delete u.attackTerritoryId;
+    delete u.targetId;
+    if (order.targetUnitId) u.targetId = order.targetUnitId;
+    if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
+    if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
+    u.order = "avancar";
+    u.holdAtGoal = true;
+    if (u.builder) delete u.buildTerritoryId;
+  }
+  const cfg = side === "blue" ? state.blue : state.red;
+  pushLog(
+    state,
+    side,
+    "ordem",
+    `${cfg.countryName} reposiciona ${targets.length} unidade(s) para ${Math.round(order.x)},${Math.round(order.y)}.`,
+  );
+  return true;
+}
 
 function applySupport(
   state: BattleState,
@@ -365,17 +521,14 @@ function applySupport(
     }
     case "reforcos": {
       const count = card.magnitude ?? 2;
+      const groupId = `g${state.nextId++}`;
       for (let i = 0; i < count; i++) {
         const off = i * 4 - (count - 1) * 2;
         cfg.units.push(
-          spawnUnit(
-            state,
-            side,
-            "inf-fuzileiros",
-            clamp(x + off, 2, 98),
-            clamp(y + 2, 2, 98),
-            "Pelotão de Reforço",
-          ),
+          spawnUnit(state, side, "inf-fuzileiros", clamp(x + off, 2, 98), clamp(y + 2, 2, 98), {
+            name: "Pelotão de Reforço",
+            groupId,
+          }),
         );
       }
       return true;
@@ -490,11 +643,15 @@ function applySupport(
       const count = card.magnitude ?? 2;
       const r = card.radius ?? 5;
       addEffect(state, "build", x, y, r, { side });
+      const groupId = `g${state.nextId++}`;
       for (let i = 0; i < count; i++) {
         const off = i * 4 - (count - 1) * 2;
         const px = clamp(x + off, 2, 98);
         const py = clamp(y + 1, 2, 98);
-        const u = spawnUnit(state, side, "inf-fuzileiros", px, py, "Pelotão Paraquedista");
+        const u = spawnUnit(state, side, "inf-fuzileiros", px, py, {
+          name: "Pelotão Paraquedista",
+          groupId,
+        });
         u.model = "paraquedista";
         cfg.units.push(u);
       }
@@ -564,6 +721,7 @@ export function issueOrder(
   order: Order,
   unitId?: string,
   objectiveId?: string,
+  opts: { preserveGoals?: boolean } = {},
 ): boolean {
   const cfg = side === "blue" ? state.blue : state.red;
   const targets = unitId
@@ -574,6 +732,13 @@ export function issueOrder(
     u.order = order;
     if (objectiveId) u.objectiveId = objectiveId;
     else delete u.objectiveId;
+    if (opts.preserveGoals) continue;
+    // Uma ordem explícita do jogador cancela o destino anterior: ele assumiu o controle.
+    delete u.goalX;
+    delete u.goalY;
+    delete u.attackStructureId;
+    delete u.attackTerritoryId;
+    if (u.builder && order !== "manter") delete u.buildTerritoryId;
   }
   const label = {
     avancar: "Avançar",
@@ -598,8 +763,9 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   const factor = pressao ? 2 : 1;
   for (const side of ["blue", "red"] as Side[]) {
     const cfg = side === "blue" ? state.blue : state.red;
-    cfg.command = Math.min(cfg.commandMax, cfg.command + cfg.regen * factor * dt);
+    cfg.command = Math.min(cfg.commandMax, cfg.command + (cfg.regen + cfg.income) * factor * dt);
   }
+  updateEconomy(state, dt);
 
   updateZones(state, dt);
   for (const side of ["blue", "red"] as Side[]) {
@@ -618,6 +784,20 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   updateScore(state);
   checkVictory(state, dt);
   return state;
+}
+
+// Economia da partida: cada base avançada operacional gera renda (energia/s) e
+// moeda. Destruir bases inimigas corta a renda do adversário — a expansão paga.
+function updateEconomy(state: BattleState, dt: number): void {
+  for (const side of ["blue", "red"] as Side[]) {
+    const cfg = side === "blue" ? state.blue : state.red;
+    let bases = 0;
+    for (const s of state.structures) {
+      if (s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction) bases++;
+    }
+    cfg.income = bases * BASE_INCOME;
+    cfg.coins += cfg.income * dt;
+  }
 }
 
 function updateZones(state: BattleState, dt: number): void {
@@ -664,6 +844,10 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   const obstacle = obstacleAt(state.config.arena, u.x, u.y);
   const slow = u.domain === "aereo" ? 1 : (obstacle?.slow ?? 1);
 
+  // Descarta alvos explícitos que já morreram — a força nunca fica travada
+  // perseguindo algo que não existe mais.
+  clearDeadOrders(state, u);
+
   const target = selectTarget(state, u);
   u.engaged = false;
   if (target && u.jammed <= 0 && canShoot(u)) {
@@ -681,17 +865,82 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   delete u.targetId;
   delete u.targetStructureId;
 
-  const goal = goalFor(state, u);
+  const goal = objectiveFor(state, u);
   if (goal) {
     u.aim = Math.atan2(goal.y - u.y, goal.x - u.x);
     moveToward(state, u, goal.x, goal.y, dt, slow);
+    // Ao chegar no destino da ordem, a força assume posição defensiva no local.
+    if (u.goalX !== undefined && dist(u.x, u.y, u.goalX, u.goalY ?? 0) <= GOAL_ARRIVAL) {
+      delete u.goalX;
+      delete u.goalY;
+      if (u.holdAtGoal) u.order = "manter";
+    }
   }
 }
 
-// Engenheiro: caminha até um território conquistado sem base e ergue a instalação.
-// Retorna true quando consumiu o passo da unidade (construção em andamento).
+// Remove ordens cujo alvo explícito já foi destruído, para a força voltar ao
+// comportamento natural (avançar/defender) em vez de perseguir um alvo morto.
+function clearDeadOrders(state: BattleState, u: BattleUnit): void {
+  if (u.targetId) {
+    const t = findUnit(state, u.targetId);
+    if (!t || !t.alive) delete u.targetId;
+  }
+  if (u.attackStructureId) {
+    const s = state.structures.find((x) => x.id === u.attackStructureId);
+    if (!s || !s.alive) delete u.attackStructureId;
+  }
+  if (u.attackTerritoryId) {
+    const t = state.territories.find((x) => x.id === u.attackTerritoryId);
+    if (!t) delete u.attackTerritoryId;
+  }
+}
+
+// Ponto para onde a unidade deve marchar quando não há alvo ao alcance:
+// estrutura atacada > unidade perseguida > destino clicado > objetivo da ordem.
+function objectiveFor(state: BattleState, u: BattleUnit): { x: number; y: number } | null {
+  if (u.attackStructureId) {
+    const s = state.structures.find((x) => x.id === u.attackStructureId);
+    if (s && s.alive) return { x: s.x, y: s.y };
+  }
+  if (u.attackTerritoryId) {
+    const t = state.territories.find((x) => x.id === u.attackTerritoryId);
+    if (t) return { x: t.x, y: t.y };
+  }
+  if (u.targetId) {
+    const e = findUnit(state, u.targetId);
+    if (e && e.alive) return { x: e.x, y: e.y };
+  }
+  if (u.goalX !== undefined && u.goalY !== undefined) {
+    return { x: u.goalX, y: u.goalY };
+  }
+  return goalFor(state, u);
+}
+
+// Engenheiro: repara estruturas aliadas danificadas e, quando não há reparo a
+// fazer, procura um território conquistado sem base e ergue a instalação. Nunca
+// fica parado: construir → reparar → expandir → repetir enquanto estiver vivo.
+// Retorna true quando consumiu o passo da unidade (trabalho ou deslocamento).
 function updateBuilder(state: BattleState, u: BattleUnit, dt: number): boolean {
-  const damaged = state.structures.find(
+  // 0. Ordem explícita de reparo: o jogador clicou numa estrutura aliada danificada.
+  if (u.attackStructureId) {
+    const ordered = state.structures.find((x) => x.id === u.attackStructureId);
+    if (ordered && ordered.alive && ordered.side === u.side) {
+      if (dist(u.x, u.y, ordered.x, ordered.y) > u.range + ordered.radius) {
+        u.aim = Math.atan2(ordered.y - u.y, ordered.x - u.x);
+        moveToward(state, u, ordered.x, ordered.y, dt, 1);
+        return true;
+      }
+      if (ordered.hp < ordered.maxHp) {
+        ordered.hp = Math.min(ordered.maxHp, ordered.hp + 26 * dt);
+        addEffect(state, "build", ordered.x, ordered.y, ordered.radius * 0.8, { side: u.side });
+        return true;
+      }
+      delete u.attackStructureId;
+    }
+  }
+
+  // 1. Reparo imediato quando há estrutura aliada danificada ao alcance.
+  const adjacent = state.structures.find(
     (s) =>
       s.alive &&
       !s.underConstruction &&
@@ -699,10 +948,20 @@ function updateBuilder(state: BattleState, u: BattleUnit, dt: number): boolean {
       s.hp < s.maxHp &&
       dist(s.x, s.y, u.x, u.y) <= u.range + s.radius,
   );
-  if (damaged) {
-    damaged.hp = Math.min(damaged.maxHp, damaged.hp + 18 * dt);
-    addEffect(state, "build", damaged.x, damaged.y, damaged.radius * 0.8, { side: u.side });
+  if (adjacent) {
+    adjacent.hp = Math.min(adjacent.maxHp, adjacent.hp + 18 * dt);
+    addEffect(state, "build", adjacent.x, adjacent.y, adjacent.radius * 0.8, { side: u.side });
     return true;
+  }
+
+  // 2. Ocioso: caminha até uma base aliada danificada próxima para repará-la.
+  if (!u.buildTerritoryId) {
+    const hurt = nearestDamagedAlly(state, u, 34);
+    if (hurt && dist(u.x, u.y, hurt.x, hurt.y) > u.range + hurt.radius) {
+      u.aim = Math.atan2(hurt.y - u.y, hurt.x - u.x);
+      moveToward(state, u, hurt.x, hurt.y, dt, 1);
+      return true;
+    }
   }
 
   const site = buildSite(state, u);
@@ -752,17 +1011,40 @@ function updateBuilder(state: BattleState, u: BattleUnit, dt: number): boolean {
   return true;
 }
 
+function nearestDamagedAlly(state: BattleState, u: BattleUnit, search: number): Structure | null {
+  let best: { s: Structure; d: number } | null = null;
+  for (const s of state.structures) {
+    if (!s.alive || s.underConstruction || s.side !== u.side || s.hp >= s.maxHp) continue;
+    const d = dist(u.x, u.y, s.x, s.y);
+    if (d > search) continue;
+    if (!best || d < best.d) best = { s, d };
+  }
+  return best?.s ?? null;
+}
+
 function buildSite(state: BattleState, u: BattleUnit): Territory | null {
-  const candidates = state.territories.filter((t) => {
-    if (t.owner !== u.side) return false;
-    // um território já com base CONCLUÍDA não precisa de nova obra; uma base em
-    // construção continua sendo o alvo do engenheiro até ficar pronta.
-    if (state.structures.some((s) => s.alive && s.territoryId === t.id && !s.underConstruction))
-      return false;
-    return true;
-  });
+  // Ordem explícita do jogador tem prioridade: construir/segurar aquele território.
+  if (u.attackTerritoryId) {
+    const forced = state.territories.find((t) => t.id === u.attackTerritoryId);
+    if (forced && forced.owner === u.side && canBuildAt(state, u.side, forced)) return forced;
+  }
+  const candidates = state.territories.filter(
+    (t) => t.owner === u.side && canBuildAt(state, u.side, t),
+  );
   if (candidates.length === 0) return null;
   return candidates.sort((a, b) => dist(u.x, u.y, a.x, a.y) - dist(u.x, u.y, b.x, b.y))[0]!;
+}
+
+// Um território aceita obra se ainda não tem base concluída nem outra base aliada
+// operacional por perto (distância mínima entre bases). Uma base ainda EM OBRA no
+// próprio território libera o engenheiro para continuar a construção.
+function canBuildAt(state: BattleState, side: Side, t: Territory): boolean {
+  for (const s of state.structures) {
+    if (!s.alive || s.side !== side) continue;
+    if (s.territoryId === t.id) return s.underConstruction;
+    if (s.kind === "base-avancada" && dist(s.x, s.y, t.x, t.y) < MIN_TERRITORY_GAP) return false;
+  }
+  return true;
 }
 
 // Posto de Socorro: não combate; cura infantaria aliada ferida num pulso por cadência.
@@ -864,6 +1146,9 @@ function selectTarget(state: BattleState, u: BattleUnit): TargetRef | null {
   const score = (t: TargetRef): number => {
     const d = dist(u.x, u.y, t.x, t.y);
     let s = -d;
+    // Alvo ordenado pelo jogador tem prioridade absoluta sobre a escolha automática.
+    if (t.id === u.attackStructureId || t.id === u.attackTerritoryId || t.id === u.targetId)
+      s += 1000;
     if (t.kind === "unit" && t.category && priority.includes(t.category)) s += 40;
     if (t.kind === "structure") s += 6;
     return s;
@@ -1144,8 +1429,24 @@ function damageUnit(
     const victimCfg = target.side === "blue" ? state.blue : state.red;
     killerCfg.kills += 1;
     victimCfg.losses += 1;
+    // Recompensa por combate: proporcional ao valor do alvo. Eliminar um veículo
+    // pesado paga mais que eliminar um soldado.
+    const reward = rewardForKill(target);
+    killerCfg.command = Math.min(killerCfg.commandMax, killerCfg.command + reward.command);
+    killerCfg.coins += reward.coins;
     pushLog(state, killerSide, "baixa", `${victimCfg.countryName} perde ${target.name}.`);
   }
+}
+
+// Recompensa econômica por abate, derivada do custo da carta do alvo.
+function rewardForKill(target: BattleUnit): { command: number; coins: number } {
+  let cost = 3;
+  try {
+    cost = cardById(target.cardId).cost;
+  } catch {
+    /* alvos de habilidade sem carta: usa custo mínimo */
+  }
+  return { command: cost * 0.3, coins: cost * 0.5 };
 }
 
 // Cobertura concedida pela Fortificação de Campanha aliada próxima (não se aplica a alvos aéreos).
@@ -1175,6 +1476,12 @@ function damageStructure(
     const killerCfg = killerSide === "blue" ? state.blue : state.red;
     const victimCfg = target.side === "blue" ? state.blue : state.red;
     killerCfg.structuresDestroyed += 1;
+    // Destruir uma base avançada paga em moeda; derrubar a base principal encerra o jogo.
+    if (target.kind === "base-avancada") {
+      killerCfg.coins += 80;
+    } else if (target.kind === "torre") {
+      killerCfg.coins += 120;
+    }
     pushLog(state, killerSide, "destruicao", `${victimCfg.countryName} perde ${target.name}.`);
     if (target.kind === "base-principal") {
       finish(
@@ -1550,19 +1857,6 @@ function obstacleAt(arena: Arena, x: number, y: number): Obstacle | null {
   return null;
 }
 
-function advancedBaseAt(
-  state: BattleState,
-  x: number,
-  y: number,
-  radius: number,
-): Structure | null {
-  for (const s of state.structures) {
-    if (!s.alive || s.kind !== "base-avancada") continue;
-    if (dist(x, y, s.x, s.y) <= s.radius + radius) return s;
-  }
-  return null;
-}
-
 function findUnit(state: BattleState, id: string): BattleUnit | undefined {
   return state.blue.units.find((u) => u.id === id) ?? state.red.units.find((u) => u.id === id);
 }
@@ -1593,8 +1887,25 @@ export interface ActionResult {
 export function applyAction(state: BattleState, action: BattleAction): ActionResult {
   if (!state.running) return { ok: false, error: "A partida terminou." };
   if (action.type === "deploy" || action.type === "apoio") {
-    const ok = deploy(state, action.side, action.cardId, action.x, action.y);
-    return ok ? { ok: true } : { ok: false, error: "Energia insuficiente ou posição inválida." };
+    const order: DeployOrder = { x: action.x, y: action.y };
+    if (action.type === "deploy") {
+      if (action.targetUnitId) order.targetUnitId = action.targetUnitId;
+      if (action.targetStructureId) order.targetStructureId = action.targetStructureId;
+      if (action.targetTerritoryId) order.targetTerritoryId = action.targetTerritoryId;
+    }
+    const ok = deploy(state, action.side, action.cardId, action.x, action.y, order);
+    return ok ? { ok: true } : { ok: false, error: "Energia insuficiente." };
+  }
+  if (action.type === "reposicionar") {
+    const order: DeployOrder = { x: action.x, y: action.y };
+    if (action.targetUnitId) order.targetUnitId = action.targetUnitId;
+    if (action.targetStructureId) order.targetStructureId = action.targetStructureId;
+    if (action.targetTerritoryId) order.targetTerritoryId = action.targetTerritoryId;
+    const sel: { groupId?: string; unitId?: string } = {};
+    if (action.groupId) sel.groupId = action.groupId;
+    if (action.unitId) sel.unitId = action.unitId;
+    const ok = reposition(state, action.side, sel, order);
+    return ok ? { ok: true } : { ok: false, error: "Nenhuma força selecionada." };
   }
   const ok = issueOrder(state, action.side, action.order, action.unitId, action.objectiveId);
   return ok ? { ok: true } : { ok: false, error: "Nenhuma unidade para receber a ordem." };
@@ -1633,6 +1944,8 @@ export function computeResult(state: BattleState): BattleResult {
     kills: { blue: state.blue.kills, red: state.red.kills },
     losses: { blue: state.blue.losses, red: state.red.losses },
     remainingCommand: { blue: state.blue.command, red: state.red.command },
+    coins: { blue: state.blue.coins, red: state.red.coins },
+    income: { blue: state.blue.income, red: state.red.income },
     pointsHeld: points,
   };
 }

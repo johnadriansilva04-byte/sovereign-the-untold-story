@@ -4,7 +4,14 @@ import { aiTick, aiTickSide, configureAi, defaultAiWeights } from "@/game/battle
 import { cardById, commanders, militaryById, startingDeck } from "@/game/battle/catalog";
 import { createBattle, deploy, dist, insideDeployZone, stepBattle } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
-import type { BattleConfig, BattleState, Side, Structure, Territory } from "@/game/battle/types";
+import type {
+  BattleConfig,
+  BattleState,
+  BattleUnit,
+  Side,
+  Structure,
+  Territory,
+} from "@/game/battle/types";
 
 function testConfig(overrides: Partial<BattleConfig> = {}): BattleConfig {
   const base = buildBattleConfig({
@@ -23,18 +30,29 @@ function advance(state: BattleState, seconds: number, dt = 0.1): void {
   for (let i = 0; i < steps && state.running; i++) stepBattle(state, dt);
 }
 
-// Coloca uma unidade no tabuleiro numa coordenada arbitrária, contornando a zona de
-// desdobramento. O motor continua dono da unidade — usamos isto só para montar cenários.
+// Conveniência para os testes de mecânica: desdobra a carta e mantém APENAS UM
+// membro da força na coordenada pedida (as demais cartas/esquadrões são testados
+// em casos próprios). O motor continua dono da unidade.
 function place(state: BattleState, side: Side, cardId: string, x: number, y: number) {
   const cfg = side === "blue" ? state.blue : state.red;
   cfg.command = 999;
   cfg.deck.hand[0] = { cardId, ready: true };
   const z = state.config.arena.deployZone[side];
+  const before = cfg.units.length;
   const ok = deploy(state, side, cardId, z.x + z.w / 2, z.y + z.h / 2);
   if (!ok) throw new Error(`falha ao desdobrar ${cardId}`);
-  const unit = cfg.units[cfg.units.length - 1]!;
-  unit.x = x;
-  unit.y = y;
+  const spawned = cfg.units.slice(before);
+  const unit = spawned[0]!;
+  for (const u of spawned) {
+    u.x = x;
+    u.y = y;
+    delete u.goalX;
+    delete u.goalY;
+    u.holdAtGoal = false;
+  }
+  // remove os demais membros para isolar a unidade sob teste
+  for (const u of spawned.slice(1)) u.alive = false;
+  cfg.units = cfg.units.filter((u) => u.alive);
   return unit;
 }
 
@@ -42,20 +60,30 @@ function baseOf(state: BattleState, side: Side): Structure {
   return state.structures.find((s) => s.kind === "base-principal" && s.side === side)!;
 }
 
+// Mantém uma unidade artificialmente viva (vida cheia e de volta ao tabuleiro).
+// Usado apenas em testes de mecânica que precisam de um atacante sobrevivente para
+// isolar o alvo sob verificação (ex.: uma base levando dano até a destruição).
+function keepAlive(state: BattleState, side: Side, unit: BattleUnit): void {
+  const cfg = side === "blue" ? state.blue : state.red;
+  unit.alive = true;
+  unit.hp = unit.maxHp;
+  if (!cfg.units.includes(unit)) cfg.units.push(unit);
+}
+
 function territory(state: BattleState, id: string): Territory {
   return state.territories.find((t) => t.id === id)!;
 }
 
 describe("motor de batalha — bases, torres e vitória", () => {
-  // 1. As duas bases principais aparecem corretamente, cada lado com UMA torre inicial.
-  it("1. cria as duas bases principais e uma torre defensiva inicial por lado", () => {
+  // 1. As duas bases principais aparecem corretamente, cada lado com DUAS torres defensivas.
+  it("1. cria as duas bases principais e duas torres defensivas por lado", () => {
     const state = createBattle(testConfig());
     const bases = state.structures.filter((s) => s.kind === "base-principal");
     expect(bases).toHaveLength(2);
     expect(bases.find((b) => b.side === "blue")!.y).toBeGreaterThan(50);
     expect(bases.find((b) => b.side === "red")!.y).toBeLessThan(50);
     for (const side of ["blue", "red"] as const) {
-      expect(state.structures.filter((s) => s.side === side && s.kind === "torre")).toHaveLength(1);
+      expect(state.structures.filter((s) => s.side === side && s.kind === "torre")).toHaveLength(2);
     }
     // As demais posições defensivas não nascem prontas: são construídas na partida.
     expect(state.structures.filter((s) => s.kind === "base-avancada")).toHaveLength(0);
@@ -73,13 +101,13 @@ describe("motor de batalha — bases, torres e vitória", () => {
 
   // 17/18. Destruição da base principal adversária = vitória imediata.
   it("17/18. destruir a base principal adversária encerra a partida em vitória", () => {
-    const state = createBattle(testConfig());
+    const state = createBattle(testConfig({ duration: 1800 }));
     const redBase = baseOf(state, "red");
     const at = place(state, "blue", "inf-antitanque", redBase.x, redBase.y + redBase.radius + 4);
     at.order = "manter";
-    for (let i = 0; i < 4000 && state.running && redBase.alive; i++) {
+    for (let i = 0; i < 6000 && state.running && redBase.alive; i++) {
       // mantém a unidade viva e imóvel enquanto ela derruba a base
-      at.hp = at.maxHp;
+      keepAlive(state, "blue", at);
       at.order = "manter";
       stepBattle(state, 0.1);
     }
@@ -123,18 +151,18 @@ describe("motor de batalha — expansão territorial e construção", () => {
 
   // 5. Engenheiros constroem novas bases; 6. bases avançadas recebem dano e podem ser destruídas.
   it("5/6. engenheiro constrói base avançada que opera e pode ser destruída", () => {
-    const state = createBattle(testConfig());
+    const state = createBattle(testConfig({ duration: 900 }));
     const t = territory(state, "t-sw");
     t.owner = "blue";
     t.progress = { blue: 100, red: 0 };
-    const eng = place(state, "blue", "inf-engenheiro", t.x, t.y + 2);
+    const eng = place(state, "blue", "inf-engenheiro", t.x, t.y);
     stepBattle(state, 0.1);
     let base = state.structures.find((s) => s.kind === "base-avancada" && s.side === "blue");
     expect(base).toBeDefined();
     expect(base!.underConstruction).toBe(true);
     // o engenheiro conclui a obra sozinho
     for (let i = 0; i < 400 && base!.underConstruction; i++) {
-      eng.hp = eng.maxHp;
+      keepAlive(state, "blue", eng);
       stepBattle(state, 0.1);
     }
     base = state.structures.find((s) => s.kind === "base-avancada" && s.side === "blue")!;
@@ -148,13 +176,14 @@ describe("motor de batalha — expansão territorial e construção", () => {
     eng.order = "manter";
     const arty = place(state, "red", "art-obus", base.x, base.y + base.range - 2);
     const hpBefore = base.hp;
-    for (let i = 0; i < 2000 && state.running; i++) {
+    for (let i = 0; i < 3000 && state.running; i++) {
       if (arty.alive) {
         arty.x = base.x;
         arty.y = base.y + base.range - 2;
-        arty.hp = arty.maxHp;
         arty.order = "manter";
       }
+      keepAlive(state, "red", arty);
+      keepAlive(state, "blue", eng);
       stepBattle(state, 0.1);
       if (!state.structures.some((s) => s.id === base!.id && s.alive)) break;
     }
@@ -192,13 +221,24 @@ describe("motor de batalha — expansão territorial e construção", () => {
     expect(insideDeployZone(state, "blue", t.x, t.y)).toBe(true);
   });
 
-  // 7. Unidades nascem apenas nas posições permitidas.
-  it("7. recusa desdobramento fora da zona permitida", () => {
+  // 7. Ordens podem ser dadas em qualquer ponto do teatro; a força nasce na base.
+  it("7. aceita ordem em qualquer ponto do mapa e a força nasce na base", () => {
     const state = createBattle(testConfig());
     state.blue.command = 30;
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    expect(deploy(state, "blue", "inf-fuzileiros", 50, 10)).toBe(false);
+    // ordem sobre o próprio território
     expect(deploy(state, "blue", "inf-fuzileiros", 50, 88)).toBe(true);
+    // ordem sobre a zona inimiga: aceita (a força marcha até lá) e nasce na base azul
+    state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    state.blue.command = 30;
+    const before = state.blue.units.length;
+    expect(deploy(state, "blue", "inf-fuzileiros", 50, 10)).toBe(true);
+    const spawned = state.blue.units.slice(before);
+    expect(spawned.length).toBeGreaterThan(0);
+    for (const u of spawned) {
+      expect(u.y).toBeGreaterThan(50); // nasceu no lado azul
+      expect(u.goalY).toBe(10); // caminha para o destino ordenado
+    }
   });
 });
 
@@ -281,17 +321,17 @@ describe("motor de batalha — armas e projéteis reais", () => {
   // 11. Tanques movimentam a torre e disparam.
   it("11. tanque mira, dispara e causa dano", () => {
     const state = createBattle(testConfig());
-    const tank = place(state, "blue", "bld-tanque", 50, 62);
-    const target = place(state, "red", "inf-fuzileiros", 46, 55);
+    const tank = place(state, "blue", "bld-tanque", 50, 55);
+    const target = place(state, "red", "inf-fuzileiros", 46, 50);
     const aim0 = tank.aim;
     const hpBefore = target.hp;
     let moved = false;
     let dmg = false;
     for (let i = 0; i < 600 && state.running; i++) {
       tank.x = 50;
-      tank.y = 62;
+      tank.y = 55;
       target.x = 46;
-      target.y = 55;
+      target.y = 50;
       tank.order = "manter";
       target.order = "manter";
       tank.hp = tank.maxHp;
@@ -532,7 +572,7 @@ describe("motor de batalha — cartas com efeito real", () => {
     expect(u10.dmg).toBeGreaterThan(u1.dmg);
   });
 
-  it("cartas globais (paraquedistas/bombardeiro) são posicionáveis fora da zona, as locais não", () => {
+  it("cartas de área globais e cartas de tropa aceitam ordem em qualquer ponto do mapa", () => {
     const state = createBattle(testConfig({ duration: 60 }));
     // Ponto no território adversário (perto da base vermelha).
     const enemyBase = baseOf(state, "red");
@@ -542,9 +582,13 @@ describe("motor de batalha — cartas com efeito real", () => {
     global.blue.deck.hand[0] = { cardId: "sup-paraquedistas", ready: true };
     expect(deploy(global, "blue", "sup-paraquedistas", enemyBase.x, enemyBase.y - 6)).toBe(true);
 
+    // Tropa terrestre também aceita a ordem no lado inimigo: nasce na base e marcha.
     const local = createBattle(testConfig({ duration: 60 }));
     local.blue.command = 999;
     local.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    expect(deploy(local, "blue", "inf-fuzileiros", enemyBase.x, enemyBase.y - 6)).toBe(false);
+    expect(deploy(local, "blue", "inf-fuzileiros", enemyBase.x, enemyBase.y - 6)).toBe(true);
+    const trooper = local.blue.units[0]!;
+    expect(trooper.y).toBeGreaterThan(50); // nasceu na base azul
+    expect(trooper.goalY).toBeCloseTo(enemyBase.y - 6, 0); // recebeu o destino inimigo
   });
 });

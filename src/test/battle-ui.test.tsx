@@ -45,8 +45,8 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
     const card = screen.getByRole("button", { name: /Fuzileiros/ });
     fireEvent.click(card);
-    // ao selecionar, aparece a instrução de posicionamento no teatro
-    expect(screen.getByText(/Clique na sua zona/)).toBeInTheDocument();
+    // ao selecionar, aparece a instrução de posicionamento (ordem) no teatro
+    expect(screen.getByText(/Clique no objetivo/)).toBeInTheDocument();
   });
 
   it("desdobra uma unidade ao clicar na zona aliada do teatro", () => {
@@ -65,14 +65,14 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    // ponto na metade inferior da arena = zona de desdobramento aliada
+    // ponto no teatro: a força parte da base e avança até o objetivo
     // jsdom não tem PointerEvent; um MouseEvent com o tipo "pointerdown" carrega clientX/Y.
     fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
 
     // a instrução de posicionamento some após o desdobramento
-    expect(screen.queryByText(/Clique na sua zona/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
     // o registro tático confirma o desdobramento (fica no relatório, aberto sob demanda)
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
-    expect(screen.getByText(/Brasil posiciona Fuzileiros/)).toBeInTheDocument();
+    expect(screen.getByText(/Brasil envia Fuzileiros/)).toBeInTheDocument();
   });
 });
