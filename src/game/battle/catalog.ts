@@ -183,7 +183,7 @@ export const militaryCards: MilitaryCard[] = [
     name: "Artilharia Pesada 155 mm",
     short: "OBUS",
     category: ART,
-    cost: 6,
+    cost: 7,
     hp: 230,
     dmg: 130,
     speed: 1.3,

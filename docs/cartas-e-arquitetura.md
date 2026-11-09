@@ -150,7 +150,7 @@ Cada carta tem um **modelo visual próprio** (`model`) — silhueta, proporção
 | Carta                    | ID             | Custo | Vida | Dano | Alcance | Cadência | Veloc. | Modelo              | Arma                        |
 | ------------------------ | -------------- | ----- | ---- | ---- | ------- | -------- | ------ | ------------------- | --------------------------- |
 | Canhão de Campanha       | `art-canhao`   | 4     | 260  | 70   | 24      | 2,4 s    | 1,9    | `canhao`            | `canhao` (arco, splash 4,5) |
-| Artilharia Pesada 155 mm | `art-obus`     | 6     | 230  | 130  | 38      | 3,6 s    | 1,3    | `artilharia-pesada` | `obus` (arco, splash 7)     |
+| Artilharia Pesada 155 mm | `art-obus`     | 7     | 230  | 130  | 38      | 3,6 s    | 1,3    | `artilharia-pesada` | `obus` (arco, splash 7)     |
 | Lançador de Mísseis      | `mss-lancador` | 5     | 300  | 120  | 34      | 3,2 s    | 1,8    | `lancador-missil`   | `missil` (guiado, splash 5) |
 | Lançador Múltiplo (LMF)  | `mss-lmf`      | 7     | 260  | 60   | 36      | 3,8 s    | 1,4    | `lmf`               | `lmf` (**salva de 5**)      |
 
@@ -217,8 +217,8 @@ qualquer ponto do mapa; as demais exigem alvo válido na zona de posicionamento.
 | 3     | Fuzileiros · Engenheiros Militares · Cortina de Fumaça · Reparação de Veículos · Barricada · Reconhecimento Avançado                                                  |
 | 4     | Infantaria de Assalto · Infantaria Antitanque · Canhão de Campanha · Veículo Blindado · Defesa Antiaérea · Drone de Combate · Posto de Socorro · Evacuação Aeromédica |
 | 5     | Lançador de Mísseis · Fortificação de Campanha · Reforços · Interferência Eletrônica                                                                                  |
-| 6     | Artilharia Pesada 155 mm · Carro de Combate · Paraquedistas                                                                                                           |
-| 7     | Lançador Múltiplo (LMF) · Ataque Aéreo                                                                                                                                |
+| 6     | Carro de Combate · Paraquedistas                                                                                                                                      |
+| 7     | Artilharia Pesada 155 mm · Lançador Múltiplo (LMF) · Ataque Aéreo                                                                                                     |
 | 8     | Bombardeiro Tático                                                                                                                                                    |
 
 **Total: 25 cartas** (15 militares + 10 de apoio).
@@ -437,15 +437,15 @@ Regra de UX do projeto: **nenhuma tela rola a página**. `GameShell` fixa a altu
 como a batalha, nem isso). Cabeçalho nunca some, página nunca rola. Listas longas são
 recortadas por painéis com rolagem própria e o detalhe abre numa tela nova (diálogo).
 
-| Tela                                | Padrão aplicado                                                            |
-| ----------------------------------- | -------------------------------------------------------------------------- |
-| Home (`/`)                          | Hero + menu em uma tela (`h-[calc(100dvh-3.5rem)]`).                       |
+| Tela                                | Padrão aplicado                                                                                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home (`/`)                          | Hero + menu em uma tela (`h-[calc(100dvh-3.5rem)]`).                                                                                                              |
 | Campanha (`CampaignScreen`)         | Visão geral: barra de progresso, atos em abas, só a missão atual em destaque (vencidas somem). "Iniciar missão" entra direto na batalha — sem texto nem escolhas. |
-| Coleção (`CollectionScreen`)        | Abas cartas/acessórios/baralhos; cartão abre detalhe em diálogo.           |
-| Batalha · preparação (`BattlePrep`) | Baralho, comandante e doutrina numa tela; missão em diálogo. Sem texto longo. |
-| Multiplayer (`MultiplayerScreen`)   | Modos em abas; adversários em cartões; apostas em tela própria.            |
-| Batalha em si (`BattleArena`)       | Arena + HUD fixos; `overflow-hidden`, sem rolagem de página.               |
-| Mapa/Nacão/IA/Perfil/Config         | Cabeçalho compacto + métricas fixas; painéis internos com rolagem contida. |
+| Coleção (`CollectionScreen`)        | Abas cartas/acessórios/baralhos; cartão abre detalhe em diálogo.                                                                                                  |
+| Batalha · preparação (`BattlePrep`) | Baralho, comandante e doutrina numa tela; missão em diálogo. Sem texto longo.                                                                                     |
+| Multiplayer (`MultiplayerScreen`)   | Modos em abas; adversários em cartões; apostas em tela própria.                                                                                                   |
+| Batalha em si (`BattleArena`)       | Arena + HUD fixos; `overflow-hidden`, sem rolagem de página.                                                                                                      |
+| Mapa/Nacão/IA/Perfil/Config         | Cabeçalho compacto + métricas fixas; painéis internos com rolagem contida.                                                                                        |
 
 **Armadilha de altura fixa (já corrigida):** telas que usam `h-[calc(100dvh-3.5rem)]` só
 cabem se forem filhas diretas do `<main>` (`GameShell full`). Se houver um cabeçalho extra
