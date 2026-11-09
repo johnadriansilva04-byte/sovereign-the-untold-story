@@ -1,6 +1,7 @@
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { insideDeployZone, originFor } from "@/game/battle/engine";
 import type {
   BattleState,
   BattleUnit,
@@ -37,6 +38,8 @@ export function BattleArena({
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const arena = state.config.arena;
+  // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
+  const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
   const toArenaCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
@@ -65,12 +68,29 @@ export function BattleArena({
     if (coords) onPlace(coords.x, coords.y);
   };
 
+  const handleMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!pendingCardId) return;
+    const coords = toArenaCoords(e.clientX, e.clientY);
+    if (coords) setGhost({ x: coords.x, y: coords.y });
+  };
+
+  const clearGhost = () => setGhost(null);
+
   const units = [...state.blue.units, ...state.red.units];
   const selected = units.find((u) => u.id === selectedUnitId) ?? null;
   const pendingCard = pendingCardId
     ? state.blue.deck.hand.find((h) => h.cardId === pendingCardId)
     : null;
   void pendingCard;
+
+  // Validade do posicionamento e rota da força — calculadas do MESMO motor que o
+  // desdobramento usa, para o preview nunca mentir.
+  const ghostValid = ghost
+    ? pendingIsGlobal
+      ? true
+      : insideDeployZone(state, "blue", ghost.x, ghost.y)
+    : false;
+  const ghostOrigin = ghost && !pendingIsGlobal ? originFor(state, "blue", ghost.x, ghost.y) : null;
 
   return (
     <div className="relative h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)]">
@@ -82,6 +102,22 @@ export function BattleArena({
           pendingCardId ? "cursor-crosshair" : "cursor-default",
         )}
         onPointerDown={handlePointer}
+        onPointerMove={handleMove}
+        onPointerLeave={clearGhost}
+        onDragOver={(e) => {
+          if (!pendingCardId) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          const coords = toArenaCoords(e.clientX, e.clientY);
+          if (coords) setGhost(coords);
+        }}
+        onDrop={(e) => {
+          if (!pendingCardId) return;
+          e.preventDefault();
+          const coords = toArenaCoords(e.clientX, e.clientY);
+          if (coords) onPlace(coords.x, coords.y);
+          setGhost(null);
+        }}
       >
         <defs>
           <linearGradient id="allyZone" x1="0" y1="1" x2="0" y2="0">
@@ -149,6 +185,7 @@ export function BattleArena({
         {/* Zonas de desdobramento */}
         {(["red", "blue"] as Side[]).map((s) => {
           const z = arena.deployZone[s];
+          const active = pendingCardId && s === "blue";
           return (
             <rect
               key={s}
@@ -156,11 +193,12 @@ export function BattleArena({
               y={z.y}
               width={z.w}
               height={z.h}
-              fill="none"
+              fill={active ? sideColor(s) : "none"}
+              fillOpacity={active ? 0.12 : 0}
               stroke={sideColor(s)}
-              strokeOpacity={0.3}
+              strokeOpacity={active ? 0.75 : 0.3}
               strokeDasharray="1.5 1.5"
-              strokeWidth="0.3"
+              strokeWidth={active ? 0.5 : 0.3}
             />
           );
         })}
@@ -249,6 +287,52 @@ export function BattleArena({
             strokeDasharray="2 2"
             opacity={0.6}
           />
+        )}
+
+        {/* Pré-visualização do posicionamento: validação ao vivo + rota da força */}
+        {ghost && (
+          <g pointerEvents="none" data-testid="deploy-ghost" data-valid={ghostValid}>
+            {ghostOrigin && (
+              <>
+                <line
+                  x1={ghostOrigin.x}
+                  y1={ghostOrigin.y}
+                  x2={ghost.x}
+                  y2={ghost.y}
+                  stroke={ALLY}
+                  strokeWidth="0.4"
+                  strokeDasharray="2 1.5"
+                  opacity={0.85}
+                />
+                <circle
+                  cx={ghostOrigin.x}
+                  cy={ghostOrigin.y}
+                  r="2.6"
+                  fill="none"
+                  stroke={ALLY}
+                  strokeWidth="0.5"
+                  opacity={0.9}
+                />
+                <circle cx={ghostOrigin.x} cy={ghostOrigin.y} r="1" fill={ALLY} opacity={0.9} />
+              </>
+            )}
+            <circle
+              cx={ghost.x}
+              cy={ghost.y}
+              r="3.2"
+              fill="none"
+              stroke={ghostValid ? "var(--ally)" : "var(--destructive)"}
+              strokeWidth="0.5"
+              strokeDasharray={ghostValid ? undefined : "1.2 1"}
+            />
+            <circle
+              cx={ghost.x}
+              cy={ghost.y}
+              r="1"
+              fill={ghostValid ? "var(--ally)" : "var(--destructive)"}
+              opacity={0.9}
+            />
+          </g>
         )}
       </svg>
 

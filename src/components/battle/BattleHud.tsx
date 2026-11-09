@@ -89,6 +89,12 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               onClick={() => onPick(h.cardId)}
               onMouseEnter={() => onHover(card)}
               onMouseLeave={() => onHover(null)}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", h.cardId);
+                e.dataTransfer.effectAllowed = "copy";
+                if (!selected) onPick(h.cardId);
+              }}
               className={cn(
                 "relative flex min-w-[92px] flex-1 flex-col items-start justify-between gap-1 border bg-gradient-to-b to-transparent p-2 text-left transition sm:min-w-[120px]",
                 CATEGORY_BG[card.category] ?? "from-card",

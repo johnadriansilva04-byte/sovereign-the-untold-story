@@ -23,6 +23,7 @@ import { useBattle } from "@/game/battle/useBattle";
 import type {
   BattleConfig,
   BattleResult,
+  BattleState,
   Card,
   Commander,
   Doctrine,
@@ -301,6 +302,7 @@ export function LiveBattle({
         <div className="mx-auto flex max-w-5xl flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <CommandBar side={state.blue} compact />
+            <FrontLineScore state={state} />
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setShowReport(true)}
@@ -353,6 +355,45 @@ export function LiveBattle({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Placar de frente: leitura instantânea de quem domina o campo, sem abrir o relatório.
+function FrontLineScore({ state }: { state: BattleState }) {
+  const terrBlue = state.territories.filter((t) => t.owner === "blue").length;
+  const terrRed = state.territories.filter((t) => t.owner === "red").length;
+  const advBlue = state.structures.filter(
+    (s) => s.side === "blue" && s.kind === "base-avancada" && !s.underConstruction,
+  ).length;
+  const advRed = state.structures.filter(
+    (s) => s.side === "red" && s.kind === "base-avancada" && !s.underConstruction,
+  ).length;
+  const cell = (v: number, other: number, tone: "ally" | "enemy") => (
+    <span
+      className={cn(
+        "tabular-nums",
+        v > other ? (tone === "ally" ? "text-ally" : "text-enemy") : "text-muted-foreground",
+      )}
+    >
+      {v}
+    </span>
+  );
+  return (
+    <div className="hidden items-center gap-3 border border-border bg-card/50 px-2 py-1 sm:flex">
+      <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        Território
+        {cell(terrBlue, terrRed, "ally")}
+        <span className="text-border">×</span>
+        {cell(terrRed, terrBlue, "enemy")}
+      </span>
+      <span className="h-3 w-px bg-border" />
+      <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        Bases
+        {cell(advBlue, advRed, "ally")}
+        <span className="text-border">×</span>
+        {cell(advRed, advBlue, "enemy")}
+      </span>
     </div>
   );
 }

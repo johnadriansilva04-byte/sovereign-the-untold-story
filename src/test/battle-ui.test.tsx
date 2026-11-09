@@ -75,4 +75,69 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/Brasil envia Fuzileiros/)).toBeInTheDocument();
   });
+
+  // jsdom não calcula layout; fixamos um retângulo estável para o mapeamento de coordenadas.
+  const stubSvgRect = () => {
+    const proto = SVGSVGElement.prototype as unknown as {
+      getBoundingClientRect: () => DOMRect;
+    };
+    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 1000 }) as DOMRect;
+  };
+
+  it("pré-visualiza o posicionamento válido ao mover o ponteiro sobre o território aliado", () => {
+    stubSvgRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
+
+    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    // y = 85 → dentro da zona de desdobramento azul
+    fireEvent(svg, new MouseEvent("pointermove", { clientX: 500, clientY: 850, bubbles: true }));
+
+    const ghost = screen.getByTestId("deploy-ghost");
+    expect(ghost).toBeInTheDocument();
+    expect(ghost.getAttribute("data-valid")).toBe("true");
+  });
+
+  it("marca o posicionamento como inválido fora da zona de desdobramento", () => {
+    stubSvgRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
+
+    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    // y = 10 → território inimigo: inválido para desdobrar
+    fireEvent(svg, new MouseEvent("pointermove", { clientX: 500, clientY: 100, bubbles: true }));
+
+    expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("false");
+  });
+
+  it("desdobra a força soltando a carta sobre o teatro (arrastar e soltar)", () => {
+    stubSvgRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+
+    const card = screen.getByRole("button", { name: /Fuzileiros/ });
+    fireEvent.dragStart(card, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
+    expect(screen.getByText(/Clique no objetivo/)).toBeInTheDocument();
+
+    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    fireEvent.drop(svg, { clientX: 500, clientY: 850 });
+
+    expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
+    expect(screen.getByText(/Brasil envia Fuzileiros/)).toBeInTheDocument();
+  });
 });
