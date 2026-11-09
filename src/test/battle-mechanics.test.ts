@@ -470,6 +470,29 @@ describe("motor de batalha — IA autônoma", () => {
     advance(state, 10);
     expect(dist(unit.x, unit.y, start.x, start.y)).toBeGreaterThan(3);
   });
+
+  // Regressão do "as cartas congelam": ordem do JOGADOR passa holdAtArrival=false,
+  // então ao chegar ao destino a força retoma o avanço (não trava no lugar).
+  it("ordem do jogador não congela a força no destino", () => {
+    const state = createBattle(testConfig({ duration: 180 }));
+    state.blue.command = 30;
+    state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    // ordem do jogador (como o useBattle faz): marcha até o ponto e volta a caçar
+    expect(
+      deploy(state, "blue", "inf-fuzileiros", 50, 70, { x: 50, y: 70, holdAtArrival: false }),
+    ).toBe(true);
+    const unit = state.blue.units.at(-1)!;
+    expect(unit.holdAtGoal).toBe(false);
+
+    // avança até passar do destino; o objetivo clicado é consumido e a força segue
+    // se movendo em vez de travar no ponto (sem ordens de IA, só a marcha natural).
+    advance(state, 6);
+    expect(unit.goalX).toBeUndefined();
+    expect(unit.goalY).toBeUndefined();
+    const at = { x: unit.x, y: unit.y };
+    advance(state, 3);
+    expect(dist(unit.x, unit.y, at.x, at.y)).toBeGreaterThan(0.5);
+  });
 });
 
 describe("motor de batalha — cartas com efeito real", () => {

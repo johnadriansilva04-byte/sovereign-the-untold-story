@@ -507,6 +507,16 @@ function chooseTarget(
 
   if (mustDefend && threatened) return threatened.p;
 
+  // Objetivo operacional da missão (ex.: "Estação Central"): quando o ADVERSÁRIO
+  // domina o ponto que decide a partida, ele vira o alvo prioritário — sem isso a
+  // IA ignorava o ponto e o inimigo o mantinha sozinho (a missão virava um botão de
+  // vitória). Enquanto ninguém o domina, a IA mantém a pressão normal (base/torres).
+  const op = state.config.operationalTarget;
+  if (op) {
+    const opPoint = points.find((p) => p.id === op.controlPointId);
+    if (opPoint && opPoint.owner === other(side)) return opPoint;
+  }
+
   if (personality === "Agressivo" || !read.behind) {
     const attack = notMine.slice().sort((a, b) => b.value - a.value)[0];
     if (attack) return attack;

@@ -103,7 +103,7 @@ describe("interface da batalha", () => {
     expect(ghost.getAttribute("data-valid")).toBe("true");
   });
 
-  it("marca o posicionamento como inválido fora da zona de desdobramento", () => {
+  it("marca o posicionamento como válido em qualquer ponto do teatro (a força marcha até lá)", () => {
     stubSvgRect();
     render(
       <ProfileProvider>
@@ -114,10 +114,54 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
 
     const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
-    // y = 10 → território inimigo: inválido para desdobrar
+    // y = 10 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
     fireEvent(svg, new MouseEvent("pointermove", { clientX: 500, clientY: 100, bubbles: true }));
 
-    expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("false");
+    expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("true");
+  });
+
+  it("seleciona a unidade aliada tocando perto dela (alvo tolerante em teatro pequeno)", () => {
+    stubSvgRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+
+    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
+    // desdobra na própria metade; a força nasce na base (y≈92)
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+
+    // toca a ~10px da unidade (tolerância do teatro pequeno): antes o alvo era o
+    // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 510, clientY: 925, bubbles: true }));
+
+    // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
+    expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
+    // e o teatro continua visível: a faixa NÃO é um painel sobreposto à arena
+    expect(document.querySelector('svg[viewBox="0 0 100 100"]')).toBeInTheDocument();
+  });
+
+  it("não seleciona nada quando o toque fica longe de qualquer unidade", () => {
+    stubSvgRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+
+    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+    // tira a seleção (a carta não está mais na mão)
+    expect(screen.queryByText("Fuzileiros")).not.toBeInTheDocument();
+
+    // toque no canto oposto do teatro: longe demais de qualquer unidade aliada
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 50, clientY: 50, bubbles: true }));
+    expect(screen.queryByText("Fuzileiros")).not.toBeInTheDocument();
   });
 
   it("desdobra a força soltando a carta sobre o teatro (arrastar e soltar)", () => {

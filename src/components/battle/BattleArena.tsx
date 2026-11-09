@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-import { insideDeployZone, originFor } from "@/game/battle/engine";
+import { canDeploy, originFor } from "@/game/battle/engine";
 import type {
   BattleState,
   BattleUnit,
@@ -63,9 +63,38 @@ export function BattleArena({
   };
 
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (!pendingCardId) return;
     const coords = toArenaCoords(e.clientX, e.clientY);
-    if (coords) onPlace(coords.x, coords.y);
+    if (!coords) return;
+    // Com carta na mão, o clique no teatro é uma ORDEM (desdobrar).
+    if (pendingCardId) {
+      onPlace(coords.x, coords.y);
+      return;
+    }
+    // Sem carta: o clique seleciona a unidade aliada mais próxima. A tolerância é
+    // medida em PIXELS (não em unidades da arena) para continuar clicável quando o
+    // teatro encolhe — antes o alvo era o próprio glifo (poucos pixels) e o toque
+    // errava a unidade.
+    const hitId = pickAllyUnit(coords.x, coords.y);
+    if (hitId) onSelectUnit(hitId === selectedUnitId ? null : hitId);
+    else onSelectUnit(null);
+  };
+
+  // Unidade aliada mais próxima do ponto, dentro de uma tolerância em pixels.
+  const pickAllyUnit = (ax: number, ay: number): string | null => {
+    const svg = svgRef.current;
+    let unitsPerPixel = 1;
+    if (svg) {
+      const rect = svg.getBoundingClientRect();
+      if (rect.width > 0) unitsPerPixel = 100 / rect.width;
+    }
+    const tolerance = Math.max(14 * unitsPerPixel, 3.2);
+    let best: { id: string; d: number } | null = null;
+    for (const u of state.blue.units) {
+      if (!u.alive) continue;
+      const d = Math.hypot(ax - u.x, ay - u.y);
+      if (d <= Math.max(tolerance, u.radius + 1.6) && (!best || d < best.d)) best = { id: u.id, d };
+    }
+    return best?.id ?? null;
   };
 
   const handleMove = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -84,11 +113,13 @@ export function BattleArena({
   void pendingCard;
 
   // Validade do posicionamento e rota da força — calculadas do MESMO motor que o
-  // desdobramento usa, para o preview nunca mentir.
+  // desdobramento usa, para o preview nunca mentir. O motor aceita ordem em qualquer
+  // ponto do teatro (a força marcha até lá); a única recusa real é energia insuficiente
+  // ou carta ausente da mão. Cartas globais (área) não têm rota de força.
   const ghostValid = ghost
-    ? pendingIsGlobal
-      ? true
-      : insideDeployZone(state, "blue", ghost.x, ghost.y)
+    ? pendingCardId
+      ? canDeploy(state, "blue", pendingCardId, ghost.x, ghost.y)
+      : false
     : false;
   const ghostOrigin = ghost && !pendingIsGlobal ? originFor(state, "blue", ghost.x, ghost.y) : null;
 
@@ -253,16 +284,7 @@ export function BattleArena({
           if (!visible) {
             return <circle key={u.id} cx={u.x} cy={u.y} r={1.2} fill="oklch(0.5 0 0 / 0.45)" />;
           }
-          return (
-            <UnitGlyph
-              key={u.id}
-              unit={u}
-              selected={u.id === selectedUnitId}
-              onSelect={() =>
-                u.side === "blue" && onSelectUnit(u.id === selectedUnitId ? null : u.id)
-              }
-            />
-          );
+          return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} />;
         })}
 
         {/* Projéteis */}
@@ -645,20 +667,12 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
 // Unidades — silhuetas distintas por modelo
 // ---------------------------------------------------------------------------
 
-function UnitGlyph({
-  unit,
-  selected,
-  onSelect,
-}: {
-  unit: BattleUnit;
-  selected: boolean;
-  onSelect: () => void;
-}) {
+function UnitGlyph({ unit, selected }: { unit: BattleUnit; selected: boolean }) {
   const color = sideColor(unit.side);
   const airborne = unit.domain === "aereo";
   const y = airborne ? unit.y - 2.4 : unit.y;
   return (
-    <g onClick={onSelect} className={unit.side === "blue" ? "cursor-pointer" : undefined}>
+    <g pointerEvents="none">
       {airborne && (
         <ellipse
           cx={unit.x}

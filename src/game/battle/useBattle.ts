@@ -137,7 +137,9 @@ export function useBattle(
 
   const playCard = useCallback((cardId: string, x: number, y: number) => {
     const st = stateRef.current;
-    const ok = deploy(st, "blue", cardId, x, y);
+    // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
+    // inimigo (holdAtArrival=false) — não congela no destino.
+    const ok = deploy(st, "blue", cardId, x, y, { x, y, holdAtArrival: false });
     forceRender();
     return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
   }, []);

@@ -118,16 +118,22 @@ export function createBattle(config: BattleConfig): BattleState {
     red.commandMax = Math.max(6, Math.round(red.commandMax * diff.commandMult));
     red.regen = red.regen * diff.commandMult;
   }
+  // A arena de catálogo é um TEMPLATE ESTÁTICO compartilhado por referência. Clonar
+  // aqui garante que cada partida tenha o próprio estado: sem isso, um ponto de
+  // controle capturado ou uma barricada de uma batalha vazariam para as seguintes
+  // (o mesmo objeto de arena é reutilizado em todas as partidas do mesmo terreno).
+  const arena = cloneArena(config.arena);
+  const battleConfig: BattleConfig = { ...config, arena };
   return {
-    config,
+    config: battleConfig,
     t: 0,
     phase: "mobilizacao",
     running: true,
     blue,
     red,
     zones: [],
-    structures: config.arena.structures.map(makeStructure),
-    territories: config.arena.territories.map((t) => ({ ...t, progress: { ...t.progress } })),
+    structures: arena.structures.map(makeStructure),
+    territories: arena.territories.map((t) => ({ ...t, progress: { ...t.progress } })),
     projectiles: [],
     effects: [],
     log: [],
@@ -137,6 +143,28 @@ export function createBattle(config: BattleConfig): BattleState {
     aiTimer: 0,
     rng: config.seed >>> 0,
     holds: {},
+  };
+}
+
+// Cópia profunda da arena: listas e objetos internos deixam de ser compartilhados
+// entre partidas. O config original nunca é mutado pelo motor.
+export function cloneArena(arena: Arena): Arena {
+  return {
+    ...arena,
+    controlPoints: arena.controlPoints.map((p) => ({
+      ...p,
+      owner: "neutro",
+      progress: { blue: 0, red: 0 },
+    })),
+    territories: arena.territories.map((t) => ({
+      ...t,
+      owner: "neutro",
+      progress: { blue: 0, red: 0 },
+    })),
+    structures: arena.structures.map((s) => ({ ...s })),
+    obstacles: arena.obstacles.map((o) => ({ ...o })),
+    routes: arena.routes.map((r) => ({ ...r })),
+    deployZone: { blue: { ...arena.deployZone.blue }, red: { ...arena.deployZone.red } },
   };
 }
 
@@ -215,6 +243,29 @@ export function insideDeployZone(state: BattleState, side: Side, x: number, y: n
   return false;
 }
 
+// Regra REAL de aceitação de uma ordem de desdobramento: o motor aceita um destino
+// em QUALQUER ponto do teatro (a força nasce na base/avançada aliada mais próxima e
+// marcha até lá). A única razão de recusa ligada à posição é o ponto ser inválido.
+// `canDeploy` cobre o resto (energia e carta na mão), para a pré-visualização da UI
+// nunca divergir do que `deploy` de fato aceita.
+export function placementValid(_state: BattleState, _side: Side, x: number, y: number): boolean {
+  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 100 && y >= 0 && y <= 100;
+}
+
+export function canDeploy(
+  state: BattleState,
+  side: Side,
+  cardId: string,
+  x: number,
+  y: number,
+): boolean {
+  if (!placementValid(state, side, x, y)) return false;
+  const cfg = side === "blue" ? state.blue : state.red;
+  const card = cardById(cardId);
+  if (cfg.command < effectiveCost(card, cfg.doctrine)) return false;
+  return cfg.deck.hand.some((h) => h.cardId === cardId);
+}
+
 // ---------------------------------------------------------------------------
 // Ordem de força: a carta nasce na base e caminha até o destino clicado
 // ---------------------------------------------------------------------------
@@ -227,6 +278,13 @@ export interface DeployOrder {
   targetUnitId?: string | undefined;
   targetStructureId?: string | undefined;
   targetTerritoryId?: string | undefined;
+  /**
+   * Ao alcançar o destino, a força para (posição defensiva) ou retoma o avanço?
+   * Padrão `true` (a IA marca o objetivo e segura). Ordens do JOGADOR passam
+   * `false`: a força marcha até o ponto e, de lá, volta a caçar o inimigo — em vez
+   * de congelar no lugar (era o "as cartas não vão pra luta").
+   */
+  holdAtArrival?: boolean | undefined;
 }
 
 export function deploy(
@@ -314,7 +372,7 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
     u.groupId = groupId;
     u.goalX = clamp(order.x, 1, 99);
     u.goalY = clamp(order.y, 1, 99);
-    u.holdAtGoal = true;
+    u.holdAtGoal = order.holdAtArrival ?? true;
     if (order.targetUnitId) u.targetId = order.targetUnitId;
     if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
     if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
@@ -1779,14 +1837,26 @@ function checkVictory(state: BattleState, dt: number): void {
   if (op) {
     const p = allPoints.find((x) => x.id === op.controlPointId);
     if (p) {
-      if (p.owner === "blue" && hold(state, "blue-op", true, dt) >= op.seconds) {
+      // "Manter" só conta com posse REAL e sem contestação: enquanto houver força
+      // adversária dentro do raio, o ponto está em disputa e o relógio do objetivo
+      // para. Sem isso, o dono do ponto acumulava o objetivo mesmo sob ataque (a
+      // missão virava um botão de vitória). O contador não zera por tempo: só
+      // reinicia quando a posse é de fato perdida.
+      const bluePower = capturePower(state, "blue", p.x, p.y, p.radius);
+      const redPower = capturePower(state, "red", p.x, p.y, p.radius);
+      const contested = bluePower > 0 && redPower > 0;
+      const blueHeld =
+        p.owner === "blue"
+          ? hold(state, "blue-op", !contested, dt)
+          : hold(state, "blue-op", false, dt);
+      const redHeld =
+        p.owner === "red"
+          ? hold(state, "red-op", !contested, dt)
+          : hold(state, "red-op", false, dt);
+      if (blueHeld >= op.seconds)
         return finish(state, "vitoria", `Objetivo operacional cumprido: ${p.name} mantido.`);
-      }
-      if (p.owner === "red" && hold(state, "red-op", true, dt) >= op.seconds) {
+      if (redHeld >= op.seconds)
         return finish(state, "derrota", `Objetivo operacional perdido: ${p.name} tomado.`);
-      }
-      hold(state, "blue-op", false, dt);
-      hold(state, "red-op", false, dt);
     }
   }
 

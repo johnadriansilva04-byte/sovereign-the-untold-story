@@ -514,7 +514,7 @@ export const difficulties: DifficultyDef[] = [
     name: "Soberano",
     summary: "Pressão constante, coordenação de cartas e leitura do seu erro. Vencer exige plano.",
     aiIntervalMult: 0.45,
-    aiCommandMult: 1.3,
+    aiCommandMult: 1.35,
     aiReserveBonus: -2,
     rewardMult: 1.7,
   },

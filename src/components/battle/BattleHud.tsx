@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { cardIcon } from "@/game/battle/catalog";
 import type { BattleUnit, Card, Order, SideState } from "@/game/battle/types";
 
 const CATEGORY_TONE: Record<string, string> = {
@@ -19,14 +20,14 @@ const CATEGORY_LABEL: Record<string, string> = {
   apoio: "Apoio",
 };
 
-// Ícone por categoria: leitura instantânea da carta durante o combate.
-const CATEGORY_ICON: Record<string, string> = {
+// Ícone por categoria: fallback quando a carta não tem ícone próprio (ver cardIcon).
+const CATEGORY_ICON_FALLBACK: Record<string, string> = {
   infantaria: "🪖",
-  blindado: "🛡",
+  blindado: "🛡️",
   artilharia: "🎯",
   defesa: "🏰",
-  reconhecimento: "🛰",
-  apoio: "✈",
+  reconhecimento: "🛰️",
+  apoio: "✈️",
 };
 
 // Cores por categoria para o fundo da carta (identidade visual).
@@ -105,7 +106,7 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               )}
             >
               <span className="flex w-full items-center justify-between">
-                <span className="text-lg leading-none">{CATEGORY_ICON[card.category] ?? "★"}</span>
+                <span className="text-lg leading-none">{cardIcon(card)}</span>
                 <span
                   className={cn(
                     "flex h-7 w-7 items-center justify-center font-mono text-sm font-bold",
@@ -145,7 +146,7 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               key={`${c.id}-${i}`}
               className="flex items-center gap-1 border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
             >
-              <span>{CATEGORY_ICON[c.category] ?? "★"}</span>
+              <span>{cardIcon(c)}</span>
               {c.short}
             </span>
           ))}
@@ -219,6 +220,36 @@ export function UnitInspector({ unit }: { unit: BattleUnit | null }) {
         {unit.revealed > 0 && <Tag tone="doc">Revelado</Tag>}
         {unit.engaged && <Tag tone="enemy">Em combate</Tag>}
       </div>
+    </div>
+  );
+}
+
+// Faixa compacta da unidade selecionada: cabe no dock (uma linha, sem rolagem) e
+// NÃO cobre o teatro de operações. Substitui o antigo painel sobreposto à esquerda.
+export function SelectedUnitStrip({ unit }: { unit: BattleUnit | null }) {
+  if (!unit) return null;
+  const hpPct = Math.max(0, Math.min(100, (unit.hp / unit.maxHp) * 100));
+  return (
+    <div className="flex items-center gap-2 border border-primary/50 bg-card/70 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+      <span className="font-display text-xs font-bold uppercase text-foreground">{unit.name}</span>
+      <span className="flex items-center gap-1">
+        <span className="h-1.5 w-16 border border-border bg-muted">
+          <span
+            className={cn(
+              "block h-full",
+              hpPct > 50 ? "bg-fact" : hpPct > 20 ? "bg-primary" : "bg-destructive",
+            )}
+            style={{ width: `${hpPct}%` }}
+          />
+        </span>
+        <span className="tabular-nums">
+          {Math.round(unit.hp)}/{unit.maxHp}
+        </span>
+      </span>
+      <span className="hidden sm:inline">dano {Math.round(unit.dmg)}</span>
+      <span className="hidden sm:inline">alc {unit.range}</span>
+      <span className="uppercase">{unit.order}</span>
+      {unit.engaged && <span className="text-enemy">em combate</span>}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { AiCommanderPanel, BattleLogPanel } from "./BattlePanels";
 import { BattlePrep } from "./BattlePrep";
 import { BattleResultScreen } from "./BattleResult";
 import { BattleTopBar, ObjectiveStrip } from "./BattleTopBar";
-import { CommandBar, HandBar, OrderBar, UnitInspector } from "./BattleHud";
+import { CommandBar, HandBar, OrderBar, SelectedUnitStrip } from "./BattleHud";
 import { cardById } from "@/game/battle/catalog";
 import { GLOBAL_SUPPORT } from "@/game/battle/engine";
 import {
@@ -273,12 +273,8 @@ export function LiveBattle({
           </p>
         )}
 
-        {/* Inspeção da unidade selecionada, flutuante */}
-        {selectedUnit && (
-          <div className="absolute bottom-2 left-2 w-56 max-w-[45%]">
-            <UnitInspector unit={selectedUnit} />
-          </div>
-        )}
+        {/* Inspeção da unidade selecionada: agora é uma faixa no dock, abaixo do
+            teatro — não sobrepõe o campo nem abre painel de texto sobre ele. */}
 
         {/* Relatório de batalha: log tático + leitura da IA, sob demanda */}
         <Dialog open={showReport} onOpenChange={setShowReport}>
@@ -347,10 +343,14 @@ export function LiveBattle({
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <OrderBar onOrder={handleOrder} hasSelection={Boolean(selectedUnitId)} />
-            {hovered && (
-              <span className="hidden font-mono text-[10px] text-muted-foreground sm:block">
-                {hovered.name} · {hovered.role}
-              </span>
+            {selectedUnit ? (
+              <SelectedUnitStrip unit={selectedUnit} />
+            ) : (
+              hovered && (
+                <span className="hidden font-mono text-[10px] text-muted-foreground sm:block">
+                  {hovered.name} · {hovered.role}
+                </span>
+              )
             )}
           </div>
         </div>

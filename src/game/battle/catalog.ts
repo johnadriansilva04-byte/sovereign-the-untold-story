@@ -611,6 +611,50 @@ export const cardById = (id: string): Card => {
 };
 export const militaryById = (id: string): MilitaryCard => cardById(id) as MilitaryCard;
 
+// Ícone próprio por carta: identidade instantânea no HUD (emoji por TIPO de unidade,
+// não por categoria — senão todas as infantarias ficam iguais). O fallback usa a
+// categoria, garantindo que nenhuma carta fique sem ícone.
+export const CARD_ICON: Record<string, string> = {
+  "inf-fuzileiros": "🪖",
+  "inf-assalto": "🔫",
+  "inf-antitanque": "🚀",
+  "inf-engenheiro": "👷",
+  "art-canhao": "💥",
+  "art-obus": "🎯",
+  "mss-lancador": "🚀",
+  "mss-lmf": "🧨",
+  "bld-tanque": "🛡️",
+  "bld-vbld": "🚙",
+  "rec-drone": "🛰️",
+  "rec-drone-combate": "🛸",
+  "def-aa": "📡",
+  "def-fortificacao": "🧱",
+  "apo-posto": "⛑️",
+  "sup-aereo": "✈️",
+  "sup-fumaca": "💨",
+  "sup-reforcos": "🎖️",
+  "sup-reparo": "🔧",
+  "sup-barricada": "🚧",
+  "sup-interferencia": "📶",
+  "sup-evacuacao": "🚁",
+  "sup-recon-avancado": "🔭",
+  "sup-paraquedistas": "🪂",
+  "sup-bombardeiro": "🛩️",
+};
+
+export const CATEGORY_ICON: Record<string, string> = {
+  infantaria: "🪖",
+  blindado: "🛡️",
+  artilharia: "🎯",
+  defesa: "🏰",
+  reconhecimento: "🛰️",
+  apoio: "✈️",
+};
+
+export function cardIcon(card: Card): string {
+  return CARD_ICON[card.id] ?? CATEGORY_ICON[card.category] ?? "★";
+}
+
 // Baralho inicial desbloqueado (sem exigência de tecnologia).
 export const startingDeck: string[] = [
   "inf-fuzileiros",
