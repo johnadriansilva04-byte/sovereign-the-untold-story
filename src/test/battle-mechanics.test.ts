@@ -47,16 +47,18 @@ function territory(state: BattleState, id: string): Territory {
 }
 
 describe("motor de batalha — bases, torres e vitória", () => {
-  // 1. As duas bases principais aparecem corretamente.
-  it("1. cria as duas bases principais e as torres defensivas simétricas", () => {
+  // 1. As duas bases principais aparecem corretamente, cada lado com UMA torre inicial.
+  it("1. cria as duas bases principais e uma torre defensiva inicial por lado", () => {
     const state = createBattle(testConfig());
     const bases = state.structures.filter((s) => s.kind === "base-principal");
     expect(bases).toHaveLength(2);
     expect(bases.find((b) => b.side === "blue")!.y).toBeGreaterThan(50);
     expect(bases.find((b) => b.side === "red")!.y).toBeLessThan(50);
     for (const side of ["blue", "red"] as const) {
-      expect(state.structures.filter((s) => s.side === side && s.kind === "torre")).toHaveLength(2);
+      expect(state.structures.filter((s) => s.side === side && s.kind === "torre")).toHaveLength(1);
     }
+    // As demais posições defensivas não nascem prontas: são construídas na partida.
+    expect(state.structures.filter((s) => s.kind === "base-avancada")).toHaveLength(0);
   });
 
   // 2. As torres defensivas atacam unidades inimigas dentro do alcance.
@@ -468,16 +470,17 @@ describe("motor de batalha — cartas com efeito real", () => {
   it("Fortificação concede cobertura real: aliado ao lado recebe menos dano", () => {
     // Dois alvos idênticos, ambos parados, recebendo UM disparo do mesmo atirador
     // inimigo (também parado). A diferença de dano vem só da cobertura da fortificação.
+    // A cena fica num corredor lateral, fora do alcance das torres, para isolar a cobertura.
     const measure = (withFort: boolean) => {
       const state = createBattle(supportConfig({ duration: 30 }));
       if (withFort) {
-        const fort = place(state, "blue", "def-fortificacao", 50, 62);
+        const fort = place(state, "blue", "def-fortificacao", 88, 62);
         fort.speed = 0;
       }
-      const target = place(state, "blue", "inf-fuzileiros", 52, 62);
+      const target = place(state, "blue", "inf-fuzileiros", 90, 62);
       target.speed = 0;
       target.hp = target.maxHp;
-      const shooter = place(state, "red", "inf-fuzileiros", 52, 64);
+      const shooter = place(state, "red", "inf-fuzileiros", 90, 64);
       shooter.speed = 0;
       shooter.cooldown = 10; // um único disparo dentro da janela
       const before = target.hp;

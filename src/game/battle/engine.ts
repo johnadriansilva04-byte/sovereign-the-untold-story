@@ -2,12 +2,13 @@
 //
 // Regras gerais:
 //  * Energia regenera continuamente; unidades agem sozinhas conforme a ordem geral.
-//  * Duas bases principais + torres defensivas automáticas ficam fixas no campo.
+//  * Duas bases principais + UMA torre inicial por lado ficam fixas no campo.
 //  * Pontos de controle e territórios são disputados por presença de unidades.
 //  * Territórios conquistados permitem que engenheiros construam bases avançadas,
 //    que passam a operar como novas posições defensivas e de lançamento.
 //  * TODAS as armas geram projéteis REAIS com trajetória, colisão, explosão e dano.
-//  * Vitória: destruir a base principal adversária, dominar tudo ou vencer no tempo.
+//  * Vitória padrão: destruir a BASE PRINCIPAL adversária. Objetivos alternativos
+//    (operacional/militar) só valem quando a própria missão os define.
 //
 // O motor não conhece React nem rede — é testável de forma isolada.
 
@@ -1448,33 +1449,24 @@ function checkVictory(state: BattleState, dt: number): void {
   if (!state.running) return;
   const { objectiveKind, duration, militaryThreshold } = state.config;
   const allPoints = state.config.arena.controlPoints;
-  const totalValue = allPoints.reduce((a, p) => a + p.value, 0);
 
-  const blueHeld = allPoints.filter((p) => p.owner === "blue").reduce((a, p) => a + p.value, 0);
-  const redHeld = allPoints.filter((p) => p.owner === "red").reduce((a, p) => a + p.value, 0);
+  // Regra padrão: a partida SÓ termina quando a Base Principal adversária é destruída
+  // (tratado em damageStructure). Objetivos alternativos só valem quando a MISSÃO os
+  // define explicitamente — nunca por controle parcial, primeiro ponto ou metade do campo.
 
-  const blueAll = totalValue > 0 && blueHeld === totalValue;
-  const redAll = totalValue > 0 && redHeld === totalValue;
-  if (blueAll && hold(state, "blue-all", true, dt) >= 8) {
-    return finish(state, "vitoria", "Superioridade territorial: todos os objetivos sob controle.");
-  }
-  if (redAll && hold(state, "red-all", true, dt) >= 8) {
-    return finish(state, "derrota", "Superioridade territorial: objetivos perdidos.");
-  }
-  hold(state, "blue-all", false, dt);
-  hold(state, "red-all", false, dt);
-
-  const th = militaryThreshold ?? 0.75;
+  const th = militaryThreshold ?? 0;
   const blueInitial = initialCount(state, "blue");
   const redInitial = initialCount(state, "red");
-  if (redInitial > 0 && state.red.losses / redInitial >= th)
-    return finish(
-      state,
-      "vitoria",
-      "Superioridade militar: o dispositivo adversário foi neutralizado.",
-    );
-  if (blueInitial > 0 && state.blue.losses / blueInitial >= th)
-    return finish(state, "derrota", "Superioridade militar: seu dispositivo foi neutralizado.");
+  if (th > 0) {
+    if (redInitial > 0 && state.red.losses / redInitial >= th)
+      return finish(
+        state,
+        "vitoria",
+        "Superioridade militar: o dispositivo adversário foi neutralizado.",
+      );
+    if (blueInitial > 0 && state.blue.losses / blueInitial >= th)
+      return finish(state, "derrota", "Superioridade militar: seu dispositivo foi neutralizado.");
+  }
 
   const op = state.config.operationalTarget;
   if (op) {
@@ -1492,28 +1484,33 @@ function checkVictory(state: BattleState, dt: number): void {
   }
 
   if (state.t >= duration) {
+    // Fim da janela da operação sem destruição de base: decide quem está mais perto
+    // do objetivo real — a vida restante da Base Principal.
+    const blueBase = baseHpFraction(state, "blue");
+    const redBase = baseHpFraction(state, "red");
+    if (redBase < blueBase - 0.02)
+      return finish(state, "vitoria", "Janela encerrada: a base adversária está mais castigada.");
+    if (blueBase < redBase - 0.02)
+      return finish(state, "derrota", "Janela encerrada: sua base ficou mais exposta.");
     if (objectiveKind === "territorial") {
+      const blueHeld = allPoints
+        .filter((p) => p.owner === "blue")
+        .reduce((a, p) => a + p.value, 0);
+      const redHeld = allPoints.filter((p) => p.owner === "red").reduce((a, p) => a + p.value, 0);
       if (blueHeld > redHeld)
-        return finish(state, "vitoria", "Tempo esgotado: superioridade territorial.");
+        return finish(state, "vitoria", "Janela encerrada: superioridade territorial.");
       if (redHeld > blueHeld)
-        return finish(state, "derrota", "Tempo esgotado: inferioridade territorial.");
-      return finish(state, "empate", "Tempo esgotado: equilíbrio territorial.");
+        return finish(state, "derrota", "Janela encerrada: inferioridade territorial.");
     }
-    if (objectiveKind === "militar") {
-      const blueLoss = blueInitial > 0 ? state.blue.losses / blueInitial : 0;
-      const redLoss = redInitial > 0 ? state.red.losses / redInitial : 0;
-      if (redLoss > blueLoss)
-        return finish(state, "vitoria", "Tempo esgotado: superioridade militar.");
-      if (blueLoss > redLoss)
-        return finish(state, "derrota", "Tempo esgotado: inferioridade militar.");
-      return finish(state, "empate", "Tempo esgotado: equilíbrio militar.");
-    }
-    if (state.blue.score > state.red.score)
-      return finish(state, "vitoria", "Tempo esgotado: objetivo e território a seu favor.");
-    if (state.red.score > state.blue.score)
-      return finish(state, "derrota", "Tempo esgotado: objetivo e território contra você.");
-    return finish(state, "empate", "Tempo esgotado: missão inconclusiva.");
+    return finish(state, "empate", "Janela encerrada: nenhuma base foi tomada.");
   }
+}
+
+// Fração de vida restante da Base Principal de um lado (1 = intacta).
+function baseHpFraction(state: BattleState, side: Side): number {
+  const base = state.structures.find((s) => s.side === side && s.kind === "base-principal");
+  if (!base) return 0;
+  return base.alive ? Math.max(0, base.hp / base.maxHp) : 0;
 }
 
 function hold(state: BattleState, key: string, active: boolean, dt: number): number {

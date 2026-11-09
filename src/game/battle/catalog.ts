@@ -772,8 +772,10 @@ const terr = (id: string, name: string, x: number, y: number, radius = 5): Terri
   progress: { blue: 0, red: 0 },
 });
 
-// Bases principais + torres defensivas simétricas. O azul defende a metade sul,
-// o vermelho a metade norte; os territórios neutros ficam entre eles.
+// Bases principais + uma torre defensiva inicial por lado. O azul defende a metade
+// sul, o vermelho a metade norte; os territórios neutros ficam entre eles.
+// As demais posições defensivas NÃO nascem construídas: são conquistadas no campo
+// (territórios) e transformadas em bases avançadas pelos engenheiros durante a partida.
 function standardStructures(): StructureSpec[] {
   return [
     {
@@ -791,31 +793,17 @@ function standardStructures(): StructureSpec[] {
       targets: "ambos",
     },
     {
-      id: "torre-blue-w",
+      id: "torre-blue",
       kind: "torre",
       side: "blue",
-      name: "Torre Oeste",
-      x: 20,
-      y: 80,
-      radius: 5,
-      hp: 1400,
-      dmg: 55,
-      range: 17,
-      cooldown: 0.9,
-      targets: "ambos",
-    },
-    {
-      id: "torre-blue-e",
-      kind: "torre",
-      side: "blue",
-      name: "Torre Leste",
-      x: 80,
-      y: 80,
-      radius: 5,
-      hp: 1400,
-      dmg: 55,
-      range: 17,
-      cooldown: 0.9,
+      name: "Torre de Comando",
+      x: 50,
+      y: 74,
+      radius: 5.5,
+      hp: 2200,
+      dmg: 70,
+      range: 20,
+      cooldown: 0.8,
       targets: "ambos",
     },
     {
@@ -833,31 +821,17 @@ function standardStructures(): StructureSpec[] {
       targets: "ambos",
     },
     {
-      id: "torre-red-w",
+      id: "torre-red",
       kind: "torre",
       side: "red",
-      name: "Torre Oeste",
-      x: 20,
-      y: 20,
-      radius: 5,
-      hp: 1400,
-      dmg: 55,
-      range: 17,
-      cooldown: 0.9,
-      targets: "ambos",
-    },
-    {
-      id: "torre-red-e",
-      kind: "torre",
-      side: "red",
-      name: "Torre Leste",
-      x: 80,
-      y: 20,
-      radius: 5,
-      hp: 1400,
-      dmg: 55,
-      range: 17,
-      cooldown: 0.9,
+      name: "Torre de Comando",
+      x: 50,
+      y: 26,
+      radius: 5.5,
+      hp: 2200,
+      dmg: 70,
+      range: 20,
+      cooldown: 0.8,
       targets: "ambos",
     },
   ];
