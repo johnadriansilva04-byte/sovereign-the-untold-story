@@ -86,7 +86,8 @@ export function BattleScreen(props: BattleScreenProps) {
   // Dificuldade efetiva: no modo preparação vem do Setup; no modo campanha/PvP
   // (presetConfig) ela vive na própria config — antes `setup` era null e o
   // registro de conclusão nunca acontecia, travando o avanço da campanha.
-  const effectiveDifficulty: Difficulty = setup?.difficulty ?? props.initialDifficulty ?? "veterano";
+  const effectiveDifficulty: Difficulty =
+    setup?.difficulty ?? props.initialDifficulty ?? "veterano";
 
   const handleComplete = useCallback(
     (result: BattleResult) => {

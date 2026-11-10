@@ -788,23 +788,10 @@ function UnitGlyph({
         />
       )}
       {unit.jammed > 0 && (
-        <circle
-          cx={unit.x}
-          cy={y}
-          r={r * 1.2}
-          fill="none"
-          stroke="var(--ai)"
-          strokeWidth="0.25"
-        />
+        <circle cx={unit.x} cy={y} r={r * 1.2} fill="none" stroke="var(--ai)" strokeWidth="0.25" />
       )}
       {/* barra de vida */}
-      <rect
-        x={unit.x - r}
-        y={y - r - 1.8}
-        width={r * 2}
-        height="0.9"
-        fill="oklch(0 0 0 / 0.5)"
-      />
+      <rect x={unit.x - r} y={y - r - 1.8} width={r * 2} height="0.9" fill="oklch(0 0 0 / 0.5)" />
       <rect
         x={unit.x - r}
         y={y - r - 1.8}
@@ -935,7 +922,15 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
     case "paraquedista":
       return soldier(
         <>
-          <rect x="-1.15" y="-0.6" width="0.66" height="1.2" rx="0.22" fill={color} opacity={0.85} />
+          <rect
+            x="-1.15"
+            y="-0.6"
+            width="0.66"
+            height="1.2"
+            rx="0.22"
+            fill={color}
+            opacity={0.85}
+          />
           <line x1="-0.5" y1="-0.4" x2="0.1" y2="-0.3" stroke={dark} strokeWidth="0.1" />
           <line x1="-0.5" y1="0.4" x2="0.1" y2="0.3" stroke={dark} strokeWidth="0.1" />
           <rect x="0.5" y="-0.15" width="1.5" height="0.3" rx="0.07" fill={dark} />
@@ -972,7 +967,16 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <rect x="-1.8" y="-0.8" width="2.6" height="1.6" rx="0.18" fill={color} />
           <circle cx="-1.6" cy="-1.25" r="0.5" fill={dark} stroke={steel} strokeWidth="0.12" />
           <circle cx="-1.6" cy="1.25" r="0.5" fill={dark} stroke={steel} strokeWidth="0.12" />
-          <rect x="0.6" y="-1.05" width="2.1" height="2.1" rx="0.14" fill={dark} stroke={steel} strokeWidth="0.16" />
+          <rect
+            x="0.6"
+            y="-1.05"
+            width="2.1"
+            height="2.1"
+            rx="0.14"
+            fill={dark}
+            stroke={steel}
+            strokeWidth="0.16"
+          />
           {[-0.62, -0.22, 0.22, 0.62].map((yy) => (
             <circle key={yy} cx="0.95" cy={yy} r="0.2" fill={steel} />
           ))}
@@ -985,7 +989,16 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <rect x="-2.3" y="-0.75" width="2.9" height="1.5" rx="0.18" fill={color} />
           <circle cx="-2.1" cy="-1.2" r="0.52" fill={dark} stroke={steel} strokeWidth="0.12" />
           <circle cx="-2.1" cy="1.2" r="0.52" fill={dark} stroke={steel} strokeWidth="0.12" />
-          <rect x="0.5" y="-0.9" width="3.3" height="1.8" rx="0.42" fill={dark} stroke={steel} strokeWidth="0.16" />
+          <rect
+            x="0.5"
+            y="-0.9"
+            width="3.3"
+            height="1.8"
+            rx="0.42"
+            fill={dark}
+            stroke={steel}
+            strokeWidth="0.16"
+          />
           <line x1="0.9" y1="0" x2="3.6" y2="0" stroke={steel} strokeWidth="0.16" />
         </>,
       );

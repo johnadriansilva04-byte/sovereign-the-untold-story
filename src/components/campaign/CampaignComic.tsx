@@ -14,18 +14,42 @@ const cardName = (id: string): string => allCards.find((c) => c.id === id)?.name
 
 // Cores de cena por terreno, alinhadas ao teatro de batalha.
 const SCENE: Record<string, { sky: string; ground: string; ink: string }> = {
-  Cidade: { sky: "oklch(0.34 0.03 255)", ground: "oklch(0.22 0.01 255)", ink: "oklch(0.1 0.01 255)" },
-  Floresta: { sky: "oklch(0.36 0.04 150)", ground: "oklch(0.22 0.04 145)", ink: "oklch(0.1 0.02 145)" },
-  "Campo aberto": { sky: "oklch(0.42 0.05 90)", ground: "oklch(0.26 0.04 90)", ink: "oklch(0.12 0.02 90)" },
-  Montanha: { sky: "oklch(0.4 0.02 70)", ground: "oklch(0.24 0.015 70)", ink: "oklch(0.12 0.01 70)" },
-  "Travessia de rio": { sky: "oklch(0.38 0.05 215)", ground: "oklch(0.22 0.04 215)", ink: "oklch(0.1 0.02 215)" },
+  Cidade: {
+    sky: "oklch(0.34 0.03 255)",
+    ground: "oklch(0.22 0.01 255)",
+    ink: "oklch(0.1 0.01 255)",
+  },
+  Floresta: {
+    sky: "oklch(0.36 0.04 150)",
+    ground: "oklch(0.22 0.04 145)",
+    ink: "oklch(0.1 0.02 145)",
+  },
+  "Campo aberto": {
+    sky: "oklch(0.42 0.05 90)",
+    ground: "oklch(0.26 0.04 90)",
+    ink: "oklch(0.12 0.02 90)",
+  },
+  Montanha: {
+    sky: "oklch(0.4 0.02 70)",
+    ground: "oklch(0.24 0.015 70)",
+    ink: "oklch(0.12 0.01 70)",
+  },
+  "Travessia de rio": {
+    sky: "oklch(0.38 0.05 215)",
+    ground: "oklch(0.22 0.04 215)",
+    ink: "oklch(0.1 0.02 215)",
+  },
   "Região fortificada": {
     sky: "oklch(0.36 0.03 60)",
     ground: "oklch(0.22 0.02 60)",
     ink: "oklch(0.11 0.01 60)",
   },
 };
-const DEFAULT_SCENE = { sky: "oklch(0.34 0.03 200)", ground: "oklch(0.22 0.02 200)", ink: "oklch(0.1 0.01 200)" };
+const DEFAULT_SCENE = {
+  sky: "oklch(0.34 0.03 200)",
+  ground: "oklch(0.22 0.02 200)",
+  ink: "oklch(0.1 0.01 200)",
+};
 
 export function CampaignComic({
   chapter,
@@ -119,7 +143,9 @@ export function CampaignComic({
                   <span className="font-mono text-[10px] text-muted-foreground">{f.date}</span>
                 </div>
                 <p className="font-display text-sm font-bold uppercase leading-tight">{f.title}</p>
-                <p className="mt-0.5 line-clamp-3 font-serif text-xs text-foreground/85">{f.text}</p>
+                <p className="mt-0.5 line-clamp-3 font-serif text-xs text-foreground/85">
+                  {f.text}
+                </p>
                 {f.source && (
                   <p className="mt-1 font-mono text-[10px] uppercase text-muted-foreground">
                     {f.source}

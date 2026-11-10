@@ -7,7 +7,12 @@ import { BattleScreen, toAiDifficulty } from "@/components/battle/BattleScreen";
 import { chapters } from "@/game/campaign";
 import { commanders } from "@/game/battle/catalog";
 import { buildBattleConfig, missionById } from "@/game/battle/missions";
-import { chapterMeta, chapterMetaById, chapterOutro, totalChapters } from "@/game/progress/campaign";
+import {
+  chapterMeta,
+  chapterMetaById,
+  chapterOutro,
+  totalChapters,
+} from "@/game/progress/campaign";
 import { difficultyById, modsFromAccessories } from "@/game/progress/catalog";
 import type { Reward } from "@/game/progress/catalog";
 import { activeAccessories, effectiveDeck } from "@/game/progress/profile";
