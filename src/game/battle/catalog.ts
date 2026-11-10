@@ -148,6 +148,99 @@ export const militaryCards: MilitaryCard[] = [
     role: "Captura territórios e constrói bases avançadas. Repara estruturas aliadas.",
   },
 
+  // --- 5.5 Sniper: infantaria de precisão, alcance longo, tiro lento e forte ---
+  {
+    id: "inf-sniper",
+    kind: "militar",
+    name: "Atiradores de Precisão",
+    short: "SNIP",
+    category: INF,
+    cost: 4,
+    hp: 150,
+    dmg: 62,
+    speed: 3.6,
+    range: 16,
+    cooldown: 2.4,
+    targets: "terra",
+    domain: "terra",
+    radius: 2.1,
+    model: "sniper",
+    weapon: {
+      kind: "fuzil",
+      projectileSpeed: 200,
+      splash: 0,
+      arc: false,
+      homing: false,
+      muzzle: 2,
+      tracer: true,
+    },
+    priority: [INF, ART],
+    // Dupla de atiradores: 2 no nível 1, até 4.
+    squad: { base: 2, perLevel: 0.16, max: 4, spacing: 3.2 },
+    role: "Elimina infantaria e artilharia de longe. Frágil no corpo a corpo.",
+  },
+
+  // --- 5.6 Morteiro: infantaria de apoio com tiro em arco e área ---
+  {
+    id: "art-morteiro",
+    kind: "militar",
+    name: "Morteiro de Apoio",
+    short: "MORT",
+    category: ART,
+    cost: 3,
+    hp: 220,
+    dmg: 70,
+    speed: 2.4,
+    range: 18,
+    cooldown: 3.2,
+    targets: "terra",
+    domain: "terra",
+    radius: 2.3,
+    model: "morteiro",
+    weapon: {
+      kind: "obus",
+      projectileSpeed: 32,
+      splash: 5,
+      arc: true,
+      homing: false,
+      muzzle: 1.6,
+    },
+    // Seção de morteiro: 2 no nível 1, até 3.
+    squad: { base: 2, perLevel: 0.1, max: 3, spacing: 3 },
+    role: "Bombardeia em arco, por cima de obstáculos. Dano de área em alvos agrupados.",
+    unlocksTech: ["t2"],
+  },
+
+  // --- 8.2 Caça-tanques: veículo blindado especializado ---
+  {
+    id: "bld-caca-tanques",
+    kind: "militar",
+    name: "Caça-Tanques",
+    short: "CT",
+    category: BLD,
+    cost: 5,
+    hp: 820,
+    dmg: 110,
+    speed: 2.9,
+    range: 13,
+    cooldown: 1.8,
+    targets: "terra",
+    domain: "terra",
+    radius: 3.2,
+    model: "caca-tanques",
+    weapon: {
+      kind: "canhao",
+      projectileSpeed: 55,
+      splash: 1.4,
+      arc: false,
+      homing: false,
+      muzzle: 2.6,
+    },
+    priority: [BLD, DEF],
+    role: "Blindado com canhão de alta penetração. Prioriza tanques e fortificações.",
+    unlocksTech: ["t4"],
+  },
+
   // --- 6 Artilharia — canhões como peças independentes ---
   {
     id: "art-canhao",
@@ -490,16 +583,17 @@ export const supportCards: SupportCard[] = [
     role: "Bombardeio em área. Devastador, porém lento de recarregar.",
   },
   {
-    id: "sup-fumaca",
+    id: "sup-gas",
     kind: "apoio",
-    name: "Cortina de Fumaça",
-    short: "FUMAÇA",
+    name: "Bomba de Gás Lacrimogêneo",
+    short: "GÁS",
     category: "apoio",
-    cost: 3,
-    ability: "fumaca",
-    duration: 8,
+    cost: 4,
+    ability: "gas",
+    duration: 10,
+    magnitude: 28,
     radius: 8,
-    role: "Oculta unidades próprias e reduz a precisão inimiga.",
+    role: "Nuvem tóxica: drena a vida de TODA unidade terrestre na área até a morte. Não distingue aliados.",
   },
   {
     id: "sup-reforcos",
@@ -631,7 +725,10 @@ export const CARD_ICON: Record<string, string> = {
   "def-fortificacao": "🧱",
   "apo-posto": "⛑️",
   "sup-aereo": "✈️",
-  "sup-fumaca": "💨",
+  "inf-sniper": "🎯",
+  "art-morteiro": "💣",
+  "bld-caca-tanques": "🚜",
+  "sup-gas": "☠️",
   "sup-reforcos": "🎖️",
   "sup-reparo": "🔧",
   "sup-barricada": "🚧",
@@ -664,7 +761,7 @@ export const startingDeck: string[] = [
   "art-canhao",
   "bld-vbld",
   "rec-drone",
-  "sup-fumaca",
+  "sup-gas",
 ];
 
 export const isUnlocked = (card: Card, techs: string[]): boolean =>
@@ -867,8 +964,8 @@ const terr = (id: string, name: string, x: number, y: number, radius = 5): Terri
   progress: { blue: 0, red: 0 },
 });
 
-// Bases principais + duas torres defensivas por lado. O azul defende a metade
-// sul, o vermelho a metade norte; os territórios neutros ficam entre eles.
+// Bases principais + duas torres defensivas por lado. O azul defende o OESTE, o
+// vermelho o LESTE; os territórios neutros ficam entre eles, ao longo do front.
 // As demais posições defensivas NÃO nascem construídas: são conquistadas no campo
 // (territórios) e transformadas em bases avançadas pelos engenheiros durante a partida.
 function standardStructures(): StructureSpec[] {
@@ -878,8 +975,8 @@ function standardStructures(): StructureSpec[] {
       kind: "base-principal",
       side: "blue",
       name: "Base Principal Aliada",
-      x: 50,
-      y: 92,
+      x: 8,
+      y: 23,
       radius: 9,
       hp: 4000,
       dmg: 45,
@@ -891,9 +988,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-blue-w",
       kind: "torre",
       side: "blue",
-      name: "Bunker Oeste",
-      x: 34,
-      y: 78,
+      name: "Bunker Norte",
+      x: 26,
+      y: 12,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -905,9 +1002,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-blue-e",
       kind: "torre",
       side: "blue",
-      name: "Bunker Leste",
-      x: 66,
-      y: 78,
+      name: "Bunker Sul",
+      x: 26,
+      y: 34,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -920,8 +1017,8 @@ function standardStructures(): StructureSpec[] {
       kind: "base-principal",
       side: "red",
       name: "Base Principal Inimiga",
-      x: 50,
-      y: 8,
+      x: 92,
+      y: 23,
       radius: 9,
       hp: 4000,
       dmg: 45,
@@ -933,9 +1030,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-red-w",
       kind: "torre",
       side: "red",
-      name: "Bunker Oeste",
-      x: 34,
-      y: 22,
+      name: "Bunker Norte",
+      x: 74,
+      y: 12,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -947,9 +1044,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-red-e",
       kind: "torre",
       side: "red",
-      name: "Bunker Leste",
-      x: 66,
-      y: 22,
+      name: "Bunker Sul",
+      x: 74,
+      y: 34,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -960,16 +1057,39 @@ function standardStructures(): StructureSpec[] {
   ];
 }
 
-// Pontos de expansão: três no eixo central + dois flancos, todos neutros no início.
+// Pontos de expansão: distribuídos em ambos os lados, com alturas (y) assimétricas,
+// para a conquista territorial virar uma disputa de flancos e não uma corrida reta.
+// Territórios espelhados em relação ao eixo central (x=50): cada posição do azul
+// tem uma equivalente exata do vermelho. Sem isso um lado nasce com posições
+// melhores e o resultado da partida passa a depender do lado, não da jogada.
 function standardTerritories(): Territory[] {
-  return [
-    terr("t-c", "Centro", 50, 50, 5),
-    terr("t-nw", "Flanco Noroeste", 28, 36, 4.5),
-    terr("t-ne", "Flanco Nordeste", 72, 36, 4.5),
-    terr("t-sw", "Flanco Sudoeste", 28, 64, 4.5),
-    terr("t-se", "Flanco Sudeste", 72, 64, 4.5),
+  const blue: [string, string, number, number, number][] = [
+    ["t-nw", "Colina Noroeste", 30, 9, 4.2],
+    ["t-sw", "Vau Sudoeste", 24, 34, 4.4],
+    ["t-w1", "Ancoradouro", 40, 20, 4],
+    ["t-w2", "Estrada Sul", 34, 41, 4],
+    ["t-w3", "Posto Oeste", 18, 14, 4],
   ];
+  const redNames: Record<string, [string, string]> = {
+    "t-nw": ["t-ne", "Mata Nordeste"],
+    "t-sw": ["t-se", "Cume Sudeste"],
+    "t-w1": ["t-e1", "Depósito Leste"],
+    "t-w2": ["t-e2", "Ponte Leste"],
+    "t-w3": ["t-e3", "Mata Leste"],
+  };
+  const list: Territory[] = [terr("t-c", "Nó Central", 50, 23, 4.6)];
+  for (const [id, name, x, y, r] of blue) {
+    list.push(terr(id, name, x, y, r));
+    const [rid, rname] = redNames[id]!;
+    list.push(terr(rid, rname, 100 - x, y, r));
+  }
+  return list;
 }
+
+// Geometria padrão do teatro: oeste = azul, leste = vermelho. Cada arena troca
+// terreno, pontos de controle e obstáculos, mantendo a MESMA estrutura espacial.
+const BLUE_ZONE = { x: 2, y: 2, w: 22, h: 42 };
+const RED_ZONE = { x: 76, y: 2, w: 22, h: 42 };
 
 export const arenas: Arena[] = [
   {
@@ -979,9 +1099,9 @@ export const arenas: Arena[] = [
     description:
       "Ruas estreitas, prédios como cobertura e posições defensivas. Blindados sofrem, infantaria domina.",
     controlPoints: [
-      cp("cp-n", "Praça Norte", "norte", 50, 20, 1),
-      cp("cp-c", "Estação Central", "central", 50, 50, 2),
-      cp("cp-s", "Terminal Sul", "sul", 50, 80, 1),
+      cp("cp-n", "Praça Norte", "norte", 28, 10, 1),
+      cp("cp-c", "Estação Central", "central", 50, 23, 2),
+      cp("cp-s", "Terminal Sul", "sul", 72, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -989,9 +1109,9 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "construcao",
-        x: 30,
-        y: 34,
-        radius: 8,
+        x: 34,
+        y: 11,
+        radius: 7,
         blocksGround: false,
         slow: 0.8,
         cover: 0.3,
@@ -999,9 +1119,9 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "construcao",
-        x: 70,
-        y: 34,
-        radius: 8,
+        x: 34,
+        y: 35,
+        radius: 7,
         blocksGround: false,
         slow: 0.8,
         cover: 0.3,
@@ -1009,9 +1129,9 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "construcao",
-        x: 30,
-        y: 66,
-        radius: 8,
+        x: 66,
+        y: 11,
+        radius: 7,
         blocksGround: false,
         slow: 0.8,
         cover: 0.3,
@@ -1019,20 +1139,19 @@ export const arenas: Arena[] = [
       {
         id: "o4",
         kind: "construcao",
-        x: 70,
-        y: 66,
-        radius: 8,
+        x: 66,
+        y: 35,
+        radius: 7,
         blocksGround: false,
         slow: 0.8,
         cover: 0.3,
       },
     ],
     routes: [
-      { from: [26, 88], to: [50, 50] },
-      { from: [74, 88], to: [50, 50] },
-      { from: [50, 50], to: [50, 20] },
+      { from: [8, 23], to: [50, 23] },
+      { from: [50, 23], to: [92, 23] },
     ],
-    deployZone: { blue: { x: 6, y: 64, w: 88, h: 32 }, red: { x: 6, y: 4, w: 88, h: 32 } },
+    deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
     id: "arena-floresta",
@@ -1041,9 +1160,9 @@ export const arenas: Arena[] = [
     description:
       "Vegetação densa, rios e mobilidade limitada. Reconhecimento vale mais que blindagem.",
     controlPoints: [
-      cp("cp-n", "Clareira Norte", "norte", 46, 20, 1),
-      cp("cp-c", "Porto Fluvial", "central", 52, 50, 2),
-      cp("cp-s", "Trilha Sul", "sul", 54, 80, 1),
+      cp("cp-n", "Clareira Norte", "norte", 46, 10, 1),
+      cp("cp-c", "Porto Fluvial", "central", 50, 23, 2),
+      cp("cp-s", "Trilha Sul", "sul", 54, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1052,8 +1171,8 @@ export const arenas: Arena[] = [
         id: "o1",
         kind: "rio",
         x: 50,
-        y: 36,
-        radius: 26,
+        y: 10,
+        radius: 12,
         blocksGround: false,
         slow: 0.55,
         cover: 0,
@@ -1061,9 +1180,9 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "vegetacao",
-        x: 24,
-        y: 52,
-        radius: 10,
+        x: 30,
+        y: 23,
+        radius: 8,
         blocksGround: false,
         slow: 0.7,
         cover: 0.25,
@@ -1071,9 +1190,9 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "vegetacao",
-        x: 78,
-        y: 52,
-        radius: 10,
+        x: 70,
+        y: 23,
+        radius: 8,
         blocksGround: false,
         slow: 0.7,
         cover: 0.25,
@@ -1082,19 +1201,18 @@ export const arenas: Arena[] = [
         id: "o4",
         kind: "vegetacao",
         x: 50,
-        y: 64,
-        radius: 9,
+        y: 36,
+        radius: 7,
         blocksGround: false,
         slow: 0.75,
         cover: 0.2,
       },
     ],
     routes: [
-      { from: [20, 88], to: [52, 50] },
-      { from: [80, 88], to: [52, 50] },
-      { from: [52, 50], to: [46, 20] },
+      { from: [8, 34], to: [50, 23] },
+      { from: [50, 23], to: [92, 12] },
     ],
-    deployZone: { blue: { x: 6, y: 66, w: 88, h: 30 }, red: { x: 6, y: 4, w: 88, h: 30 } },
+    deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
     id: "arena-deserto",
@@ -1103,9 +1221,9 @@ export const arenas: Arena[] = [
     description:
       "Longas distâncias, exposição total e logística decisiva. Artilharia e mobilidade mandam.",
     controlPoints: [
-      cp("cp-n", "Poço Norte", "norte", 50, 18, 1),
-      cp("cp-c", "Oásis Central", "central", 50, 50, 2),
-      cp("cp-s", "Acampamento Sul", "sul", 50, 82, 1),
+      cp("cp-n", "Poço Norte", "norte", 28, 9, 1),
+      cp("cp-c", "Oásis Central", "central", 50, 23, 2),
+      cp("cp-s", "Acampamento Sul", "sul", 72, 37, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1113,9 +1231,9 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "elevacao",
-        x: 28,
-        y: 50,
-        radius: 9,
+        x: 34,
+        y: 23,
+        radius: 8,
         blocksGround: false,
         slow: 0.85,
         cover: 0.15,
@@ -1123,19 +1241,19 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "elevacao",
-        x: 72,
-        y: 50,
-        radius: 9,
+        x: 66,
+        y: 23,
+        radius: 8,
         blocksGround: false,
         slow: 0.85,
         cover: 0.15,
       },
     ],
     routes: [
-      { from: [50, 88], to: [50, 50] },
-      { from: [50, 50], to: [50, 18] },
+      { from: [8, 23], to: [50, 23] },
+      { from: [50, 23], to: [92, 23] },
     ],
-    deployZone: { blue: { x: 8, y: 68, w: 84, h: 28 }, red: { x: 8, y: 4, w: 84, h: 28 } },
+    deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
     id: "arena-montanha",
@@ -1144,9 +1262,9 @@ export const arenas: Arena[] = [
     description:
       "Passagens estreitas, elevações e rotas restritas. Quem domina o cume domina a batalha.",
     controlPoints: [
-      cp("cp-n", "Cume Norte", "norte", 50, 18, 2),
-      cp("cp-c", "Desfiladeiro", "central", 50, 50, 2),
-      cp("cp-s", "Base Sul", "sul", 50, 82, 1),
+      cp("cp-n", "Cume Norte", "norte", 28, 9, 2),
+      cp("cp-c", "Desfiladeiro", "central", 50, 23, 2),
+      cp("cp-s", "Base Sul", "sul", 72, 37, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1154,9 +1272,9 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "elevacao",
-        x: 26,
-        y: 34,
-        radius: 12,
+        x: 40,
+        y: 10,
+        radius: 10,
         blocksGround: true,
         slow: 0.6,
         cover: 0.3,
@@ -1164,9 +1282,9 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "elevacao",
-        x: 74,
-        y: 34,
-        radius: 12,
+        x: 40,
+        y: 36,
+        radius: 10,
         blocksGround: true,
         slow: 0.6,
         cover: 0.3,
@@ -1174,9 +1292,9 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "elevacao",
-        x: 26,
-        y: 66,
-        radius: 12,
+        x: 60,
+        y: 10,
+        radius: 10,
         blocksGround: true,
         slow: 0.6,
         cover: 0.3,
@@ -1184,41 +1302,41 @@ export const arenas: Arena[] = [
       {
         id: "o4",
         kind: "elevacao",
-        x: 74,
-        y: 66,
-        radius: 12,
+        x: 60,
+        y: 36,
+        radius: 10,
         blocksGround: true,
         slow: 0.6,
         cover: 0.3,
       },
     ],
     routes: [
-      { from: [50, 90], to: [50, 50] },
-      { from: [50, 50], to: [50, 18] },
+      { from: [8, 23], to: [50, 23] },
+      { from: [50, 23], to: [92, 23] },
     ],
-    deployZone: { blue: { x: 30, y: 68, w: 40, h: 28 }, red: { x: 30, y: 4, w: 40, h: 28 } },
+    deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
     id: "arena-rio",
     name: "Travessia do Paraná",
     terrain: "Travessia de rio",
     description:
-      "O rio corta a arena em duas. Pontes são gargalos: quem as segura controla o fluxo.",
+      "O rio corta a arena ao meio. Pontes são gargalos: quem as segura controla o fluxo.",
     controlPoints: [
-      cp("cp-n", "Margem Norte", "norte", 50, 20, 1),
-      cp("cp-c", "Ponte Central", "central", 50, 50, 2),
-      cp("cp-s", "Margem Sul", "sul", 50, 80, 1),
+      cp("cp-n", "Margem Norte", "norte", 28, 10, 1),
+      cp("cp-c", "Ponte Central", "central", 50, 23, 2),
+      cp("cp-s", "Margem Sul", "sul", 72, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
     obstacles: [
-      { id: "o1", kind: "rio", x: 50, y: 46, radius: 30, blocksGround: true, slow: 0.5, cover: 0 },
+      { id: "o1", kind: "rio", x: 50, y: 23, radius: 22, blocksGround: true, slow: 0.5, cover: 0 },
       {
         id: "o2",
         kind: "vegetacao",
-        x: 22,
-        y: 30,
-        radius: 8,
+        x: 30,
+        y: 8,
+        radius: 7,
         blocksGround: false,
         slow: 0.8,
         cover: 0.2,
@@ -1226,19 +1344,19 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "vegetacao",
-        x: 78,
-        y: 70,
-        radius: 8,
+        x: 70,
+        y: 38,
+        radius: 7,
         blocksGround: false,
         slow: 0.8,
         cover: 0.2,
       },
     ],
     routes: [
-      { from: [50, 88], to: [50, 50] },
-      { from: [50, 50], to: [50, 20] },
+      { from: [8, 23], to: [50, 23] },
+      { from: [50, 23], to: [92, 23] },
     ],
-    deployZone: { blue: { x: 6, y: 66, w: 88, h: 30 }, red: { x: 6, y: 4, w: 88, h: 30 } },
+    deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
     id: "arena-fortificada",
@@ -1246,9 +1364,9 @@ export const arenas: Arena[] = [
     terrain: "Região fortificada",
     description: "Casamatas e arame farpado. Engenharia abre caminho; artilharia castiga de longe.",
     controlPoints: [
-      cp("cp-n", "Reduto Norte", "norte", 50, 20, 1),
-      cp("cp-c", "Reduto Central", "central", 50, 50, 2),
-      cp("cp-s", "Reduto Sul", "sul", 50, 80, 1),
+      cp("cp-n", "Reduto Norte", "norte", 28, 10, 1),
+      cp("cp-c", "Reduto Central", "central", 50, 23, 2),
+      cp("cp-s", "Reduto Sul", "sul", 72, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1256,9 +1374,9 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "construcao",
-        x: 36,
-        y: 50,
-        radius: 9,
+        x: 42,
+        y: 23,
+        radius: 8,
         blocksGround: true,
         slow: 0.7,
         cover: 0.35,
@@ -1266,9 +1384,9 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "construcao",
-        x: 64,
-        y: 50,
-        radius: 9,
+        x: 58,
+        y: 23,
+        radius: 8,
         blocksGround: true,
         slow: 0.7,
         cover: 0.35,
@@ -1277,18 +1395,18 @@ export const arenas: Arena[] = [
         id: "o3",
         kind: "construcao",
         x: 50,
-        y: 36,
-        radius: 7,
+        y: 11,
+        radius: 6,
         blocksGround: false,
         slow: 0.85,
         cover: 0.25,
       },
     ],
     routes: [
-      { from: [50, 88], to: [50, 50] },
-      { from: [50, 50], to: [50, 20] },
+      { from: [8, 23], to: [50, 23] },
+      { from: [50, 23], to: [92, 23] },
     ],
-    deployZone: { blue: { x: 6, y: 66, w: 88, h: 30 }, red: { x: 6, y: 4, w: 88, h: 30 } },
+    deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
 ];
 

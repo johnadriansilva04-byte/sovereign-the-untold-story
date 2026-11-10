@@ -47,7 +47,10 @@ export type UnitModel =
   | "aa"
   | "fortificacao"
   | "posto"
-  | "paraquedista";
+  | "paraquedista"
+  | "sniper"
+  | "morteiro"
+  | "caca-tanques";
 
 // ---------------------------------------------------------------------------
 // Armas e projéteis
@@ -129,6 +132,7 @@ export interface SupportCard {
 export type SupportAbility =
   | "ataque_aereo"
   | "fumaca"
+  | "gas"
   | "reforcos"
   | "reparacao"
   | "barricada"
@@ -147,7 +151,7 @@ export type Card = MilitaryCard | SupportCard;
 export interface ControlPoint {
   id: string;
   name: string;
-  sector: "norte" | "central" | "sul";
+  sector: "norte" | "central" | "sul" | "oeste" | "leste";
   x: number; // 0-100
   y: number; // 0-100
   radius: number;
@@ -358,7 +362,7 @@ export interface Projectile {
 }
 
 export type EffectKind =
-  "muzzle" | "tracer" | "impact" | "explosion" | "smoke" | "fire" | "spark" | "build";
+  "muzzle" | "tracer" | "impact" | "explosion" | "smoke" | "gas" | "fire" | "spark" | "build";
 
 export interface VisualEffect {
   id: string;
@@ -375,7 +379,7 @@ export interface VisualEffect {
 
 export interface EffectZone {
   id: string;
-  kind: "fumaca" | "barricada" | "reparacao" | "reconhecimento";
+  kind: "fumaca" | "gas" | "barricada" | "reparacao" | "reconhecimento";
   side: Side;
   x: number;
   y: number;

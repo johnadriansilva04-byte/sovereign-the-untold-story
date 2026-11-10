@@ -21,6 +21,14 @@ import {
   squadPowerScale,
   startingDeck,
 } from "./catalog";
+import {
+  HOME_AIM,
+  HOME_POINT,
+  WORLD_X_MAX,
+  WORLD_X_MIN,
+  WORLD_Y_MAX,
+  WORLD_Y_MIN,
+} from "./world";
 import type {
   Arena,
   BattleAction,
@@ -105,7 +113,7 @@ function makeStructure(spec: StructureSpec): Structure {
     underConstruction,
     buildTime,
     buildProgress: underConstruction ? 0 : 100,
-    aim: spec.side === "blue" ? -Math.PI / 2 : Math.PI / 2,
+    aim: HOME_AIM[spec.side],
     recoil: 0,
   };
 }
@@ -249,7 +257,7 @@ export function insideDeployZone(state: BattleState, side: Side, x: number, y: n
 // `canDeploy` cobre o resto (energia e carta na mão), para a pré-visualização da UI
 // nunca divergir do que `deploy` de fato aceita.
 export function placementValid(_state: BattleState, _side: Side, x: number, y: number): boolean {
-  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 100 && y >= 0 && y <= 100;
+  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= WORLD_X_MAX + 1 && y >= 0 && y <= WORLD_Y_MAX + 1;
 }
 
 export function canDeploy(
@@ -341,7 +349,7 @@ export function originFor(
     const d = dist(s.x, s.y, x, y);
     if (!best || d < best.d) best = { x: s.x, y: s.y, d };
   }
-  const basePoint = base ? { x: base.x, y: base.y } : { x: 50, y: side === "blue" ? 92 : 8 };
+  const basePoint = base ? { x: base.x, y: base.y } : HOME_POINT[side];
   if (best && best.d < dist(basePoint.x, basePoint.y, x, y)) {
     return { x: best.x, y: best.y };
   }
@@ -366,12 +374,12 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
       state,
       side,
       cardId,
-      clamp(origin.x + off.dx, 1, 99),
-      clamp(origin.y + off.dy, 1, 99),
+      clamp(origin.x + off.dx, WORLD_X_MIN, WORLD_X_MAX),
+      clamp(origin.y + off.dy, WORLD_Y_MIN, WORLD_Y_MAX),
     );
     u.groupId = groupId;
-    u.goalX = clamp(order.x, 1, 99);
-    u.goalY = clamp(order.y, 1, 99);
+    u.goalX = clamp(order.x, WORLD_X_MIN, WORLD_X_MAX);
+    u.goalY = clamp(order.y, WORLD_Y_MIN, WORLD_Y_MAX);
     // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
     // holdAtArrival=false e a força volta a caçar o inimigo em vez de congelar.
     u.holdAtGoal = order.holdAtArrival ?? true;
@@ -404,6 +412,7 @@ function formationOffsets(count: number, spacing: number): { dx: number; dy: num
 export const GLOBAL_SUPPORT: SupportCard["ability"][] = [
   "ataque_aereo",
   "fumaca",
+  "gas",
   "interferencia",
   "reconhecimento",
   "paraquedistas",
@@ -478,7 +487,7 @@ function spawnUnit(
     domain: card.domain,
     order: "avancar",
     groupId: opts.groupId ?? `g${state.nextId}`,
-    aim: side === "blue" ? -Math.PI / 2 : Math.PI / 2,
+    aim: HOME_AIM[side],
     recoil: 0,
     alive: true,
     engaged: false,
@@ -519,8 +528,8 @@ export function reposition(
   const targets = unitsForSelection(state, side, sel);
   if (targets.length === 0) return false;
   for (const u of targets) {
-    u.goalX = clamp(order.x, 1, 99);
-    u.goalY = clamp(order.y, 1, 99);
+    u.goalX = clamp(order.x, WORLD_X_MIN, WORLD_X_MAX);
+    u.goalY = clamp(order.y, WORLD_Y_MIN, WORLD_Y_MAX);
     delete u.attackStructureId;
     delete u.attackTerritoryId;
     delete u.targetId;
@@ -580,16 +589,40 @@ function applySupport(
       });
       return true;
     }
+    case "gas": {
+      // Nuvem tóxica: NÃO é bloqueio visual. Cada segundo dentro dela drena a vida
+      // de QUALQUER unidade terrestre (aliada ou inimiga) até a morte. Aéreos passam
+      // por cima; a máscara de proteção (campo `smoke`) imuniza quem estiver coberto.
+      addZone(state, {
+        kind: "gas",
+        side,
+        x,
+        y,
+        radius: card.radius ?? 8,
+        remaining: card.duration ?? 10,
+        magnitude: card.magnitude ?? 26,
+      });
+      addEffect(state, "gas", x, y, card.radius ?? 8, { side });
+      pushLog(state, side, "apoio", "Bomba de gás lacrimogêneo lançada sobre o setor.");
+      return true;
+    }
     case "reforcos": {
       const count = card.magnitude ?? 2;
       const groupId = `g${state.nextId++}`;
       for (let i = 0; i < count; i++) {
         const off = i * 4 - (count - 1) * 2;
         cfg.units.push(
-          spawnUnit(state, side, "inf-fuzileiros", clamp(x + off, 2, 98), clamp(y + 2, 2, 98), {
-            name: "Pelotão de Reforço",
-            groupId,
-          }),
+          spawnUnit(
+            state,
+            side,
+            "inf-fuzileiros",
+            clamp(x + off, WORLD_X_MIN, WORLD_X_MAX),
+            clamp(y + 2, WORLD_Y_MIN, WORLD_Y_MAX),
+            {
+              name: "Pelotão de Reforço",
+              groupId,
+            },
+          ),
         );
       }
       return true;
@@ -675,7 +708,7 @@ function applySupport(
       }
       if (best) {
         best.hp = Math.min(best.maxHp, best.hp + (card.magnitude ?? 160));
-        best.x = clamp(best.x, 2, 98);
+        best.x = clamp(best.x, WORLD_X_MIN, WORLD_X_MAX);
       } else {
         for (const u of cfg.units) {
           if (u.alive && dist(u.x, u.y, x, y) <= (card.radius ?? 6))
@@ -707,8 +740,8 @@ function applySupport(
       const groupId = `g${state.nextId++}`;
       for (let i = 0; i < count; i++) {
         const off = i * 4 - (count - 1) * 2;
-        const px = clamp(x + off, 2, 98);
-        const py = clamp(y + 1, 2, 98);
+        const px = clamp(x + off, WORLD_X_MIN, WORLD_X_MAX);
+        const py = clamp(y + 1, WORLD_Y_MIN, WORLD_Y_MAX);
         const u = spawnUnit(state, side, "inf-fuzileiros", px, py, {
           name: "Pelotão Paraquedista",
           groupId,
@@ -725,8 +758,8 @@ function applySupport(
       const strikes = 4;
       for (let i = 0; i < strikes; i++) {
         const off = (i - (strikes - 1) / 2) * (r / strikes);
-        const bx = clamp(x + off, 2, 98);
-        const by = clamp(y + (i % 2 === 0 ? 1 : -1), 2, 98);
+        const bx = clamp(x + off, WORLD_X_MIN, WORLD_X_MAX);
+        const by = clamp(y + (i % 2 === 0 ? 1 : -1), WORLD_Y_MIN, WORLD_Y_MAX);
         for (const u of enemyCfg.units) {
           if (u.alive && dist(u.x, u.y, bx, by) <= r * 0.5)
             damageUnit(state, u, dmg / strikes, null);
@@ -758,7 +791,15 @@ function addEffect(
   extra?: Partial<VisualEffect>,
 ): void {
   const ttl =
-    kind === "explosion" ? 0.5 : kind === "impact" ? 0.3 : kind === "tracer" ? 0.12 : 0.18;
+    kind === "explosion"
+      ? 0.5
+      : kind === "gas"
+        ? 0.9
+        : kind === "impact"
+          ? 0.3
+          : kind === "tracer"
+            ? 0.12
+            : 0.18;
   state.effects.push({
     id: `fx${state.nextId++}`,
     kind,
@@ -865,6 +906,23 @@ function updateZones(state: BattleState, dt: number): void {
   const expiredBarricades = state.zones.filter(
     (z) => z.kind === "barricada" && z.remaining - dt <= 0,
   );
+  // Gás: dano contínuo a qualquer unidade terrestre dentro da nuvem (sem exceção de
+  // lado). O dano vem do motor, não da animação — quem cruza a nuvem morre de verdade.
+  for (const z of state.zones) {
+    if (z.kind !== "gas" || z.remaining <= 0) continue;
+    const dps = z.magnitude > 0 ? z.magnitude : 26;
+    for (const side of ["blue", "red"] as Side[]) {
+      const cfg = side === "blue" ? state.blue : state.red;
+      for (const u of cfg.units) {
+        if (!u.alive || u.domain === "aereo") continue;
+        if (u.smoke > 0) continue; // máscara/proteção ativa
+        if (dist(u.x, u.y, z.x, z.y) <= z.radius) {
+          damageUnit(state, u, dps * dt, null);
+          u.smoke = Math.max(u.smoke, 0.35);
+        }
+      }
+    }
+  }
   for (const z of state.zones) z.remaining -= dt;
   state.zones = state.zones.filter((z) => z.remaining > 0);
   if (expiredBarricades.length) {
@@ -1698,6 +1756,14 @@ export function isVisibleTo(state: BattleState, unit: BattleUnit, viewer: Side):
 // IA de movimento / objetivo
 // ---------------------------------------------------------------------------
 
+// Ponto da base principal inimiga (objetivo final de um avanço ofensivo).
+function enemyBasePoint(state: BattleState, side: Side): { x: number; y: number } | null {
+  const b = state.structures.find(
+    (s) => s.alive && s.side !== side && s.kind === "base-principal",
+  );
+  return b ? { x: b.x, y: b.y } : null;
+}
+
 function goalFor(state: BattleState, u: BattleUnit): { x: number; y: number } | null {
   const cfg = state.config;
   const home = u.side === "blue" ? cfg.arena.deployZone.blue : cfg.arena.deployZone.red;
@@ -1728,10 +1794,8 @@ function goalFor(state: BattleState, u: BattleUnit): { x: number; y: number } | 
       }
       if (contest) return { x: contest.x, y: contest.y };
       if (terr) return { x: terr.x, y: terr.y };
-      const base = state.structures.find(
-        (s) => s.alive && s.side !== u.side && s.kind === "base-principal",
-      );
-      return base ? { x: base.x, y: base.y } : center;
+      const base = enemyBasePoint(state, u.side) ?? center;
+      return base;
     }
   }
 }
@@ -1773,14 +1837,14 @@ function moveToward(
     if (blocked) {
       const perp = { x: -dy / d, y: dx / d };
       const s = Math.sign(perp.x * (blocked.x - u.x) + perp.y * (blocked.y - u.y)) || 1;
-      u.x = clamp(u.x + perp.x * u.speed * slow * dt * s, 1, 99);
-      u.y = clamp(u.y + perp.y * u.speed * slow * dt * s, 1, 99);
+      u.x = clamp(u.x + perp.x * u.speed * slow * dt * s, WORLD_X_MIN, WORLD_X_MAX);
+      u.y = clamp(u.y + perp.y * u.speed * slow * dt * s, WORLD_Y_MIN, WORLD_Y_MAX);
       return;
     }
   }
   const step = u.speed * slow * dt;
-  u.x = clamp(u.x + (dx / d) * step, 1, 99);
-  u.y = clamp(u.y + (dy / d) * step, 1, 99);
+  u.x = clamp(u.x + (dx / d) * step, WORLD_X_MIN, WORLD_X_MAX);
+  u.y = clamp(u.y + (dy / d) * step, WORLD_Y_MIN, WORLD_Y_MAX);
 }
 
 function combinedArmsMultiplier(state: BattleState, u: BattleUnit): number {

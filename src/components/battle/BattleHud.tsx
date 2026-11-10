@@ -78,15 +78,17 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
   const queue = side.deck.queue.map((id) => cardMeta(id));
   return (
     <div className="flex items-stretch gap-3">
-      <div className="-mx-1 flex flex-1 gap-2 overflow-x-auto px-1 pb-1">
-        {side.deck.hand.map((h) => {
+      <div className="grid flex-1 grid-cols-4 gap-2">
+        {side.deck.hand.map((h, slot) => {
           const card = cardMeta(h.cardId);
           const cost = costOf(h.cardId);
           const affordable = side.command >= cost;
           const selected = pendingCardId === h.cardId;
           return (
             <button
-              key={h.cardId}
+              // Posição FIXA por slot: a carta nova entra no mesmo lugar da usada,
+              // sem reordenar a mão no meio da partida (o que atrapalhava a jogada).
+              key={slot}
               onClick={() => onPick(h.cardId)}
               onMouseEnter={() => onHover(card)}
               onMouseLeave={() => onHover(null)}
@@ -97,7 +99,7 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
                 if (!selected) onPick(h.cardId);
               }}
               className={cn(
-                "relative flex min-w-[92px] flex-1 flex-col items-start justify-between gap-1 border bg-gradient-to-b to-transparent p-2 text-left transition sm:min-w-[120px]",
+                "relative flex min-w-0 flex-col items-start justify-between gap-1 border bg-gradient-to-b to-transparent p-2 text-left transition",
                 CATEGORY_BG[card.category] ?? "from-card",
                 selected
                   ? "-translate-y-1 border-primary shadow-brass"
@@ -118,7 +120,7 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
                   {cost}
                 </span>
               </span>
-              <span className="font-display text-sm font-bold uppercase leading-none sm:text-base">
+              <span className="line-clamp-2 font-display text-sm font-bold uppercase leading-none sm:text-base">
                 {card.name}
               </span>
               <span

@@ -2,11 +2,20 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNod
 
 import { cn } from "@/lib/utils";
 import { canDeploy, originFor } from "@/game/battle/engine";
+import {
+  WORLD_H,
+  WORLD_W,
+  fieldBounds,
+  fieldTransform,
+  fieldViewBox,
+  worldFromField,
+} from "@/game/battle/world";
 import type {
   BattleState,
   BattleUnit,
   ControlPoint,
   DeployTarget,
+  EffectZone,
   Projectile,
   Side,
   Structure,
@@ -29,6 +38,16 @@ const ALLY = "var(--ally)";
 const ENEMY = "var(--enemy)";
 
 const sideColor = (s: Side): string => (s === "blue" ? ALLY : ENEMY);
+
+// Cor da insígnia de patente por nível: prata → ouro → laranja → vermelho de elite.
+// Dá leitura instantânea de "esta tropa é veterana" no meio do combate.
+function LEVEL_TONE(level: number): string {
+  if (level >= 12) return "oklch(0.72 0.22 25)";
+  if (level >= 9) return "oklch(0.8 0.18 60)";
+  if (level >= 6) return "oklch(0.86 0.14 90)";
+  if (level >= 3) return "oklch(0.86 0.06 220)";
+  return "oklch(0.8 0.02 220)";
+}
 
 // Terreno por tipo de missão: cada fase tem um chão próprio (mata, urbano, montanha,
 // rio, fortificado), em vez do mesmo verde de todas as arenas.
@@ -54,6 +73,9 @@ export function BattleArena({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
+  // Caixa do campo JÁ inclinado: o viewBox cobre a rotação inteira, para o teatro
+  // diagonal não ter os cantos cortados.
+  const bounds = fieldBounds();
   // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
@@ -68,14 +90,15 @@ export function BattleArena({
       point.x = clientX;
       point.y = clientY;
       const local = point.matrixTransform(ctm.inverse());
-      return { x: local.x, y: local.y };
+      // o campo é desenhado inclinado; desfaz a rotação para voltar ao mundo.
+      return worldFromField(local.x, local.y);
     }
     const rect = svg.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
-    return {
-      x: ((clientX - rect.left) / rect.width) * 100,
-      y: ((clientY - rect.top) / rect.height) * 100,
-    };
+    return worldFromField(
+      bounds.x + ((clientX - rect.left) / rect.width) * bounds.w,
+      bounds.y + ((clientY - rect.top) / rect.height) * bounds.h,
+    );
   };
 
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -195,12 +218,13 @@ export function BattleArena({
   const ghostOrigin = ghost && !pendingIsGlobal ? originFor(state, "blue", ghost.x, ghost.y) : null;
 
   return (
-    <div className="relative h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)]">
+    <div className="relative h-full w-full">
       <svg
         ref={svgRef}
-        viewBox="0 0 100 100"
+        viewBox={fieldViewBox()}
+        preserveAspectRatio="none"
         className={cn(
-          "h-full w-full touch-none select-none rounded-sm border border-border",
+          "h-full w-full touch-none select-none",
           pendingCardId ? "cursor-crosshair" : "cursor-default",
         )}
         onPointerDown={handlePointer}
@@ -222,13 +246,13 @@ export function BattleArena({
         }}
       >
         <defs>
-          <linearGradient id="allyZone" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor={ALLY} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={ALLY} stopOpacity="0.04" />
+          <linearGradient id="allyZone" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={ALLY} stopOpacity="0.24" />
+            <stop offset="100%" stopColor={ALLY} stopOpacity="0.03" />
           </linearGradient>
-          <linearGradient id="enemyZone" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={ENEMY} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={ENEMY} stopOpacity="0.04" />
+          <linearGradient id="enemyZone" x1="1" y1="0" x2="0" y2="0">
+            <stop offset="0%" stopColor={ENEMY} stopOpacity="0.24" />
+            <stop offset="100%" stopColor={ENEMY} stopOpacity="0.03" />
           </linearGradient>
           <radialGradient id="terrGlow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
@@ -242,195 +266,196 @@ export function BattleArena({
           </linearGradient>
         </defs>
 
-        {/* Terreno base — a cor muda por terreno, para cada fase ter cara própria */}
-        <rect x="0" y="0" width="100" height="100" fill={ground.base} />
-        <rect x="0" y="0" width="100" height="100" fill={ground.accent} opacity="0.5" />
-        <rect x="0" y="0" width="100" height="100" fill="url(#groundDepth)" />
-        <rect x="0" y="0" width="100" height="100" fill="url(#enemyZone)" />
+        {/* Fundo do teatro (não inclinado): preenche os cantos que a rotação
+            deixa à mostra, para o campo ler como um tabuleiro sobre a mesa. */}
         <rect
-          x="0"
-          y="0"
-          width="100"
-          height="50"
-          fill="url(#allyZone)"
-          transform="translate(0,50)"
+          x={bounds.x}
+          y={bounds.y}
+          width={bounds.w}
+          height={bounds.h}
+          fill={ground.accent}
+          opacity="0.35"
         />
 
-        {/* Linhas de grade tênues */}
-        {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
-          <line
-            key={`v${i}`}
-            x1={i * 10}
-            y1="0"
-            x2={i * 10}
-            y2="100"
-            stroke="oklch(1 0 0 / 0.045)"
-            strokeWidth="0.2"
-          />
-        ))}
-        {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
-          <line
-            key={`h${i}`}
-            x1="0"
-            y1={i * 10}
-            x2="100"
-            y2={i * 10}
-            stroke="oklch(1 0 0 / 0.045)"
-            strokeWidth="0.2"
-          />
-        ))}
+        {/* Teatro inclinado: a câmera gira o campo em diagonal. A cena inteira
+            (terreno, territórios, estruturas, unidades, projéteis, efeitos) é
+            desenhada em coordenadas do mundo e rotacionada de uma só vez — a
+            lógica de jogo e a movimentação não mudam. */}
+        <g transform={fieldTransform()}>
+          {/* Terreno base — a cor muda por terreno, para cada fase ter cara própria */}
+          <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
+          <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.accent} opacity="0.5" />
+          <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
+          {/* Metades: oeste = aliado (azul), leste = inimigo (vermelho) */}
+          <rect x="0" y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#allyZone)" />
+          <rect x={WORLD_W / 2} y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#enemyZone)" />
 
-        {/* Linha divisória das metades */}
-        <line
-          x1="0"
-          y1="50"
-          x2="100"
-          y2="50"
-          stroke="oklch(1 0 0 / 0.18)"
-          strokeWidth="0.3"
-          strokeDasharray="2 2"
-        />
-
-        {/* Zonas de desdobramento */}
-        {(["red", "blue"] as Side[]).map((s) => {
-          const z = arena.deployZone[s];
-          const active = pendingCardId && s === "blue";
-          return (
-            <rect
-              key={s}
-              x={z.x}
-              y={z.y}
-              width={z.w}
-              height={z.h}
-              fill={active ? sideColor(s) : "none"}
-              fillOpacity={active ? 0.12 : 0}
-              stroke={sideColor(s)}
-              strokeOpacity={active ? 0.75 : 0.3}
-              strokeDasharray="1.5 1.5"
-              strokeWidth={active ? 0.5 : 0.3}
+          {/* Linhas de grade tênues */}
+          {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
+            <line
+              key={`v${i}`}
+              x1={(i * WORLD_W) / 10}
+              y1="0"
+              x2={(i * WORLD_W) / 10}
+              y2={WORLD_H}
+              stroke="oklch(1 0 0 / 0.045)"
+              strokeWidth="0.2"
             />
-          );
-        })}
+          ))}
+          {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
+            <line
+              key={`h${i}`}
+              x1="0"
+              y1={(i * WORLD_H) / 10}
+              x2={WORLD_W}
+              y2={(i * WORLD_H) / 10}
+              stroke="oklch(1 0 0 / 0.045)"
+              strokeWidth="0.2"
+            />
+          ))}
 
-        {/* Obstáculos */}
-        {arena.obstacles.map((o) => (
-          <circle
-            key={o.id}
-            cx={o.x}
-            cy={o.y}
-            r={o.radius}
-            fill={obstacleFill(o.kind)}
-            opacity={o.kind === "barricada" ? 0.6 : 0.7}
-            stroke={o.kind === "barricada" ? sideColor(o.side ?? "blue") : "oklch(1 0 0 / 0.1)"}
-            strokeWidth="0.3"
-          />
-        ))}
-
-        {/* Territórios de expansão */}
-        {state.territories.map((t) => (
-          <TerritoryGlyph key={t.id} territory={t} />
-        ))}
-
-        {/* Pontos de controle */}
-        {arena.controlPoints.map((p) => (
-          <ControlPointGlyph key={p.id} point={p} />
-        ))}
-
-        {/* Estruturas */}
-        {state.structures.map((s) => (
-          <StructureGlyph key={s.id} structure={s} />
-        ))}
-
-        {/* Zonas de efeito (fumaça/reconhecimento) */}
-        {state.zones.map((z) => (
-          <circle
-            key={z.id}
-            cx={z.x}
-            cy={z.y}
-            r={z.radius}
-            fill={z.kind === "fumaca" ? "oklch(0.92 0 0 / 0.3)" : sideColor(z.side)}
-            opacity={z.kind === "fumaca" ? 0.5 : 0.12}
-            stroke={z.kind === "fumaca" ? "oklch(0.95 0 0 / 0.4)" : sideColor(z.side)}
-            strokeWidth="0.25"
-            strokeDasharray="1.2 1.2"
-          />
-        ))}
-
-        {/* Unidades */}
-        {units.map((u) => {
-          const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
-          return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} dim={dim} />;
-        })}
-
-        {/* Projéteis */}
-        {state.projectiles.map((p) => (
-          <ProjectileGlyph key={p.id} projectile={p} />
-        ))}
-
-        {/* Efeitos visuais */}
-        {state.effects.map((e) => (
-          <EffectGlyph key={e.id} effect={e} />
-        ))}
-
-        {/* Alcance da unidade selecionada */}
-        {selected && (
-          <circle
-            cx={selected.x}
-            cy={selected.y}
-            r={selected.range}
-            fill="none"
-            stroke="var(--primary)"
+          {/* Linha divisória das metades (vertical: frente oeste↔leste) */}
+          <line
+            x1={WORLD_W / 2}
+            y1="0"
+            x2={WORLD_W / 2}
+            y2={WORLD_H}
+            stroke="oklch(1 0 0 / 0.18)"
             strokeWidth="0.3"
             strokeDasharray="2 2"
-            opacity={0.6}
           />
-        )}
 
-        {/* Pré-visualização do posicionamento: validação ao vivo + rota da força */}
-        {ghost && (
-          <g pointerEvents="none" data-testid="deploy-ghost" data-valid={ghostValid}>
-            {ghostOrigin && (
-              <>
-                <line
-                  x1={ghostOrigin.x}
-                  y1={ghostOrigin.y}
-                  x2={ghost.x}
-                  y2={ghost.y}
-                  stroke={ALLY}
-                  strokeWidth="0.4"
-                  strokeDasharray="2 1.5"
-                  opacity={0.85}
-                />
-                <circle
-                  cx={ghostOrigin.x}
-                  cy={ghostOrigin.y}
-                  r="2.6"
-                  fill="none"
-                  stroke={ALLY}
-                  strokeWidth="0.5"
-                  opacity={0.9}
-                />
-                <circle cx={ghostOrigin.x} cy={ghostOrigin.y} r="1" fill={ALLY} opacity={0.9} />
-              </>
-            )}
+          {/* Zonas de desdobramento */}
+          {(["red", "blue"] as Side[]).map((s) => {
+            const z = arena.deployZone[s];
+            const active = pendingCardId && s === "blue";
+            return (
+              <rect
+                key={s}
+                x={z.x}
+                y={z.y}
+                width={z.w}
+                height={z.h}
+                fill={active ? sideColor(s) : "none"}
+                fillOpacity={active ? 0.12 : 0}
+                stroke={sideColor(s)}
+                strokeOpacity={active ? 0.75 : 0.3}
+                strokeDasharray="1.5 1.5"
+                strokeWidth={active ? 0.5 : 0.3}
+              />
+            );
+          })}
+
+          {/* Obstáculos */}
+          {arena.obstacles.map((o) => (
             <circle
-              cx={ghost.x}
-              cy={ghost.y}
-              r="3.2"
+              key={o.id}
+              cx={o.x}
+              cy={o.y}
+              r={o.radius}
+              fill={obstacleFill(o.kind)}
+              opacity={o.kind === "barricada" ? 0.6 : 0.7}
+              stroke={o.kind === "barricada" ? sideColor(o.side ?? "blue") : "oklch(1 0 0 / 0.1)"}
+              strokeWidth="0.3"
+            />
+          ))}
+
+          {/* Territórios de expansão */}
+          {state.territories.map((t) => (
+            <TerritoryGlyph key={t.id} territory={t} />
+          ))}
+
+          {/* Pontos de controle */}
+          {arena.controlPoints.map((p) => (
+            <ControlPointGlyph key={p.id} point={p} />
+          ))}
+
+          {/* Estruturas */}
+          {state.structures.map((s) => (
+            <StructureGlyph key={s.id} structure={s} />
+          ))}
+
+          {/* Zonas de efeito (fumaça, gás, reconhecimento) */}
+          {state.zones.map((z) => (
+            <ZoneGlyph key={z.id} zone={z} />
+          ))}
+
+          {/* Unidades */}
+          {units.map((u) => {
+            const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
+            return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} dim={dim} />;
+          })}
+
+          {/* Projéteis */}
+          {state.projectiles.map((p) => (
+            <ProjectileGlyph key={p.id} projectile={p} />
+          ))}
+
+          {/* Efeitos visuais */}
+          {state.effects.map((e) => (
+            <EffectGlyph key={e.id} effect={e} />
+          ))}
+
+          {/* Alcance da unidade selecionada */}
+          {selected && (
+            <circle
+              cx={selected.x}
+              cy={selected.y}
+              r={selected.range}
               fill="none"
-              stroke={ghostValid ? "var(--ally)" : "var(--destructive)"}
-              strokeWidth="0.5"
-              strokeDasharray={ghostValid ? undefined : "1.2 1"}
+              stroke="var(--primary)"
+              strokeWidth="0.3"
+              strokeDasharray="2 2"
+              opacity={0.6}
             />
-            <circle
-              cx={ghost.x}
-              cy={ghost.y}
-              r="1"
-              fill={ghostValid ? "var(--ally)" : "var(--destructive)"}
-              opacity={0.9}
-            />
-          </g>
-        )}
+          )}
+
+          {/* Pré-visualização do posicionamento: validação ao vivo + rota da força */}
+          {ghost && (
+            <g pointerEvents="none" data-testid="deploy-ghost" data-valid={ghostValid}>
+              {ghostOrigin && (
+                <>
+                  <line
+                    x1={ghostOrigin.x}
+                    y1={ghostOrigin.y}
+                    x2={ghost.x}
+                    y2={ghost.y}
+                    stroke={ALLY}
+                    strokeWidth="0.4"
+                    strokeDasharray="2 1.5"
+                    opacity={0.85}
+                  />
+                  <circle
+                    cx={ghostOrigin.x}
+                    cy={ghostOrigin.y}
+                    r="2.6"
+                    fill="none"
+                    stroke={ALLY}
+                    strokeWidth="0.5"
+                    opacity={0.9}
+                  />
+                  <circle cx={ghostOrigin.x} cy={ghostOrigin.y} r="1" fill={ALLY} opacity={0.9} />
+                </>
+              )}
+              <circle
+                cx={ghost.x}
+                cy={ghost.y}
+                r="3.2"
+                fill="none"
+                stroke={ghostValid ? "var(--ally)" : "var(--destructive)"}
+                strokeWidth="0.5"
+                strokeDasharray={ghostValid ? undefined : "1.2 1"}
+              />
+              <circle
+                cx={ghost.x}
+                cy={ghost.y}
+                r="1"
+                fill={ghostValid ? "var(--ally)" : "var(--destructive)"}
+                opacity={0.9}
+              />
+            </g>
+          )}
+        </g>
       </svg>
 
       {pendingCardId && (
@@ -441,6 +466,90 @@ export function BattleArena({
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Zonas de efeito (fumaça, gás lacrimogêneo, reconhecimento)
+// ---------------------------------------------------------------------------
+
+function ZoneGlyph({ zone: z }: { zone: EffectZone }) {
+  if (z.kind === "gas") {
+    return (
+      <g>
+        {/* Aviso de área perigosa: contorno tracejado pulsante */}
+        <circle
+          cx={z.x}
+          cy={z.y}
+          r={z.radius}
+          fill="oklch(0.72 0.19 130 / 0.28)"
+          stroke="oklch(0.85 0.22 120)"
+          strokeWidth="0.4"
+          strokeDasharray="1.4 1"
+        >
+          <animate
+            attributeName="stroke-opacity"
+            values="0.5;1;0.5"
+            dur="1.1s"
+            repeatCount="indefinite"
+          />
+        </circle>
+        {/* Nuvem verde-tóxica densa, com partículas em movimento */}
+        <circle cx={z.x} cy={z.y} r={z.radius * 0.9} fill="oklch(0.66 0.2 128 / 0.5)" />
+        <circle cx={z.x} cy={z.y} r={z.radius * 0.6} fill="oklch(0.78 0.2 118 / 0.55)">
+          <animate
+            attributeName="r"
+            values={`${z.radius * 0.5};${z.radius * 0.72};${z.radius * 0.5}`}
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </circle>
+        {[0, 1, 2, 3, 4, 5].map((i) => {
+          const a = (i / 6) * Math.PI * 2;
+          return (
+            <circle
+              key={i}
+              cx={z.x + Math.cos(a) * z.radius * 0.45}
+              cy={z.y + Math.sin(a) * z.radius * 0.45}
+              r="0.9"
+              fill="oklch(0.88 0.2 112)"
+              opacity="0.75"
+            >
+              <animate
+                attributeName="opacity"
+                values="0.2;0.9;0.2"
+                dur={`${1 + (i % 3) * 0.4}s`}
+                repeatCount="indefinite"
+              />
+            </circle>
+          );
+        })}
+        <text
+          x={z.x}
+          y={z.y - z.radius - 0.6}
+          textAnchor="middle"
+          fontSize="2"
+          fontFamily="var(--font-mono)"
+          fill="oklch(0.9 0.2 115)"
+          fontWeight={700}
+        >
+          GÁS
+        </text>
+      </g>
+    );
+  }
+  const isSmoke = z.kind === "fumaca";
+  return (
+    <circle
+      cx={z.x}
+      cy={z.y}
+      r={z.radius}
+      fill={isSmoke ? "oklch(0.92 0 0 / 0.3)" : sideColor(z.side)}
+      opacity={isSmoke ? 0.5 : 0.12}
+      stroke={isSmoke ? "oklch(0.95 0 0 / 0.4)" : sideColor(z.side)}
+      strokeWidth="0.25"
+      strokeDasharray="1.2 1.2"
+    />
   );
 }
 
@@ -612,57 +721,88 @@ function TowerGlyph({ s, color }: { s: Structure; color: string }) {
 
 function TerritoryGlyph({ territory: t }: { territory: Territory }) {
   const owned = t.owner !== "neutro";
-  const color = owned ? sideColor(t.owner as Side) : "#ffffff";
+  const color = owned ? sideColor(t.owner as Side) : "oklch(0.98 0 0)";
+  const contested = t.progress.blue > 0 && t.progress.red > 0;
+  const progress = Math.max(t.progress.blue, t.progress.red) / 100;
+  const ringColor = t.progress.blue >= t.progress.red ? ALLY : ENEMY;
   return (
     <g>
-      <circle
-        cx={t.x}
-        cy={t.y}
-        r={t.radius * 1.6}
-        fill="url(#terrGlow)"
-        opacity={owned ? 0.4 : 0.9}
-      />
+      {/* halo neon da facção (destaque forte no terreno) */}
+      <circle cx={t.x} cy={t.y} r={t.radius * 1.9} fill="url(#terrGlow)" opacity={owned ? 0.5 : 1}>
+        {!owned && (
+          <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" />
+        )}
+      </circle>
+      {/* anel externo brilhante */}
       <circle
         cx={t.x}
         cy={t.y}
         r={t.radius}
         fill={color}
-        opacity={owned ? 0.14 : 0.05}
+        opacity={owned ? 0.16 : 0.06}
         stroke={color}
-        strokeWidth="0.35"
-        strokeDasharray={owned ? undefined : "1 1"}
-      />
-      <circle cx={t.x} cy={t.y} r={t.radius * 0.35} fill={color} opacity={owned ? 0.7 : 0.9}>
+        strokeWidth={owned ? 0.7 : 0.55}
+        strokeDasharray={owned ? undefined : "1.4 1.1"}
+      >
         {!owned && (
           <animate
-            attributeName="opacity"
-            values="0.4;0.95;0.4"
-            dur="1.8s"
+            attributeName="stroke-opacity"
+            values="0.55;1;0.55"
+            dur="1.7s"
             repeatCount="indefinite"
           />
         )}
       </circle>
+      {/* núcleo */}
+      <circle cx={t.x} cy={t.y} r={t.radius * 0.34} fill={color} opacity={owned ? 0.85 : 0.95} />
+      {/* anel de progresso de captura — ultra visível */}
+      {!owned && progress > 0 && (
+        <circle
+          cx={t.x}
+          cy={t.y}
+          r={t.radius * 0.7}
+          fill="none"
+          stroke={ringColor}
+          strokeWidth="1.1"
+          strokeLinecap="round"
+          strokeDasharray={`${2 * Math.PI * t.radius * 0.7 * progress} ${2 * Math.PI * t.radius * 0.7}`}
+          transform={`rotate(-90 ${t.x} ${t.y})`}
+        />
+      )}
+      {contested && (
+        <text
+          x={t.x}
+          y={t.y - t.radius - 1}
+          textAnchor="middle"
+          fontSize="1.9"
+          fontFamily="var(--font-mono)"
+          fill="var(--enemy)"
+          fontWeight={700}
+        >
+          DISPUTA
+        </text>
+      )}
       {!owned && (t.progress.blue > 0 || t.progress.red > 0) && (
         <>
           <rect
             x={t.x - t.radius}
-            y={t.y + t.radius + 0.6}
+            y={t.y + t.radius + 0.7}
             width={t.radius * 2}
-            height="0.9"
-            fill="oklch(0 0 0 / 0.5)"
+            height="1"
+            fill="oklch(0 0 0 / 0.55)"
           />
           <rect
             x={t.x - t.radius}
-            y={t.y + t.radius + 0.6}
+            y={t.y + t.radius + 0.7}
             width={t.radius * 2 * (t.progress.blue / 100)}
-            height="0.9"
+            height="1"
             fill={ALLY}
           />
           <rect
             x={t.x + t.radius - t.radius * 2 * (t.progress.red / 100)}
-            y={t.y + t.radius + 0.6}
+            y={t.y + t.radius + 0.7}
             width={t.radius * 2 * (t.progress.red / 100)}
-            height="0.9"
+            height="1"
             fill={ENEMY}
           />
         </>
@@ -676,19 +816,30 @@ function TerritoryGlyph({ territory: t }: { territory: Territory }) {
 // ---------------------------------------------------------------------------
 
 function ControlPointGlyph({ point }: { point: ControlPoint }) {
-  const color = point.owner === "neutro" ? "var(--neutral)" : sideColor(point.owner);
+  const color = point.owner === "neutro" ? "oklch(0.98 0 0)" : sideColor(point.owner);
   const bluePct = point.progress.blue;
   const redPct = point.progress.red;
+  const progress = Math.max(bluePct, redPct) / 100;
+  const ringColor = bluePct >= redPct ? ALLY : ENEMY;
+  const contested = bluePct > 0 && redPct > 0;
+  const r = point.radius * 0.7;
   return (
     <g>
       <circle
         cx={point.x}
         cy={point.y}
+        r={point.radius * 1.5}
+        fill="url(#terrGlow)"
+        opacity="0.85"
+      />
+      <circle
+        cx={point.x}
+        cy={point.y}
         r={point.radius}
         fill={color}
-        opacity={0.1}
+        opacity={point.owner === "neutro" ? 0.12 : 0.2}
         stroke={color}
-        strokeWidth="0.4"
+        strokeWidth="0.65"
       />
       <circle
         cx={point.x}
@@ -696,43 +847,64 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
         r={point.radius * 0.5}
         fill="none"
         stroke={color}
-        strokeWidth="0.3"
-        strokeDasharray="1.5 1.5"
-      />
-      {point.owner === "neutro" && (bluePct > 0 || redPct > 0) && (
-        <>
-          <rect
-            x={point.x - 4}
-            y={point.y + point.radius - 0.4}
-            width={8}
-            height="1"
-            fill="oklch(0 0 0 / 0.5)"
-          />
-          <rect
-            x={point.x - 4}
-            y={point.y + point.radius - 0.4}
-            width={8 * (bluePct / 100)}
-            height="1"
-            fill={ALLY}
-          />
-          <rect
-            x={point.x + 4 - 8 * (redPct / 100)}
-            y={point.y + point.radius - 0.4}
-            width={8 * (redPct / 100)}
-            height="1"
-            fill={ENEMY}
-          />
-        </>
+        strokeWidth="0.4"
+        strokeDasharray="1.6 1.4"
+      >
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from={`0 ${point.x} ${point.y}`}
+          to={`360 ${point.x} ${point.y}`}
+          dur="9s"
+          repeatCount="indefinite"
+        />
+      </circle>
+      {progress > 0 && (
+        <circle
+          cx={point.x}
+          cy={point.y}
+          r={r}
+          fill="none"
+          stroke={ringColor}
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeDasharray={`${2 * Math.PI * r * progress} ${2 * Math.PI * r}`}
+          transform={`rotate(-90 ${point.x} ${point.y})`}
+        />
+      )}
+      {contested && (
+        <text
+          x={point.x}
+          y={point.y - point.radius - 1}
+          textAnchor="middle"
+          fontSize="1.9"
+          fontFamily="var(--font-mono)"
+          fill="var(--enemy)"
+          fontWeight={700}
+        >
+          DISPUTA
+        </text>
       )}
       <text
         x={point.x}
-        y={point.y - point.radius - 0.8}
+        y={point.y - point.radius - (contested ? 3.2 : 0.9)}
         textAnchor="middle"
-        fontSize="2"
+        fontSize="2.1"
         fontFamily="var(--font-mono)"
         fill={color}
+        fontWeight={700}
       >
         {point.sector.toUpperCase()}
+      </text>
+      <text
+        x={point.x}
+        y={point.y + point.radius + 2.6}
+        textAnchor="middle"
+        fontSize="1.9"
+        fontFamily="var(--font-mono)"
+        fill="oklch(0.9 0.01 90)"
+      >
+        {point.name}
       </text>
     </g>
   );
@@ -771,6 +943,17 @@ function UnitGlyph({
         />
       )}
       <circle cx={unit.x} cy={y} r={r + 0.8} fill={color} opacity={0.16} />
+      {unit.level > 1 && (
+        <circle
+          cx={unit.x}
+          cy={y}
+          r={r + 1.3}
+          fill="none"
+          stroke={LEVEL_TONE(unit.level)}
+          strokeWidth={0.3 + Math.min(0.5, unit.level * 0.04)}
+          opacity={0.85}
+        />
+      )}
       <g
         transform={`translate(${unit.x} ${y}) rotate(${(unit.aim * 180) / Math.PI}) scale(${scale})`}
       >
@@ -819,6 +1002,29 @@ function UnitGlyph({
       >
         {unit.short}
       </text>
+      {unit.level > 1 && (
+        <g>
+          <circle
+            cx={unit.x - unit.short.length * 0.62 - 1.4}
+            cy={y + r * 0.5 + 1.2}
+            r="1.5"
+            fill="oklch(0.12 0.008 90 / 0.85)"
+            stroke={LEVEL_TONE(unit.level)}
+            strokeWidth="0.25"
+          />
+          <text
+            x={unit.x - unit.short.length * 0.62 - 1.4}
+            y={y + r * 0.5 + 1.95}
+            textAnchor="middle"
+            fontSize="2"
+            fontFamily="var(--font-mono)"
+            fill={LEVEL_TONE(unit.level)}
+            fontWeight={700}
+          >
+            {unit.level}
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -826,16 +1032,19 @@ function UnitGlyph({
 // Escala de desenho por modelo. Infantaria sobe mais (era o caso mais crítico);
 // veículos e aeronaves sobem o suficiente para não competir com o terreno.
 const MODEL_SCALE: Record<BattleUnit["model"], number> = {
-  "soldado-fuzil": 1.9,
-  "soldado-assalto": 1.85,
-  "soldado-antitanque": 1.85,
-  engenheiro: 1.9,
+  "soldado-fuzil": 2.2,
+  "soldado-assalto": 2.15,
+  "soldado-antitanque": 2.15,
+  sniper: 2.2,
+  morteiro: 1.8,
+  engenheiro: 2.2,
   canhao: 1.4,
   "artilharia-pesada": 1.35,
   lmf: 1.35,
   "lancador-missil": 1.4,
-  tanque: 1.45,
-  vbld: 1.45,
+  tanque: 1.7,
+  vbld: 1.7,
+  "caca-tanques": 1.7,
   "drone-recon": 1.5,
   "drone-combate": 1.5,
   aa: 1.4,
@@ -1088,6 +1297,43 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <circle cx="0" cy="0" r="0.5" fill="var(--fact)" />
         </>,
       );
+    case "sniper":
+      return body(
+        <>
+          <circle cx="-0.5" cy="0" r="0.6" fill={steel} />
+          <rect x="-0.5" y="-0.55" width="1.4" height="1.1" rx="0.3" fill={color} />
+          {/* fuzil longo com luneta */}
+          <rect x="0.6" y="-0.16" width="3.2" height="0.32" rx="0.06" fill={dark} />
+          <rect x="1.2" y="-0.6" width="0.9" height="0.34" rx="0.08" fill={steel} />
+          <circle cx="2.4" cy="0" r="0.18" fill="var(--fact)" />
+        </>,
+      );
+    case "morteiro":
+      return body(
+        <>
+          {/* base + bipé + tubo elevado */}
+          <ellipse rx="1.4" ry="0.9" fill={steel} />
+          <line x1="-1" y1="0.8" x2="-0.2" y2="-0.6" stroke={dark} strokeWidth="0.24" />
+          <line x1="1" y1="0.8" x2="0.2" y2="-0.6" stroke={dark} strokeWidth="0.24" />
+          <rect x="-0.32" y="-2" width="0.64" height="2.4" rx="0.16" fill={color} />
+          <circle cx="0" cy="-2" r="0.3" fill={dark} />
+        </>,
+      );
+    case "caca-tanques":
+      return body(
+        <>
+          {/* esteiras */}
+          <rect x="-2" y="-1.5" width="4" height="0.6" rx="0.2" fill={dark} />
+          <rect x="-2" y="0.9" width="4" height="0.6" rx="0.2" fill={dark} />
+          {/* casco baixo e longo */}
+          <rect x="-1.9" y="-1" width="3.8" height="2" rx="0.28" fill={steel} />
+          <rect x="-1.5" y="-0.7" width="3" height="1.4" rx="0.18" fill={color} />
+          {/* torre baixa com canhão muito longo */}
+          <rect x="-0.7" y="-0.6" width="1.7" height="1.2" rx="0.2" fill={steel} />
+          <rect x="0.9" y="-0.18" width="3.1" height="0.36" rx="0.08" fill={dark} />
+          <rect x="3.9" y="-0.26" width="0.5" height="0.52" rx="0.08" fill={steel} />
+        </>,
+      );
     default:
       return body(<circle r="1.4" fill={color} />);
   }
@@ -1171,6 +1417,25 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
             repeatCount="indefinite"
           />
         </circle>
+      );
+    case "gas":
+      return (
+        <g>
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * (1.1 - life * 0.4)}
+            fill="oklch(0.72 0.2 125)"
+            opacity={life * 0.55}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * (0.7 - life * 0.3)}
+            fill="oklch(0.85 0.22 115)"
+            opacity={life * 0.6}
+          />
+        </g>
       );
     case "spark":
       return (

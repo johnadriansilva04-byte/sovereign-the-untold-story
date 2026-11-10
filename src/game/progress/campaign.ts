@@ -51,7 +51,7 @@ export const chapterMeta: ChapterMeta[] = [
     reward: {
       research: 1,
       sovereigns: 130,
-      cards: ["sup-fumaca"],
+      cards: ["sup-gas"],
     },
     rewardNote: "Você aprendeu que a guerra chega pela tomada e pelo cabo.",
     intro:
@@ -721,7 +721,7 @@ export const chapterMeta: ChapterMeta[] = [
     reward: {
       research: 5,
       sovereigns: 360,
-      cards: ["sup-fumaca"],
+      cards: ["sup-gas"],
       accessories: ["acc-radio"],
     },
     rewardNote: "Cortina de fumaça: esconda as suas posições de quem lê os seus dados.",

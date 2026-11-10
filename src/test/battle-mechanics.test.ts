@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { aiTick, aiTickSide, configureAi, defaultAiWeights } from "@/game/battle/ai";
 import { cardById, commanders, militaryById, startingDeck } from "@/game/battle/catalog";
-import { createBattle, deploy, dist, insideDeployZone, reposition, stepBattle } from "@/game/battle/engine";
+import {
+  createBattle,
+  deploy,
+  dist,
+  insideDeployZone,
+  reposition,
+  stepBattle,
+} from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
 import type {
   BattleConfig,
@@ -80,8 +87,8 @@ describe("motor de batalha — bases, torres e vitória", () => {
     const state = createBattle(testConfig());
     const bases = state.structures.filter((s) => s.kind === "base-principal");
     expect(bases).toHaveLength(2);
-    expect(bases.find((b) => b.side === "blue")!.y).toBeGreaterThan(50);
-    expect(bases.find((b) => b.side === "red")!.y).toBeLessThan(50);
+    expect(bases.find((b) => b.side === "blue")!.x).toBeLessThan(50);
+    expect(bases.find((b) => b.side === "red")!.x).toBeGreaterThan(50);
     for (const side of ["blue", "red"] as const) {
       expect(state.structures.filter((s) => s.side === side && s.kind === "torre")).toHaveLength(2);
     }
@@ -226,18 +233,18 @@ describe("motor de batalha — expansão territorial e construção", () => {
     const state = createBattle(testConfig());
     state.blue.command = 30;
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    // ordem sobre o próprio território
-    expect(deploy(state, "blue", "inf-fuzileiros", 50, 88)).toBe(true);
+    // ordem sobre o próprio território (oeste)
+    expect(deploy(state, "blue", "inf-fuzileiros", 20, 23)).toBe(true);
     // ordem sobre a zona inimiga: aceita (a força marcha até lá) e nasce na base azul
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
     state.blue.command = 30;
     const before = state.blue.units.length;
-    expect(deploy(state, "blue", "inf-fuzileiros", 50, 10)).toBe(true);
+    expect(deploy(state, "blue", "inf-fuzileiros", 90, 23)).toBe(true);
     const spawned = state.blue.units.slice(before);
     expect(spawned.length).toBeGreaterThan(0);
     for (const u of spawned) {
-      expect(u.y).toBeGreaterThan(50); // nasceu no lado azul
-      expect(u.goalY).toBe(10); // caminha para o destino ordenado
+      expect(u.x).toBeLessThan(50); // nasceu no lado azul (oeste)
+      expect(u.goalX).toBe(90); // caminha para o destino ordenado (leste)
     }
   });
 });
@@ -321,17 +328,17 @@ describe("motor de batalha — armas e projéteis reais", () => {
   // 11. Tanques movimentam a torre e disparam.
   it("11. tanque mira, dispara e causa dano", () => {
     const state = createBattle(testConfig());
-    const tank = place(state, "blue", "bld-tanque", 50, 55);
-    const target = place(state, "red", "inf-fuzileiros", 46, 50);
+    const tank = place(state, "blue", "bld-tanque", 40, 23);
+    const target = place(state, "red", "inf-fuzileiros", 46, 20);
     const aim0 = tank.aim;
     const hpBefore = target.hp;
     let moved = false;
     let dmg = false;
     for (let i = 0; i < 600 && state.running; i++) {
-      tank.x = 50;
-      tank.y = 55;
+      tank.x = 40;
+      tank.y = 23;
       target.x = 46;
-      target.y = 50;
+      target.y = 20;
       tank.order = "manter";
       target.order = "manter";
       tank.hp = tank.maxHp;
@@ -479,7 +486,7 @@ describe("motor de batalha — IA autônoma", () => {
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
     // ordem do jogador (como o useBattle faz): marcha até o ponto e volta a caçar
     expect(
-      deploy(state, "blue", "inf-fuzileiros", 50, 70, { x: 50, y: 70, holdAtArrival: false }),
+      deploy(state, "blue", "inf-fuzileiros", 20, 23, { x: 20, y: 23, holdAtArrival: false }),
     ).toBe(true);
     const unit = state.blue.units.at(-1)!;
     expect(unit.holdAtGoal).toBe(false);
@@ -520,8 +527,8 @@ describe("motor de batalha — cartas com efeito real", () => {
 
   it("Posto de Socorro cura infantaria aliada ferida (não é decoração)", () => {
     const state = createBattle(supportConfig({ duration: 300 }));
-    const posto = place(state, "blue", "apo-posto", 50, 90);
-    const soldier = place(state, "blue", "inf-fuzileiros", 52, 90);
+    const posto = place(state, "blue", "apo-posto", 50, 23);
+    const soldier = place(state, "blue", "inf-fuzileiros", 52, 23);
     expect(posto.heal).toBeGreaterThan(0);
     soldier.hp = soldier.maxHp * 0.4;
     const before = soldier.hp;
@@ -609,10 +616,10 @@ describe("motor de batalha — cartas com efeito real", () => {
     const local = createBattle(testConfig({ duration: 60 }));
     local.blue.command = 999;
     local.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    expect(deploy(local, "blue", "inf-fuzileiros", enemyBase.x, enemyBase.y - 6)).toBe(true);
+    expect(deploy(local, "blue", "inf-fuzileiros", enemyBase.x - 6, enemyBase.y)).toBe(true);
     const trooper = local.blue.units[0]!;
-    expect(trooper.y).toBeGreaterThan(50); // nasceu na base azul
-    expect(trooper.goalY).toBeCloseTo(enemyBase.y - 6, 0); // recebeu o destino inimigo
+    expect(trooper.x).toBeLessThan(50); // nasceu na base azul (oeste)
+    expect(trooper.goalX).toBeCloseTo(enemyBase.x - 6, 0); // recebeu o destino inimigo
   });
 
   // 8/9. O clique num inimigo manda a força atacá-lo (o alvo explícito é respeitado).
@@ -676,9 +683,9 @@ describe("motor de batalha — cartas com efeito real", () => {
       targetStructureId: tower.id,
     });
     expect(ok).toBe(true);
-    expect(state.blue.units.filter((u) => u.alive).every((u) => u.attackStructureId === tower.id)).toBe(
-      true,
-    );
+    expect(
+      state.blue.units.filter((u) => u.alive).every((u) => u.attackStructureId === tower.id),
+    ).toBe(true);
     const hpBefore = tower.hp;
     for (let i = 0; i < 3000 && state.running && tower.hp >= hpBefore; i++) {
       for (const u of state.blue.units) if (u.alive) u.hp = u.maxHp;

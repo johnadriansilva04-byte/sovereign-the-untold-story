@@ -184,7 +184,7 @@ const MIRROR_DECKS: string[][] = [
     "def-aa",
     "inf-engenheiro",
     "rec-drone",
-    "sup-fumaca",
+    "sup-gas",
   ],
   [
     "inf-fuzileiros",

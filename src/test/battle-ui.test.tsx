@@ -7,6 +7,7 @@ import { BattleScreen } from "@/components/battle/BattleScreen";
 import { commanders, startingDeck } from "@/game/battle/catalog";
 import { createBattle, deploy } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
+import { fieldBounds, fieldFromWorld, worldFromField } from "@/game/battle/world";
 import { ProfileProvider } from "@/game/progress/store";
 import { createProfile } from "@/game/progress/profile";
 
@@ -58,7 +59,7 @@ describe("interface da batalha", () => {
     const proto = SVGSVGElement.prototype as unknown as {
       getBoundingClientRect: () => DOMRect;
     };
-    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 1000 }) as DOMRect;
+    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 460 }) as DOMRect;
 
     render(
       <ProfileProvider>
@@ -67,11 +68,11 @@ describe("interface da batalha", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
     // ponto no teatro: a força parte da base e avança até o objetivo
     // jsdom não tem PointerEvent; um MouseEvent com o tipo "pointerdown" carrega clientX/Y.
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 100, clientY: 230, bubbles: true }));
 
     // a instrução de posicionamento some após o desdobramento
     expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
@@ -85,7 +86,19 @@ describe("interface da batalha", () => {
     const proto = SVGSVGElement.prototype as unknown as {
       getBoundingClientRect: () => DOMRect;
     };
-    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 1000 }) as DOMRect;
+    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 460 }) as DOMRect;
+  };
+
+  // O teatro é desenhado inclinado e o viewBox cobre a rotação; para clicar num
+  // ponto do MUNDO nos testes, aplicamos a rotação e projetamos na caixa do campo
+  // sobre o retângulo stub (1000×460).
+  const worldToClient = (wx: number, wy: number) => {
+    const b = fieldBounds();
+    const f = fieldFromWorld(wx, wy);
+    return {
+      clientX: ((f.x - b.x) / b.w) * 1000,
+      clientY: ((f.y - b.y) / b.h) * 460,
+    };
   };
 
   it("pré-visualiza o posicionamento válido ao mover o ponteiro sobre o território aliado", () => {
@@ -98,9 +111,9 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
 
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
-    // y = 85 → dentro da zona de desdobramento azul
-    fireEvent(svg, new MouseEvent("pointermove", { clientX: 500, clientY: 850, bubbles: true }));
+    const svg = document.querySelector("svg[viewBox]")!;
+    // x = 10 → dentro da zona de desdobramento azul (oeste)
+    fireEvent(svg, new MouseEvent("pointermove", { clientX: 100, clientY: 230, bubbles: true }));
 
     const ghost = screen.getByTestId("deploy-ghost");
     expect(ghost).toBeInTheDocument();
@@ -117,9 +130,9 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
 
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
-    // y = 10 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
-    fireEvent(svg, new MouseEvent("pointermove", { clientX: 500, clientY: 100, bubbles: true }));
+    const svg = document.querySelector("svg[viewBox]")!;
+    // x = 90 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
+    fireEvent(svg, new MouseEvent("pointermove", { clientX: 900, clientY: 230, bubbles: true }));
 
     expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("true");
   });
@@ -133,19 +146,19 @@ describe("interface da batalha", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    // desdobra na própria metade; a força nasce na base (y≈92)
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+    // desdobra na própria metade; a força nasce na base azul (x≈8)
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, 23), bubbles: true }));
 
     // toca a ~10px da unidade (tolerância do teatro pequeno): antes o alvo era o
     // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 510, clientY: 925, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, 23), bubbles: true }));
 
     // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
     // e o teatro continua visível: a faixa NÃO é um painel sobreposto à arena
-    expect(document.querySelector('svg[viewBox="0 0 100 100"]')).toBeInTheDocument();
+    expect(document.querySelector("svg[viewBox]")).toBeInTheDocument();
   });
 
   it("não seleciona nada quando o toque fica longe de qualquer unidade", () => {
@@ -157,14 +170,14 @@ describe("interface da batalha", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 100, clientY: 230, bubbles: true }));
     // tira a seleção (a carta não está mais na mão)
     expect(screen.queryByText("Fuzileiros")).not.toBeInTheDocument();
 
     // toque no canto oposto do teatro: longe demais de qualquer unidade aliada
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 50, clientY: 50, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 950, clientY: 440, bubbles: true }));
     expect(screen.queryByText("Fuzileiros")).not.toBeInTheDocument();
   });
 
@@ -181,8 +194,8 @@ describe("interface da batalha", () => {
     fireEvent.dragStart(card, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
     expect(screen.getByText(/Clique no objetivo/)).toBeInTheDocument();
 
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
-    fireEvent.drop(svg, { clientX: 500, clientY: 850 });
+    const svg = document.querySelector("svg[viewBox]")!;
+    fireEvent.drop(svg, { clientX: 100, clientY: 230 });
 
     expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
@@ -197,17 +210,17 @@ describe("interface da batalha", () => {
       </ProfileProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
-    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+    const svg = document.querySelector("svg[viewBox]")!;
 
-    // desdobra a força aliada (nasce na base azul, y≈92)
+    // desdobra a força aliada (nasce na base azul, x≈8)
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, 23), bubbles: true }));
     // seleciona a unidade recém-desdobrada
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 920, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, 23), bubbles: true }));
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
 
     // clique no inimigo (longe da unidade aliada): o motor recebe a ordem de ataque
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 200, clientY: 200, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(90, 23), bubbles: true }));
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/reposiciona/i)).toBeInTheDocument();
   });
@@ -224,7 +237,7 @@ describe("interface da batalha", () => {
     const state = createBattle(config);
     state.red.command = 999;
     state.red.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    deploy(state, "red", "inf-fuzileiros", 50, 40, { x: 50, y: 40 });
+    deploy(state, "red", "inf-fuzileiros", 50, 23, { x: 50, y: 23 });
     const { container } = render(
       <BattleArena
         state={state}
@@ -240,10 +253,51 @@ describe("interface da batalha", () => {
     const svg = container.querySelector("svg")!;
     // O glifo do inimigo tem um <g transform=...scale(...)> com escala > 1 (ampliado).
     const scaled = [...svg.querySelectorAll("g[transform]")].some((g) =>
-      /scale\(1\.[0-9]+\)/.test(g.getAttribute("transform") ?? ""),
+      /scale\((?:[2-9](?:\.[0-9]+)?)\)/.test(g.getAttribute("transform") ?? ""),
     );
     expect(scaled).toBe(true);
     // E não é mais um ponto cinza: o texto do rótulo (short) do inimigo aparece.
     expect(svg.textContent ?? "").toContain("FUZ");
+  });
+
+  it("desenha o teatro em diagonal (câmera inclinada) sem mudar a lógica", () => {
+    const config = buildBattleConfig({
+      nation: defaultNation,
+      mission: missionById("m-apagao"),
+      deck: startingDeck,
+      commander: commanders[0]!,
+      doctrine: commanders[0]!.doctrine,
+      seed: 5,
+    });
+    const state = createBattle(config);
+    const { container } = render(
+      <BattleArena
+        state={state}
+        pendingCardId={null}
+        pendingIsGlobal={false}
+        selectedUnitId={null}
+        onPlace={vi.fn()}
+        onSelectUnit={vi.fn()}
+        onMoveSelected={vi.fn()}
+        onSelectPoint={vi.fn()}
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    // o grupo do campo carrega a rotação da câmera
+    const tilted = [...svg.querySelectorAll("g[transform]")].some((g) =>
+      /rotate\(-?\d+(?:\.\d+)? 50 23\)/.test(g.getAttribute("transform") ?? ""),
+    );
+    expect(tilted).toBe(true);
+    // o mapeamento mundo↔desenho é inverso exato (o toque cai onde o jogador aponta)
+    for (const [wx, wy] of [
+      [8, 23],
+      [50, 10],
+      [92, 40],
+    ] as const) {
+      const f = fieldFromWorld(wx, wy);
+      const back = worldFromField(f.x, f.y);
+      expect(back.x).toBeCloseTo(wx, 6);
+      expect(back.y).toBeCloseTo(wy, 6);
+    }
   });
 });

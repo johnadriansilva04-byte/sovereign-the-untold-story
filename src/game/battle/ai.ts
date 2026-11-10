@@ -14,6 +14,7 @@
 
 import { cardById, doctrines } from "./catalog";
 import { deploy, dist, effectiveCost, isVisibleTo, issueOrder, nextRandom, other } from "./engine";
+import { WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   BattleState,
   Card,
@@ -431,6 +432,10 @@ function scoreSupport(
     case "fumaca":
       score += !defensive && read.enemyArtillery > 0 ? 1.2 * weights.support : 0.1;
       break;
+    case "gas":
+      // Vale a pena com aglomerado inimigo no campo (dano contínuo em vários alvos).
+      score += enemyCluster >= 2 && !defensive ? 2.2 * weights.support : -0.6;
+      break;
     case "reforcos":
       score +=
         defensive && read.enemyCats.infantaria + read.enemyCats.blindado >= 1
@@ -574,11 +579,12 @@ function makeDecision(
   };
 }
 
-// Território neutro/inimigo mais próximo que ainda não tem base avançada do lado.
+// Território neutro/inimigo mais ADIANTADO (na direção do inimigo) para o engenheiro
+// erguer a base avançada. O azul avança para leste (x crescente), o vermelho para oeste.
 function buildTerritory(state: BattleState, side: Side): Territory | null {
   const list = state.territories.filter((t) => t.owner !== side);
   if (list.length === 0) return null;
-  return list.sort((a, b) => a.y - b.y)[0]!;
+  return list.sort((a, b) => (side === "blue" ? b.x - a.x : a.x - b.x))[0]!;
 }
 
 function enemyStructurePressure(state: BattleState, side: Side): number {
@@ -599,6 +605,7 @@ function supportTarget(
   const global: SupportAbility[] = [
     "ataque_aereo",
     "fumaca",
+    "gas",
     "interferencia",
     "reconhecimento",
     "paraquedistas",
@@ -607,19 +614,25 @@ function supportTarget(
   const cluster = clusterCentroid(read.visible);
   if (global.includes(card.ability)) {
     if (card.ability === "fumaca" && !defensive) return clampToWorld(frontCentroid(state, side));
+    if (card.ability === "gas") {
+      // Gás fere os dois lados: a IA joga sobre o aglomerado inimigo visível.
+      return clampToWorld(cluster ?? target);
+    }
     if (card.ability === "reconhecimento") {
       const p = state.config.arena.controlPoints.find((c) => c.owner !== side);
       return p ? { x: p.x, y: p.y } : clampToWorld(cluster ?? target);
     }
     if (card.ability === "paraquedistas" || card.ability === "bombardeiro") {
-      // projeção atrás das linhas: além do centro, na direção do objetivo
+      // projeção atrás das linhas: além do centro, na direção do objetivo (eixo X)
       const front = frontCentroid(state, side);
-      const dir = Math.sign(target.y - front.y) || (side === "blue" ? 1 : -1);
+      const dir = Math.sign(target.x - front.x) || (side === "blue" ? 1 : -1);
       const depth =
-        side === "blue" ? Math.min(96, target.y + 10 * dir) : Math.max(4, target.y + 10 * dir);
+        side === "blue"
+          ? Math.min(WORLD_X_MAX - 4, target.x + 10 * dir)
+          : Math.max(WORLD_X_MIN + 4, target.x + 10 * dir);
       const anchor = cluster
-        ? { x: (cluster.x + target.x) / 2, y: depth }
-        : { x: target.x, y: depth };
+        ? { x: depth, y: (cluster.y + target.y) / 2 }
+        : { x: depth, y: target.y };
       return clampToWorld(anchor);
     }
     return clampToWorld(cluster ?? target);
@@ -662,8 +675,8 @@ function placement(
     const py = struct.x - target.x || 0;
     const len = Math.hypot(px, py) || 1;
     return {
-      x: clamp(struct.x + (px / len) * flank * jitter, 4, 96),
-      y: clamp(struct.y + (py / len) * flank * jitter, 4, 96),
+      x: clamp(struct.x + (px / len) * flank * jitter, WORLD_X_MIN + 3, WORLD_X_MAX - 3),
+      y: clamp(struct.y + (py / len) * flank * jitter, WORLD_Y_MIN + 3, WORLD_Y_MAX - 3),
       targetStructureId: struct.id,
     };
   }
@@ -726,7 +739,10 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 function clampToWorld(p: { x: number; y: number }): { x: number; y: number } {
-  return { x: clamp(p.x, 4, 96), y: clamp(p.y, 4, 96) };
+  return {
+    x: clamp(p.x, WORLD_X_MIN + 3, WORLD_X_MAX - 3),
+    y: clamp(p.y, WORLD_Y_MIN + 3, WORLD_Y_MAX - 3),
+  };
 }
 
 function clampToZone(

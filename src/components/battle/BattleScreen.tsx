@@ -273,7 +273,7 @@ export function LiveBattle({
       </Dialog>
 
       {/* Teatro de operações: ocupa TODO o espaço restante, sem rolagem */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))] p-1 [container-type:size] sm:p-2">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))]">
         <BattleArena
           state={state}
           pendingCardId={pendingCardId}
@@ -314,7 +314,7 @@ export function LiveBattle({
 
       {/* Dock de controle: relógio/pausa + energia + cartas + ordens, sem rolagem */}
       <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <CommandBar side={state.blue} compact />
             <FrontLineScore state={state} />

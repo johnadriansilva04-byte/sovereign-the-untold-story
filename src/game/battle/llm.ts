@@ -193,7 +193,7 @@ export function clampToLegalPlacement(
   const card = cardById(cardId);
   const global =
     card.kind === "apoio" &&
-    ["ataque_aereo", "fumaca", "interferencia", "reconhecimento"].includes(card.ability);
+    ["ataque_aereo", "fumaca", "gas", "interferencia", "reconhecimento"].includes(card.ability);
   if (global) return { x: clamp(x, 1, 99), y: clamp(y, 1, 99) };
   const z = state.config.arena.deployZone[side];
   return {
