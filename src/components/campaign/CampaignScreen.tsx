@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { GameShell } from "@/components/game/shell";
 import { CampaignComic } from "@/components/campaign/CampaignComic";
+import { DecisionCard } from "@/components/campaign/DecisionCard";
 import { BattleScreen, toAiDifficulty } from "@/components/battle/BattleScreen";
 import { chapters } from "@/game/campaign";
 import { commanders } from "@/game/battle/catalog";
@@ -13,19 +14,25 @@ import {
   chapterOutro,
   totalChapters,
 } from "@/game/progress/campaign";
-import { difficultyById, modsFromAccessories } from "@/game/progress/catalog";
+import { decisionFor, decisionOption } from "@/game/progress/decisions";
+import { accessoryById, difficultyById, techById } from "@/game/progress/catalog";
 import type { Reward } from "@/game/progress/catalog";
-import { activeAccessories, effectiveDeck } from "@/game/progress/profile";
+import { allCards } from "@/game/battle/catalog";
+import { effectiveDeck, effectiveDoctrine, effectiveMods } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
 import type { BattleResult } from "@/game/battle/types";
 
+// Nome de carta tolerante a id desconhecido (recompensas vêm de dados que podem evoluir).
+const cardName = (id: string): string => allCards.find((c) => c.id === id)?.name ?? id;
+
 type View =
   | { kind: "overview" }
+  | { kind: "dilemma"; chapterId: string }
   | { kind: "battle"; chapterId: string }
   | { kind: "reward"; chapterId: string; result: BattleResult; reward: Reward };
 
 export function CampaignScreen() {
-  const { profile, completeChapter } = useProfile();
+  const { profile, completeChapter, chooseDecision } = useProfile();
   const [view, setView] = useState<View>({ kind: "overview" });
 
   // Missão atual: o próximo capítulo ainda não concluído. Vencidos somem da trilha.
@@ -46,12 +53,44 @@ export function CampaignScreen() {
       mission,
       deck: effectiveDeck(profile),
       commander,
-      doctrine: deck?.doctrine ?? commander.doctrine,
-      mods: modsFromAccessories(activeAccessories(profile)),
+      // A escolha do capítulo define a doutrina e soma modificadores reais de combate.
+      doctrine: effectiveDoctrine(profile, view.chapterId, deck?.doctrine ?? commander.doctrine),
+      mods: effectiveMods(profile, view.chapterId),
       aiDifficulty: toAiDifficulty(meta.difficulty),
       seed: seedOf(`${mission.id}:${meta.difficulty}`),
     });
   }, [view, profile]);
+
+  // Entrar num capítulo: com dilema, passa pela decisão; sem dilema, direto à batalha.
+  const enterChapter = (chapterId: string) => {
+    setView(
+      decisionFor(chapterId) ? { kind: "dilemma", chapterId } : { kind: "battle", chapterId },
+    );
+  };
+
+  if (view.kind === "dilemma") {
+    const meta = chapterMetaById(view.chapterId)!;
+    const chapter = chapters.find((c) => c.id === meta.id);
+    const decision = decisionFor(view.chapterId);
+    if (decision) {
+      return (
+        <GameShell full>
+          <DecisionCard
+            chapterNumber={meta.number}
+            act={chapter?.act ?? ""}
+            title={chapter?.title ?? ""}
+            decision={decision}
+            selected={profile.decisions[view.chapterId]}
+            onChoose={(optionId) => {
+              chooseDecision(view.chapterId, optionId);
+              setView({ kind: "battle", chapterId: view.chapterId });
+            }}
+            onCancel={() => setView({ kind: "overview" })}
+          />
+        </GameShell>
+      );
+    }
+  }
 
   if (view.kind === "battle" && autoConfig) {
     const meta = chapterMetaById(view.chapterId)!;
@@ -94,9 +133,7 @@ export function CampaignScreen() {
             result={view.result}
             reward={view.reward}
             nextTitle={nextChapter?.title ?? null}
-            onNext={() =>
-              setView(nextMeta ? { kind: "battle", chapterId: nextMeta.id } : { kind: "overview" })
-            }
+            onNext={() => (nextMeta ? enterChapter(nextMeta.id) : setView({ kind: "overview" }))}
             onMap={() => setView({ kind: "overview" })}
           />
         </GameShell>
@@ -112,7 +149,10 @@ export function CampaignScreen() {
             result={view.result}
             reward={view.reward}
             nextTitle={null}
-            onNext={() => setView({ kind: "battle", chapterId: view.chapterId })}
+            decisionLabel={
+              decisionOption(view.chapterId, profile.decisions[view.chapterId] ?? "")?.label
+            }
+            onNext={() => enterChapter(view.chapterId)}
             onMap={() => setView({ kind: "overview" })}
           />
         </div>
@@ -125,7 +165,7 @@ export function CampaignScreen() {
       <CampaignOverview
         profile={profile}
         currentMeta={currentMeta}
-        onLaunch={() => currentMeta && setView({ kind: "battle", chapterId: currentMeta.id })}
+        onLaunch={() => currentMeta && enterChapter(currentMeta.id)}
       />
     </GameShell>
   );
@@ -165,6 +205,10 @@ function CampaignOverview({
   const currentChapter = currentMeta ? chapters.find((c) => c.id === currentMeta.id) : null;
   const mission = currentMeta ? missionById(currentMeta.missionId) : null;
   const won = completed === totalChapters;
+  const decision = currentMeta ? decisionFor(currentMeta.id) : undefined;
+  const chosen = currentMeta
+    ? decisionOption(currentMeta.id, profile.decisions[currentMeta.id] ?? "")
+    : undefined;
 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-5 px-4 py-4">
@@ -219,8 +263,18 @@ function CampaignOverview({
           <span className="max-w-2xl font-serif text-sm italic text-foreground/85">
             {currentMeta.intro}
           </span>
+          {decision && (
+            <span className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 font-mono text-[10px] uppercase tracking-wider">
+              <span className="text-muted-foreground">Decisão de comando:</span>
+              {chosen ? (
+                <span className="text-primary">{chosen.label}</span>
+              ) : (
+                <span className="text-destructive">pendente — escolha antes de partir</span>
+              )}
+            </span>
+          )}
           <span className="mt-1 bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition group-hover:brightness-110">
-            Iniciar operação
+            {decision && !chosen ? "Tomar a decisão" : "Iniciar operação"}
           </span>
         </button>
       )}
@@ -238,6 +292,7 @@ function RewardScreen({
   result,
   reward,
   nextTitle,
+  decisionLabel,
   onNext,
   onMap,
 }: {
@@ -246,15 +301,16 @@ function RewardScreen({
   result: BattleResult;
   reward: Reward;
   nextTitle: string | null;
+  decisionLabel?: string | undefined;
   onNext: () => void;
   onMap: () => void;
 }) {
   const won = result.outcome === "vitoria";
   const draw = result.outcome === "empate";
   const loot = [
-    ...(reward.cards ?? []).map((c) => `Carta desbloqueada · ${c}`),
-    ...(reward.accessories ?? []).map((a) => `Acessório · ${a}`),
-    ...(reward.techs ?? []).map((t) => `Tecnologia · ${t}`),
+    ...(reward.cards ?? []).map((c) => `Carta desbloqueada · ${cardName(c)}`),
+    ...(reward.accessories ?? []).map((a) => `Acessório · ${accessoryById(a)?.name ?? a}`),
+    ...(reward.techs ?? []).map((t) => `Tecnologia · ${techById(t)?.name ?? t}`),
     ...(reward.research ? [`+${reward.research} pesquisa`] : []),
     ...(reward.sovereigns ? [`+${reward.sovereigns} Sovereigns`] : []),
   ];
@@ -279,13 +335,19 @@ function RewardScreen({
         {story}
       </p>
 
+      {decisionLabel && (
+        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          Decisão de comando: <span className="text-primary">{decisionLabel}</span>
+        </p>
+      )}
+
       {won && loot.length > 0 && (
         <div className="w-full max-w-md border border-border bg-card/60 p-4 text-left">
           <p className="label-mono mb-2 text-fact">Desbloqueado</p>
           <ul className="space-y-1 font-mono text-xs">
             {loot.map((l) => (
               <li key={l} className="text-fact">
-                + {l}
+                {l.startsWith("+") ? l : `+ ${l}`}
               </li>
             ))}
           </ul>

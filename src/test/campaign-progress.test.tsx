@@ -1,10 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CampaignComic } from "@/components/campaign/CampaignComic";
+import { DecisionCard } from "@/components/campaign/DecisionCard";
 import { chapters } from "@/game/campaign";
 import { applyChapterResult, createProfile } from "@/game/progress/profile";
 import { chapterMeta, chapterMetaById } from "@/game/progress/campaign";
+import { decisionFor } from "@/game/progress/decisions";
+import { ProfileProvider, useProfile } from "@/game/progress/store";
 import type { BattleResult } from "@/game/battle/types";
 
 function fakeResult(outcome: BattleResult["outcome"]): BattleResult {
@@ -87,5 +90,56 @@ describe("página de gibi pós-vitória", () => {
     expect(
       screen.getByRole("button", { name: /Próxima missão · O Blecaute de Dados/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("dilema de comando antes da batalha", () => {
+  it("o DecisionCard mostra prompt, opções e resumo de efeito", () => {
+    const decision = decisionFor("c1")!;
+    render(
+      <DecisionCard
+        chapterNumber={1}
+        act="Ato I"
+        title="Ruído"
+        decision={decision}
+        onChoose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(decision.prompt)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: new RegExp(decision.options[0]!.label) }),
+    ).toBeInTheDocument();
+    // o resumo traduz o efeito real do motor (doutrina)
+    expect(screen.getByText(/Doutrina: Mobilidade/)).toBeInTheDocument();
+  });
+
+  it("escolher grava a decisão no perfil e concede o bônus uma única vez", () => {
+    function Probe() {
+      const { profile, chooseDecision } = useProfile();
+      return (
+        <div>
+          <span data-testid="decision">{profile.decisions["c10"] ?? "nenhuma"}</span>
+          <span data-testid="research">{profile.research}</span>
+          <span data-testid="sovereigns">{profile.sovereigns}</span>
+          <button onClick={() => chooseDecision("c10", "c10-a")}>escolher</button>
+        </div>
+      );
+    }
+    const before = createProfile();
+    render(
+      <ProfileProvider>
+        <Probe />
+      </ProfileProvider>,
+    );
+    expect(screen.getByTestId("decision").textContent).toBe("nenhuma");
+    fireEvent.click(screen.getByRole("button", { name: "escolher" }));
+    expect(screen.getByTestId("decision").textContent).toBe("c10-a");
+    // c10-a concede +1 pesquisa e +80 Sovereigns (única vez)
+    expect(Number(screen.getByTestId("research").textContent)).toBe(before.research + 1);
+    expect(Number(screen.getByTestId("sovereigns").textContent)).toBe(before.sovereigns + 80);
+    // escolher de novo a MESMA opção não repete o bônus
+    fireEvent.click(screen.getByRole("button", { name: "escolher" }));
+    expect(Number(screen.getByTestId("research").textContent)).toBe(before.research + 1);
+    expect(Number(screen.getByTestId("sovereigns").textContent)).toBe(before.sovereigns + 80);
   });
 });

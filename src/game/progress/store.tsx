@@ -30,6 +30,7 @@ import {
 } from "@/lib/auth";
 import type { Difficulty, Reward, TechDef } from "./catalog";
 import { copiesToLevel } from "@/game/battle/catalog";
+import { decisionOption } from "./decisions";
 import {
   applyChapterResult,
   createProfile,
@@ -84,6 +85,8 @@ export interface ProfileContextValue {
   setNation: (nation: NationState) => void;
   /** Pesquisa uma tecnologia: consome pesquisa e aplica os efeitos à nação. */
   researchTech: (tech: TechDef) => boolean;
+  /** Registra a escolha de um capítulo (dilema), aplicando o bônus único de pesquisa/soberanos. */
+  chooseDecision: (chapterId: string, optionId: string) => void;
   saveDeck: (deck: SavedDeck) => void;
   setActiveDeck: (deckId: string) => void;
   setDisplayName: (name: string) => void;
@@ -236,6 +239,28 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
+  const chooseDecision = useCallback<ProfileContextValue["chooseDecision"]>(
+    (chapterId, optionId) => {
+      const current = profileRef.current;
+      if (!current) return;
+      const opt = decisionOption(chapterId, optionId);
+      if (!opt) return;
+      const already = current.decisions[chapterId];
+      if (already === optionId) return;
+      // O bônus único (pesquisa/soberanos) só é concedido na primeira vez que a opção é escolhida.
+      const firstTime = already === undefined;
+      const bonus = firstTime ? opt.effect : {};
+      const next: ProfileState = {
+        ...current,
+        decisions: { ...current.decisions, [chapterId]: optionId },
+        research: current.research + (bonus.research ?? 0),
+        sovereigns: current.sovereigns + (bonus.sovereigns ?? 0),
+      };
+      persist(next);
+    },
+    [persist],
+  );
+
   const saveDeck = useCallback<ProfileContextValue["saveDeck"]>(
     (deck) => {
       const current = profileRef.current;
@@ -373,6 +398,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       recordBattle,
       setNation,
       researchTech,
+      chooseDecision,
       saveDeck,
       setActiveDeck,
       setDisplayName,
@@ -395,6 +421,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     recordBattle,
     setNation,
     researchTech,
+    chooseDecision,
     saveDeck,
     setActiveDeck,
     setDisplayName,

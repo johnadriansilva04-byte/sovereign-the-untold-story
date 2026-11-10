@@ -5,10 +5,17 @@
 import { allCards, startingDeck } from "@/game/battle/catalog";
 import type { NationState } from "@/game/battle/missions";
 import { defaultNation } from "@/game/battle/missions";
-import type { BattleResult, Doctrine } from "@/game/battle/types";
+import type { BattleResult, Doctrine, SideModifiers } from "@/game/battle/types";
 import { chapterMeta, chapterMetaById } from "./campaign";
+import { decisionOption, mergeMods } from "./decisions";
 import type { Difficulty, Inventory, Reward } from "./catalog";
-import { addAccessory, addCard, emptyInventory, unlockTierForCard } from "./catalog";
+import {
+  addAccessory,
+  addCard,
+  emptyInventory,
+  modsFromAccessories,
+  unlockTierForCard,
+} from "./catalog";
 
 export interface ChapterState {
   status: "bloqueado" | "disponivel" | "concluido";
@@ -57,6 +64,8 @@ export interface ProfileState {
   xp: number;
   // nível de cada carta (1-15). Ausente = nível 1.
   cardLevels: Record<string, number>;
+  // escolha feita em cada capítulo (id da opção). Alimenta doutrina e modificadores reais.
+  decisions: Record<string, string>;
   createdAt: string;
 }
 
@@ -85,6 +94,7 @@ export function createProfile(displayName = "Comandante"): ProfileState {
     research: 2,
     xp: 0,
     cardLevels: {},
+    decisions: {},
     createdAt: now,
   };
   // capítulo 1 sempre disponível; o resto bloqueado até vencer o anterior
@@ -168,6 +178,7 @@ function ensureShape(p: ProfileState): ProfileState {
     activeDeckId: p.activeDeckId || base.activeDeckId,
     records: p.records ?? [],
     cardLevels: p.cardLevels ?? {},
+    decisions: p.decisions ?? {},
   };
 }
 
@@ -276,6 +287,28 @@ export function effectiveDeck(profile: ProfileState): string[] {
 export function activeAccessories(profile: ProfileState): string[] {
   const deck = profile.decks.find((d) => d.id === profile.activeDeckId) ?? profile.decks[0];
   return deck?.accessories ?? [];
+}
+
+// Opção escolhida num capítulo (ou undefined se o jogador ainda não decidiu).
+export function decisionChoice(profile: ProfileState, chapterId: string): string | undefined {
+  return profile.decisions[chapterId];
+}
+
+// Doutrina efetiva: a escolha do capítulo tem prioridade; senão, o baralho.
+export function effectiveDoctrine(
+  profile: ProfileState,
+  chapterId: string,
+  fallback: Doctrine,
+): Doctrine {
+  const opt = decisionOption(chapterId, profile.decisions[chapterId] ?? "");
+  return opt?.effect.doctrine ?? fallback;
+}
+
+// Modificadores efetivos: acessórios equipados + efeito da escolha do capítulo.
+export function effectiveMods(profile: ProfileState, chapterId: string): SideModifiers {
+  const base = modsFromAccessories(activeAccessories(profile));
+  const opt = decisionOption(chapterId, profile.decisions[chapterId] ?? "");
+  return mergeMods(base, opt?.effect.mods);
 }
 
 // Nível de cada carta do baralho ativo (padrão 1). Alimenta o motor de batalha.
