@@ -1,4 +1,10 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import { cn } from "@/lib/utils";
 import { canDeploy, originFor } from "@/game/battle/engine";
@@ -8,7 +14,9 @@ import {
   FIELD_SCALE,
   WORLD_H,
   WORLD_W,
+  fieldScalesFor,
   screenToWorld,
+  type FieldScales,
 } from "@/game/battle/world";
 import type {
   BattleState,
@@ -50,16 +58,151 @@ function LEVEL_TONE(level: number): string {
 }
 
 // Terreno por tipo de missão: cada fase tem um chão próprio (mata, urbano, montanha,
-// rio, fortificado), em vez do mesmo verde de todas as arenas.
-const GROUND_BY_TERRAIN: Record<string, { base: string; accent: string }> = {
-  Cidade: { base: "oklch(0.24 0.008 250)", accent: "oklch(0.3 0.01 250)" },
-  Floresta: { base: "oklch(0.24 0.03 145)", accent: "oklch(0.29 0.045 140)" },
-  "Campo aberto": { base: "oklch(0.3 0.035 95)", accent: "oklch(0.34 0.045 92)" },
-  Montanha: { base: "oklch(0.3 0.012 70)", accent: "oklch(0.36 0.016 68)" },
-  "Travessia de rio": { base: "oklch(0.26 0.03 200)", accent: "oklch(0.33 0.05 210)" },
-  "Região fortificada": { base: "oklch(0.27 0.015 60)", accent: "oklch(0.32 0.02 58)" },
+// rio, fortificado), em tons NATURAIS de terra — nada de brilho neon azul. As cores
+// são terrosas (verde-oliva, marrom, areia, pedra) para o campo ler como território.
+interface GroundPalette {
+  base: string;
+  accent: string;
+  patch: string;
+  path: string;
+  detail: string;
+  detailLight: string;
+}
+const GROUND_BY_TERRAIN: Record<string, GroundPalette> = {
+  Cidade: {
+    base: "oklch(0.32 0.008 90)",
+    accent: "oklch(0.37 0.01 92)",
+    patch: "oklch(0.28 0.006 250)",
+    path: "oklch(0.45 0.008 92)",
+    detail: "oklch(0.36 0.03 120)",
+    detailLight: "oklch(0.42 0.04 118)",
+  },
+  Floresta: {
+    base: "oklch(0.3 0.045 140)",
+    accent: "oklch(0.35 0.055 138)",
+    patch: "oklch(0.25 0.05 150)",
+    path: "oklch(0.42 0.04 95)",
+    detail: "oklch(0.36 0.06 138)",
+    detailLight: "oklch(0.43 0.07 135)",
+  },
+  "Campo aberto": {
+    base: "oklch(0.42 0.05 92)",
+    accent: "oklch(0.47 0.055 90)",
+    patch: "oklch(0.37 0.045 88)",
+    path: "oklch(0.55 0.05 88)",
+    detail: "oklch(0.4 0.05 100)",
+    detailLight: "oklch(0.48 0.055 98)",
+  },
+  Montanha: {
+    base: "oklch(0.4 0.018 70)",
+    accent: "oklch(0.45 0.022 68)",
+    patch: "oklch(0.34 0.014 66)",
+    path: "oklch(0.52 0.02 72)",
+    detail: "oklch(0.38 0.02 72)",
+    detailLight: "oklch(0.46 0.02 74)",
+  },
+  "Travessia de rio": {
+    base: "oklch(0.32 0.04 140)",
+    accent: "oklch(0.37 0.05 138)",
+    patch: "oklch(0.26 0.04 200)",
+    path: "oklch(0.46 0.04 95)",
+    detail: "oklch(0.37 0.055 140)",
+    detailLight: "oklch(0.44 0.065 138)",
+  },
+  "Região fortificada": {
+    base: "oklch(0.36 0.03 78)",
+    accent: "oklch(0.41 0.035 76)",
+    patch: "oklch(0.3 0.025 74)",
+    path: "oklch(0.48 0.03 80)",
+    detail: "oklch(0.35 0.035 78)",
+    detailLight: "oklch(0.43 0.04 80)",
+  },
 };
-const DEFAULT_GROUND = { base: "oklch(0.26 0.02 120)", accent: "oklch(0.3 0.03 120)" };
+const DEFAULT_GROUND: GroundPalette = {
+  base: "oklch(0.34 0.04 140)",
+  accent: "oklch(0.39 0.05 138)",
+  patch: "oklch(0.29 0.04 145)",
+  path: "oklch(0.46 0.04 95)",
+  detail: "oklch(0.38 0.055 140)",
+  detailLight: "oklch(0.45 0.065 138)",
+};
+
+// Detalhes de terreno espalhados pelo campo (tufos de grama, pedras, arbustos):
+// dão identidade ao solo sem "grade" e sem brilho. Posições determinísticas para o
+// mapa não "tremer" a cada quadro. O conjunto de tipos muda por terreno.
+type TerrainDetail = { kind: "tuft" | "rock" | "bush"; x: number; y: number; s: number };
+
+function terrainDetails(terrain: string): TerrainDetail[] {
+  const out: TerrainDetail[] = [];
+  const jitter = (n: number) => {
+    const h = Math.sin(n * 78.233) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const kinds: TerrainDetail["kind"][] =
+    terrain === "Floresta"
+      ? ["bush", "bush", "tuft"]
+      : terrain === "Montanha"
+        ? ["rock", "rock", "tuft"]
+        : terrain === "Cidade"
+          ? ["rock", "tuft"]
+          : ["tuft", "tuft", "rock"];
+  // 9 colunas × 5 linhas = 45 pontos, com deslocamento irregular (não é grade).
+  for (let gy = 0; gy < 5; gy++) {
+    for (let gx = 0; gx < 9; gx++) {
+      const n = gy * 9 + gx;
+      const x = 5 + gx * 11 + (jitter(n) - 0.5) * 7;
+      const y = 4 + gy * 9.5 + (jitter(n + 100) - 0.5) * 6;
+      if (x < 2 || x > WORLD_W - 2 || y < 2 || y > WORLD_H - 2) continue;
+      out.push({ kind: kinds[n % kinds.length]!, x, y, s: 0.6 + jitter(n + 7) * 0.7 });
+    }
+  }
+  return out;
+}
+
+function TerrainDetailGlyph({
+  detail: d,
+  ground,
+}: {
+  detail: TerrainDetail;
+  ground: GroundPalette;
+}) {
+  if (d.kind === "rock") {
+    return (
+      <g transform={`translate(${d.x} ${d.y}) scale(${d.s})`}>
+        <ellipse cx="0" cy="0.3" rx="1.1" ry="0.7" fill="oklch(0 0 0 / 0.18)" />
+        <path
+          d="M-1 0.2 L-0.4 -0.8 L0.5 -0.7 L1 0.2 Z"
+          fill={ground.patch}
+          stroke="oklch(1 0 0 / 0.08)"
+          strokeWidth="0.1"
+        />
+      </g>
+    );
+  }
+  if (d.kind === "bush") {
+    return (
+      <g transform={`translate(${d.x} ${d.y}) scale(${d.s})`}>
+        <ellipse cx="0" cy="0.4" rx="1.2" ry="0.5" fill="oklch(0 0 0 / 0.2)" />
+        <circle cx="-0.5" cy="-0.1" r="0.75" fill={ground.detail} />
+        <circle cx="0.5" cy="0" r="0.7" fill={ground.detail} />
+        <circle cx="0" cy="-0.5" r="0.7" fill={ground.detailLight} />
+      </g>
+    );
+  }
+  // tuft: tufo de grama
+  return (
+    <g
+      transform={`translate(${d.x} ${d.y}) scale(${d.s})`}
+      stroke={ground.detail}
+      strokeWidth="0.16"
+      strokeLinecap="round"
+    >
+      <line x1="0" y1="0.3" x2="-0.5" y2="-0.7" />
+      <line x1="0" y1="0.3" x2="0" y2="-0.9" />
+      <line x1="0" y1="0.3" x2="0.5" y2="-0.7" />
+    </g>
+  );
+}
 
 export function BattleArena({
   state,
@@ -72,6 +215,22 @@ export function BattleArena({
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // Tamanho de layout do teatro: alimenta as escalas da câmera para o campo preencher
+  // a área útil em qualquer tela (sem isso o campo flutua pequeno no centro).
+  const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setStageSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scales: FieldScales =
+    stageSize && stageSize.w > 0 && stageSize.h > 0
+      ? fieldScalesFor(stageSize.w, stageSize.h)
+      : { sx: FIELD_SCALE, sy: FIELD_SCALE };
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
   // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
@@ -87,7 +246,7 @@ export function BattleArena({
   const toArenaCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const rect = stageRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
-    return screenToWorld(clientX - rect.left, clientY - rect.top, rect.width, rect.height);
+    return screenToWorld(clientX - rect.left, clientY - rect.top, rect.width, rect.height, scales);
   };
 
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -133,7 +292,7 @@ export function BattleArena({
   const pickUnit = (ax: number, ay: number, list: BattleUnit[]): string | null => {
     let unitsPerPixel = 1;
     const rect = stageRect();
-    if (rect && rect.width > 0) unitsPerPixel = 100 / (rect.width * FIELD_SCALE);
+    if (rect && rect.width > 0) unitsPerPixel = 100 / (rect.width * scales.sx);
     const tolerance = Math.max(14 * unitsPerPixel, 3.2);
     let best: { id: string; d: number } | null = null;
     for (const u of list) {
@@ -204,12 +363,12 @@ export function BattleArena({
   const ghostOrigin = ghost && !pendingIsGlobal ? originFor(state, "blue", ghost.x, ghost.y) : null;
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full overflow-hidden">
       {/* Fundo do "teatro de operações": preenche os cantos que a inclinação da
           câmera expõe (o fundo do campo recua e deixa a mesa à vista). */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,oklch(0.2_0.02_120),oklch(0.1_0.01_120))]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,oklch(0.19_0.02_120),oklch(0.1_0.01_120))]"
       />
       <div
         ref={stageRef}
@@ -225,7 +384,7 @@ export function BattleArena({
           viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}
           preserveAspectRatio="none"
           style={{
-            transform: `scale(${FIELD_SCALE}) perspective(${FIELD_PERSPECTIVE}px) rotateX(${FIELD_PITCH_DEG}deg)`,
+            transform: `scale(${scales.sx} ${scales.sy}) perspective(${FIELD_PERSPECTIVE}px) rotateX(${FIELD_PITCH_DEG}deg)`,
             transformOrigin: "center center",
           }}
           className={cn(
@@ -252,29 +411,31 @@ export function BattleArena({
         >
           <defs>
             <linearGradient id="allyZone" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor={ALLY} stopOpacity="0.24" />
-              <stop offset="100%" stopColor={ALLY} stopOpacity="0.03" />
+              <stop offset="0%" stopColor={ALLY} stopOpacity="0.16" />
+              <stop offset="100%" stopColor={ALLY} stopOpacity="0.02" />
             </linearGradient>
             <linearGradient id="enemyZone" x1="1" y1="0" x2="0" y2="0">
-              <stop offset="0%" stopColor={ENEMY} stopOpacity="0.24" />
-              <stop offset="100%" stopColor={ENEMY} stopOpacity="0.03" />
+              <stop offset="0%" stopColor={ENEMY} stopOpacity="0.16" />
+              <stop offset="100%" stopColor={ENEMY} stopOpacity="0.02" />
             </linearGradient>
-            <radialGradient id="terrGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
-              <stop offset="60%" stopColor="#ffffff" stopOpacity="0.12" />
-              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-            </radialGradient>
             <linearGradient id="groundDepth" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
+              <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.2" />
               <stop offset="45%" stopColor="oklch(0 0 0)" stopOpacity="0" />
-              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.2" />
             </linearGradient>
-            {/* Textura fina do solo: trama sutil para o terreno não ler como bloco liso */}
-            <pattern id="groundTex" width="3" height="3" patternUnits="userSpaceOnUse">
-              <rect width="3" height="3" fill="none" />
-              <circle cx="0.7" cy="0.7" r="0.12" fill="oklch(1 0 0 / 0.05)" />
-              <circle cx="2.1" cy="1.6" r="0.1" fill="oklch(0 0 0 / 0.08)" />
-              <circle cx="1.2" cy="2.4" r="0.09" fill="oklch(1 0 0 / 0.04)" />
+            {/* Textura de solo: tufos de grama e grãos de terra, sem brilho. */}
+            <pattern id="groundTex" width="4" height="4" patternUnits="userSpaceOnUse">
+              <rect width="4" height="4" fill="none" />
+              <circle cx="0.9" cy="1" r="0.16" fill="oklch(1 0 0 / 0.05)" />
+              <circle cx="2.6" cy="2.4" r="0.14" fill="oklch(0 0 0 / 0.1)" />
+              <circle cx="3.4" cy="0.7" r="0.12" fill="oklch(1 0 0 / 0.035)" />
+              <circle cx="1.6" cy="3.3" r="0.13" fill="oklch(0 0 0 / 0.08)" />
+            </pattern>
+            {/* Manchas irregulares de terreno: variam o chão sem "grade" artificial. */}
+            <pattern id="groundPatches" width="24" height="24" patternUnits="userSpaceOnUse">
+              <ellipse cx="6" cy="7" rx="4.5" ry="3" fill="oklch(0 0 0 / 0.05)" />
+              <ellipse cx="17" cy="16" rx="5" ry="3.4" fill="oklch(0 0 0 / 0.04)" />
+              <ellipse cx="12" cy="21" rx="3.6" ry="2.4" fill="oklch(1 0 0 / 0.03)" />
             </pattern>
           </defs>
 
@@ -282,31 +443,55 @@ export function BattleArena({
             perspectiva é aplicada ao SVG (transform CSS). A cena toda — terreno,
             territórios, estruturas, unidades, projéteis e efeitos — vive aqui. */}
           <g>
-            {/* Terreno base — a cor muda por terreno, para cada fase ter cara própria */}
+            {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria */}
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.accent} opacity="0.5" />
+            <rect
+              x="0"
+              y="0"
+              width={WORLD_W}
+              height={WORLD_H}
+              fill={ground.accent}
+              opacity="0.45"
+            />
+            {/* Manchas de solo: variam a superfície sem virar grade artificial */}
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
-            {/* Moldura do tabuleiro: leitura de "mesa de guerra" e borda nítida */}
-            <rect
-              x="0.6"
-              y="0.6"
-              width={WORLD_W - 1.2}
-              height={WORLD_H - 1.2}
-              fill="none"
-              stroke="oklch(1 0 0 / 0.14)"
-              strokeWidth="0.5"
-            />
-            <rect
-              x="1.4"
-              y="1.4"
-              width={WORLD_W - 2.8}
-              height={WORLD_H - 2.8}
-              fill="none"
-              stroke="oklch(1 0 0 / 0.06)"
-              strokeWidth="0.25"
-            />
-            {/* Metades: oeste = aliado (azul), leste = inimigo (vermelho) */}
+
+            {/* Detalhes de solo: tufos, pedras e arbustos — identidade de território */}
+            <g>
+              {terrainDetails(arena.terrain).map((d, i) => (
+                <TerrainDetailGlyph key={`td${i}`} detail={d} ground={ground} />
+              ))}
+            </g>
+
+            {/* Caminhos de terra ligando os territórios: dão rotas visíveis de avanço */}
+            <g stroke={ground.path} strokeLinecap="round" fill="none">
+              {arena.routes.map((r, i) => (
+                <line
+                  key={`path-bg${i}`}
+                  x1={r.from[0]}
+                  y1={r.from[1]}
+                  x2={r.to[0]}
+                  y2={r.to[1]}
+                  strokeWidth="2.6"
+                  opacity="0.35"
+                />
+              ))}
+              {arena.routes.map((r, i) => (
+                <line
+                  key={`path-fg${i}`}
+                  x1={r.from[0]}
+                  y1={r.from[1]}
+                  x2={r.to[0]}
+                  y2={r.to[1]}
+                  strokeWidth="1.1"
+                  opacity="0.5"
+                />
+              ))}
+            </g>
+
+            {/* Metades: oeste = aliado (azul), leste = inimigo (vermelho) — tinta leve */}
             <rect x="0" y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#allyZone)" />
             <rect
               x={WORLD_W / 2}
@@ -316,29 +501,25 @@ export function BattleArena({
               fill="url(#enemyZone)"
             />
 
-            {/* Linhas de grade tênues */}
-            {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
-              <line
-                key={`v${i}`}
-                x1={(i * WORLD_W) / 10}
-                y1="0"
-                x2={(i * WORLD_W) / 10}
-                y2={WORLD_H}
-                stroke="oklch(1 0 0 / 0.045)"
-                strokeWidth="0.2"
-              />
-            ))}
-            {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
-              <line
-                key={`h${i}`}
-                x1="0"
-                y1={(i * WORLD_H) / 10}
-                x2={WORLD_W}
-                y2={(i * WORLD_H) / 10}
-                stroke="oklch(1 0 0 / 0.045)"
-                strokeWidth="0.2"
-              />
-            ))}
+            {/* Moldura do tabuleiro: leitura de "mesa de guerra" e borda nítida */}
+            <rect
+              x="0.6"
+              y="0.6"
+              width={WORLD_W - 1.2}
+              height={WORLD_H - 1.2}
+              fill="none"
+              stroke="oklch(1 0 0 / 0.12)"
+              strokeWidth="0.5"
+            />
+            <rect
+              x="1.4"
+              y="1.4"
+              width={WORLD_W - 2.8}
+              height={WORLD_H - 2.8}
+              fill="none"
+              stroke="oklch(0 0 0 / 0.18)"
+              strokeWidth="0.25"
+            />
 
             {/* Linha divisória das metades (vertical: frente oeste↔leste) */}
             <line
@@ -346,8 +527,17 @@ export function BattleArena({
               y1="0"
               x2={WORLD_W / 2}
               y2={WORLD_H}
-              stroke="oklch(1 0 0 / 0.18)"
-              strokeWidth="0.3"
+              stroke="oklch(0 0 0 / 0.22)"
+              strokeWidth="0.35"
+              strokeDasharray="2 2"
+            />
+            <line
+              x1={WORLD_W / 2 + 0.4}
+              y1="0"
+              x2={WORLD_W / 2 + 0.4}
+              y2={WORLD_H}
+              stroke="oklch(1 0 0 / 0.1)"
+              strokeWidth="0.25"
               strokeDasharray="2 2"
             />
 
@@ -820,66 +1010,69 @@ function TerritoryGlyph({ territory: t }: { territory: Territory }) {
   const contested = t.progress.blue > 0 && t.progress.red > 0;
   const progress = Math.max(t.progress.blue, t.progress.red) / 100;
   const ringColor = t.progress.blue >= t.progress.red ? ALLY : ENEMY;
+  const claim = owned ? color : "oklch(1 0 0 / 0.5)";
   return (
     <g>
       {/* Base neutra: instalação militar já erguida no meio do mapa. Além do
           marcador de captura, desenha a estrutura (quem a toma assume a posição). */}
       {t.base && <NeutralBaseArt x={t.x} y={t.y} r={t.radius} color={color} owned={owned} />}
-      {/* halo neon da facção (destaque forte no terreno) */}
-      <circle cx={t.x} cy={t.y} r={t.radius * 1.9} fill="url(#terrGlow)" opacity={owned ? 0.5 : 1}>
-        {!owned && (
-          <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" />
-        )}
-      </circle>
-      {/* anel externo brilhante */}
+      {/* Disco de posse pintado no chão: leitura de território SEM halo neon. */}
       <circle
         cx={t.x}
         cy={t.y}
         r={t.radius}
-        fill={color}
-        opacity={owned ? 0.16 : 0.06}
-        stroke={color}
-        strokeWidth={owned ? 0.7 : 0.55}
-        strokeDasharray={owned ? undefined : "1.4 1.1"}
+        fill={owned ? color : "oklch(0.1 0 0)"}
+        opacity={owned ? 0.14 : 0.14}
+      />
+      {/* Marcador circular de captura (o "ponto branco" luminoso do chão). */}
+      <circle
+        cx={t.x}
+        cy={t.y}
+        r={t.radius * 0.62}
+        fill={owned ? color : "oklch(0.97 0.01 90)"}
+        fillOpacity={owned ? 0.5 : 0.72}
+        stroke={claim}
+        strokeWidth={owned ? 0.55 : 0.45}
+        strokeDasharray={owned ? undefined : "1.2 1"}
       >
         {!owned && (
           <animate
             attributeName="stroke-opacity"
-            values="0.55;1;0.55"
-            dur="1.7s"
+            values="0.5;0.95;0.5"
+            dur="2.2s"
             repeatCount="indefinite"
           />
         )}
       </circle>
-      {/* núcleo */}
+      {/* núcleo: ponto de referência do marcador */}
       <circle
         cx={t.x}
         cy={t.y}
-        r={t.radius * 0.34}
-        fill={color}
-        opacity={owned ? 0.85 : 0.95}
+        r={t.radius * 0.22}
+        fill={owned ? color : "oklch(1 0 0)"}
+        opacity={owned ? 0.95 : 0.9}
         data-testid={`territory-${t.id}`}
         data-world-x={t.x}
         data-world-y={t.y}
       />
-      {/* anel de progresso de captura — ultra visível */}
+      {/* anel de progresso de captura */}
       {!owned && progress > 0 && (
         <circle
           cx={t.x}
           cy={t.y}
-          r={t.radius * 0.7}
+          r={t.radius * 0.82}
           fill="none"
           stroke={ringColor}
-          strokeWidth="1.1"
+          strokeWidth="1"
           strokeLinecap="round"
-          strokeDasharray={`${2 * Math.PI * t.radius * 0.7 * progress} ${2 * Math.PI * t.radius * 0.7}`}
+          strokeDasharray={`${2 * Math.PI * t.radius * 0.82 * progress} ${2 * Math.PI * t.radius * 0.82}`}
           transform={`rotate(-90 ${t.x} ${t.y})`}
         />
       )}
       {contested && (
         <text
           x={t.x}
-          y={t.y - t.radius - 1}
+          y={t.y - t.radius - 0.9}
           textAnchor="middle"
           fontSize="1.9"
           fontFamily="var(--font-mono)"
@@ -932,21 +1125,17 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
   const r = point.radius * 0.7;
   return (
     <g>
-      <circle
-        cx={point.x}
-        cy={point.y}
-        r={point.radius * 1.5}
-        fill="url(#terrGlow)"
-        opacity="0.85"
-      />
+      {/* Disco de posse e anel do ponto — sem halo neon, integrado ao terreno */}
       <circle
         cx={point.x}
         cy={point.y}
         r={point.radius}
         fill={color}
-        opacity={point.owner === "neutro" ? 0.12 : 0.2}
+        opacity={point.owner === "neutro" ? 0.12 : 0.18}
         stroke={color}
-        strokeWidth="0.65"
+        strokeOpacity={point.owner === "neutro" ? 0.6 : 0.9}
+        strokeWidth="0.6"
+        strokeDasharray={point.owner === "neutro" ? "1.4 1.2" : undefined}
       />
       <circle
         cx={point.x}
@@ -954,18 +1143,10 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
         r={point.radius * 0.5}
         fill="none"
         stroke={color}
-        strokeWidth="0.4"
+        strokeOpacity="0.5"
+        strokeWidth="0.35"
         strokeDasharray="1.6 1.4"
-      >
-        <animateTransform
-          attributeName="transform"
-          type="rotate"
-          from={`0 ${point.x} ${point.y}`}
-          to={`360 ${point.x} ${point.y}`}
-          dur="9s"
-          repeatCount="indefinite"
-        />
-      </circle>
+      />
       {progress > 0 && (
         <circle
           cx={point.x}

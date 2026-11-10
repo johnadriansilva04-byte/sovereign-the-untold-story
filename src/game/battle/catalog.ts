@@ -1065,32 +1065,44 @@ function standardStructures(): StructureSpec[] {
   ];
 }
 
-// Pontos de expansão: distribuídos em ambos os lados, com alturas (y) assimétricas,
-// para a conquista territorial virar uma disputa de flancos e não uma corrida reta.
-// Territórios espelhados em relação ao eixo central (x=50): cada posição do azul
-// tem uma equivalente exata do vermelho. Sem isso um lado nasce com posições
-// melhores e o resultado da partida passa a depender do lado, não da jogada.
+// Pontos de expansão: uma MALHA de territórios que cria rotas de avanço (três
+// corredores — norte, centro e sul) em vez de uma linha reta. São 25 pontos: 11 de
+// cada lado + 3 no centro (as duas bases neutras e o nó central). Cada posição do azul
+// tem uma equivalente espelhada do vermelho (x → 100 − x); sem isso um lado nasce com
+// posições melhores e o resultado passa a depender do lado, não da jogada.
 function standardTerritories(): Territory[] {
   const blue: [string, string, number, number, number][] = [
-    ["t-nw", "Colina Noroeste", 30, 9, 4.2],
-    ["t-sw", "Vau Sudoeste", 24, 34, 4.4],
-    ["t-w1", "Ancoradouro", 40, 20, 4],
-    ["t-w2", "Estrada Sul", 34, 41, 4],
-    ["t-w3", "Posto Oeste", 18, 14, 4],
+    ["t-nw", "Colina Noroeste", 20, 7, 4],
+    ["t-n2", "Bosque Norte", 36, 8, 4],
+    ["t-n3", "Posto Norte", 45, 14, 3.8],
+    ["t-w1", "Ancoradouro", 16, 21, 4],
+    ["t-w2", "Encruzilhada Oeste", 30, 24, 4.2],
+    ["t-w3", "Fronteira Oeste", 43, 24, 4],
+    ["t-sw", "Vau Sudoeste", 19, 38, 4],
+    ["t-s2", "Mata Sul", 35, 39, 4],
+    ["t-s3", "Depósito Sul", 45, 33, 3.8],
+    ["t-w4", "Vale Oeste", 27, 31, 4],
+    ["t-w5", "Mata Central", 31, 16, 3.8],
   ];
   const redNames: Record<string, [string, string]> = {
-    "t-nw": ["t-ne", "Mata Nordeste"],
-    "t-sw": ["t-se", "Cume Sudeste"],
+    "t-nw": ["t-ne", "Colina Nordeste"],
+    "t-n2": ["t-n4", "Bosque Nordeste"],
+    "t-n3": ["t-n5", "Posto Nordeste"],
     "t-w1": ["t-e1", "Depósito Leste"],
-    "t-w2": ["t-e2", "Ponte Leste"],
-    "t-w3": ["t-e3", "Mata Leste"],
+    "t-w2": ["t-e2", "Encruzilhada Leste"],
+    "t-w3": ["t-e3", "Fronteira Leste"],
+    "t-sw": ["t-se", "Cume Sudeste"],
+    "t-s2": ["t-s4", "Mata Sudeste"],
+    "t-s3": ["t-s5", "Ponte Leste"],
+    "t-w4": ["t-e4", "Vale Leste"],
+    "t-w5": ["t-e5", "Mata Central Leste"],
   };
   const list: Territory[] = [
     // BASES NEUTRAS no meio do mapa: instalações militares já erguidas, de ninguém.
     // São o prêmio central da partida — quem as toma ganha posição no centro, sem
     // precisar construir. Ladeiam o nó central.
-    terr("bn-n", "Base Neutra Norte", 50, 13, 6.4, true),
-    terr("bn-s", "Base Neutra Sul", 50, 33, 6.4, true),
+    terr("bn-n", "Base Neutra Norte", 50, 12, 6, true),
+    terr("bn-s", "Base Neutra Sul", 50, 34, 6, true),
     // Nó central: ponto de expansão clássico (marcador de captura sem base erguida).
     terr("t-c", "Nó Central", 50, 23, 4.6),
   ];
@@ -1100,6 +1112,43 @@ function standardTerritories(): Territory[] {
     list.push(terr(rid, rname, 100 - x, y, r));
   }
   return list;
+}
+
+// Corredores de avanço: três rotas (norte, centro, sul) ligando as bases principais
+// passando pelos territórios. Servem de CAMINHOS desenhados no terreno e de leitura
+// estratégica: o jogador vê por onde pode atacar em vez de encarar um campo vazio.
+function standardRoutes(): { from: [number, number]; to: [number, number] }[] {
+  const seg = (x1: number, y1: number, x2: number, y2: number) => ({
+    from: [x1, y1] as [number, number],
+    to: [x2, y2] as [number, number],
+  });
+  return [
+    // corredor norte
+    seg(8, 23, 20, 7),
+    seg(20, 7, 36, 8),
+    seg(36, 8, 45, 14),
+    seg(45, 14, 50, 12),
+    seg(50, 12, 55, 14),
+    seg(55, 14, 64, 8),
+    seg(64, 8, 80, 7),
+    seg(80, 7, 92, 23),
+    // corredor central
+    seg(8, 23, 30, 24),
+    seg(30, 24, 43, 24),
+    seg(43, 24, 50, 23),
+    seg(50, 23, 57, 24),
+    seg(57, 24, 70, 24),
+    seg(70, 24, 92, 23),
+    // corredor sul
+    seg(8, 23, 19, 38),
+    seg(19, 38, 35, 39),
+    seg(35, 39, 45, 33),
+    seg(45, 33, 50, 34),
+    seg(50, 34, 55, 33),
+    seg(55, 33, 65, 39),
+    seg(65, 39, 81, 38),
+    seg(81, 38, 92, 23),
+  ];
 }
 
 // Geometria padrão do teatro: oeste = azul, leste = vermelho. Cada arena troca
@@ -1163,10 +1212,7 @@ export const arenas: Arena[] = [
         cover: 0.3,
       },
     ],
-    routes: [
-      { from: [8, 23], to: [50, 23] },
-      { from: [50, 23], to: [92, 23] },
-    ],
+    routes: standardRoutes(),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1224,10 +1270,7 @@ export const arenas: Arena[] = [
         cover: 0.2,
       },
     ],
-    routes: [
-      { from: [8, 34], to: [50, 23] },
-      { from: [50, 23], to: [92, 12] },
-    ],
+    routes: standardRoutes(),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1265,10 +1308,7 @@ export const arenas: Arena[] = [
         cover: 0.15,
       },
     ],
-    routes: [
-      { from: [8, 23], to: [50, 23] },
-      { from: [50, 23], to: [92, 23] },
-    ],
+    routes: standardRoutes(),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1326,10 +1366,7 @@ export const arenas: Arena[] = [
         cover: 0.3,
       },
     ],
-    routes: [
-      { from: [8, 23], to: [50, 23] },
-      { from: [50, 23], to: [92, 23] },
-    ],
+    routes: standardRoutes(),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1368,10 +1405,7 @@ export const arenas: Arena[] = [
         cover: 0.2,
       },
     ],
-    routes: [
-      { from: [8, 23], to: [50, 23] },
-      { from: [50, 23], to: [92, 23] },
-    ],
+    routes: standardRoutes(),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1418,10 +1452,7 @@ export const arenas: Arena[] = [
         cover: 0.25,
       },
     ],
-    routes: [
-      { from: [8, 23], to: [50, 23] },
-      { from: [50, 23], to: [92, 23] },
-    ],
+    routes: standardRoutes(),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
 ];

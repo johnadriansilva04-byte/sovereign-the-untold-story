@@ -7,7 +7,13 @@ import { BattleScreen } from "@/components/battle/BattleScreen";
 import { commanders, startingDeck } from "@/game/battle/catalog";
 import { createBattle, deploy } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
-import { screenToWorld, worldToScreen } from "@/game/battle/world";
+import {
+  screenToWorld,
+  worldToScreen,
+  fieldScalesFor,
+  WORLD_W,
+  WORLD_H,
+} from "@/game/battle/world";
 import { ProfileProvider } from "@/game/progress/store";
 import { createProfile } from "@/game/progress/profile";
 
@@ -313,6 +319,38 @@ describe("interface da batalha", () => {
       const back = screenToWorld(s.x, s.y, 1000, 460);
       expect(back.x).toBeCloseTo(wx, 6);
       expect(back.y).toBeCloseTo(wy, 6);
+    }
+  });
+
+  // O campo deve PREENCHER o palco (não flutuar pequeno no centro) e nenhuma borda
+  // pode sair da tela. Medimos os quatro cantos do mundo projetados com as escalas
+  // dinâmicas e conferimos que eles tocam as bordas do palco sem ultrapassá-las.
+  it("as escalas dinâmicas fazem o campo preencher o palco sem cortar bordas", () => {
+    const sizes = [
+      [1440, 699],
+      [1280, 519],
+      [390, 641],
+      [1920, 900],
+    ] as const;
+    for (const [w, h] of sizes) {
+      const scales = fieldScalesFor(w, h);
+      const corners = [
+        [0, 0],
+        [WORLD_W, 0],
+        [0, WORLD_H],
+        [WORLD_W, WORLD_H],
+      ] as const;
+      const pts = corners.map(([wx, wy]) => worldToScreen(wx, wy, w, h, scales));
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      // sem estourar o palco (tolerância de 1px por arredondamento de perspectiva)
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(-1);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(w + 1);
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(-1);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(h + 1);
+      // preenchendo: a largura e a altura úteis chegam perto do palco (>= 90%)
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(w * 0.9);
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(h * 0.9);
     }
   });
 });

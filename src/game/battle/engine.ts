@@ -62,6 +62,11 @@ const FORT_COVER_RADIUS = 10; // raio da cobertura concedida
 const BASE_INCOME = 0.14; // energia/s gerada por cada base avançada operacional
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
 const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
+// Separação entre unidades: quantas vezes a soma dos raios elas mantêm de distância
+// e quanto do excesso é corrigido por passo (evita o empilhamento sem "explodir" a
+// formação). O fator > 1 cria um respiro visível entre as tropas.
+const SEPARATION_FACTOR = 1.25;
+const SEPARATION_PUSH = 0.35;
 
 export const other = (s: Side): Side => (s === "blue" ? "red" : "blue");
 
@@ -431,6 +436,14 @@ function advanceDeck(cfg: SideState, cardId: string): void {
   cfg.deck.cycle += 1;
 }
 
+// Variação natural de velocidade por unidade (±7%): duas tropas da mesma carta não
+// marcham exatamente no mesmo ritmo, então o grupo lê como coluna em deslocamento em
+// vez de blocos sincronizados. Determinística (deriva do id) para o replay ser estável.
+function speedJitter(seed: number): number {
+  const h = Math.sin(seed * 12.9898) * 43758.5453;
+  return 0.93 + (h - Math.floor(h)) * 0.14;
+}
+
 function spawnUnit(
   state: BattleState,
   side: Side,
@@ -478,7 +491,7 @@ function spawnUnit(
     hp: maxHp,
     maxHp,
     dmg: card.dmg * dmgMult,
-    speed: card.speed * speedMult,
+    speed: card.speed * speedMult * speedJitter(state.nextId),
     range: card.range,
     cooldown: card.cooldown,
     readyIn: 0,
@@ -877,6 +890,7 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
       updateUnit(state, u, dt);
     }
   }
+  applySeparation(state);
   updateStructures(state, dt);
   updateProjectiles(state, dt);
   updateEffects(state, dt);
@@ -1474,8 +1488,49 @@ function explode(state: BattleState, p: Projectile): void {
 }
 
 // ---------------------------------------------------------------------------
-// Estruturas: torres defensivas e bases avançadas atiram sozinhas
+// Separação entre unidades — sem empilhamento
 // ---------------------------------------------------------------------------
+//
+// Sem isto as tropas convergem para o mesmo ponto e atravessam umas às outras,
+// parecendo um único pixel se movendo. A separação empurra suavemente cada par de
+// unidades próximas para lados opostos, preservando a formação como um grupo em
+// marcha. Quem recebeu ordem de MANTER posição é imóvel: só a unidade em movimento é
+// desviada, então a tropa "segurando o terreno" não é arrastada. Unidades aéreas não
+// colidem com terrestres (voam por cima).
+function applySeparation(state: BattleState): void {
+  const list: BattleUnit[] = [];
+  for (const side of ["blue", "red"] as Side[]) {
+    const cfg = side === "blue" ? state.blue : state.red;
+    for (const u of cfg.units) if (u.alive) list.push(u);
+  }
+  const immovable = (u: BattleUnit) => u.order === "manter" && !u.engaged;
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]!;
+    for (let j = i + 1; j < list.length; j++) {
+      const b = list[j]!;
+      // Só separa unidades do mesmo domínio (aéreas sobrevoam as terrestres).
+      if (a.domain !== b.domain) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.hypot(dx, dy);
+      const minDist = (a.radius + b.radius) * SEPARATION_FACTOR;
+      if (d >= minDist) continue;
+      const aFixed = immovable(a);
+      const bFixed = immovable(b);
+      if (aFixed && bFixed) continue;
+      const ux = d === 0 ? (i % 2 === 0 ? 1 : -1) : dx / d;
+      const uy = d === 0 ? 0 : dy / d;
+      const overlap = (minDist - d) * SEPARATION_PUSH;
+      // O deslocamento total é dividido só entre as unidades que podem mover.
+      const aShare = aFixed ? 0 : bFixed ? overlap : overlap / 2;
+      const bShare = bFixed ? 0 : aFixed ? overlap : overlap / 2;
+      a.x = clamp(a.x - ux * aShare, WORLD_X_MIN, WORLD_X_MAX);
+      a.y = clamp(a.y - uy * aShare, WORLD_Y_MIN, WORLD_Y_MAX);
+      b.x = clamp(b.x + ux * bShare, WORLD_X_MIN, WORLD_X_MAX);
+      b.y = clamp(b.y + uy * bShare, WORLD_Y_MIN, WORLD_Y_MAX);
+    }
+  }
+}
 
 function updateStructures(state: BattleState, dt: number): void {
   for (const s of state.structures) {

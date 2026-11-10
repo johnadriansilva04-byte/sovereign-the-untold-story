@@ -313,15 +313,15 @@ export function LiveBattle({
       </div>
 
       {/* Dock de controle: relógio/pausa + energia + cartas + ordens, sem rolagem */}
-      <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur">
-        <div className="flex w-full flex-col gap-2">
+      <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur">
+        <div className="flex w-full flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
             <CommandBar side={state.blue} compact />
             <FrontLineScore state={state} />
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setShowReport(true)}
-                className="border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary"
+                className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary"
               >
                 Relatório
               </button>
@@ -338,7 +338,7 @@ export function LiveBattle({
                     key={s}
                     onClick={() => battle.setSpeed(s)}
                     className={cn(
-                      "px-2 py-1 font-mono text-[10px] uppercase",
+                      "px-1.5 py-0.5 font-mono text-[10px] uppercase",
                       battle.speed === s
                         ? "bg-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-primary",
@@ -360,7 +360,7 @@ export function LiveBattle({
             onHover={setHovered}
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <OrderBar onOrder={handleOrder} hasSelection={Boolean(selectedUnitId)} />
             {selectedUnit ? (
               <SelectedUnitStrip unit={selectedUnit} />

@@ -46,14 +46,35 @@ export function clampY(v: number): number {
 // desfaz a projeção analiticamente (o `getScreenCTM` mente sob perspectiva 3D).
 
 /** Inclinação da câmera (graus): quanto o fundo do campo recua. */
-export const FIELD_PITCH_DEG = 32;
+export const FIELD_PITCH_DEG = 12;
 /** Distância do observador (px CSS): menor = mais profundidade. */
-export const FIELD_PERSPECTIVE = 2400;
-/** Escala da cena: compensa o alargamento da borda frontal da projeção. */
-export const FIELD_SCALE = 0.82;
+export const FIELD_PERSPECTIVE = 2800;
+/**
+ * Escala padrão (usada quando não se conhece o tamanho do teatro — p.ex. nos testes).
+ * Em produção o componente usa `fieldScalesFor(w, h)`, que faz o campo PREENCHER a
+ * área útil sem cortar nenhuma borda.
+ */
+export const FIELD_SCALE = 0.95;
 
 const PITCH_COS = Math.cos((FIELD_PITCH_DEG * Math.PI) / 180);
 const PITCH_SIN = Math.sin((FIELD_PITCH_DEG * Math.PI) / 180);
+
+export interface FieldScales {
+  sx: number;
+  sy: number;
+}
+
+/**
+ * Escalas (x e y) que fazem o campo preencher um teatro de `w`×`h` px de layout.
+ * A borda FRONTAL é a mais próxima do observador: depois da projeção ela é a mais
+ * larga E a mais alta (o `denom` é menor lá), então é ela que limita as duas escalas
+ * — por isso as duas dividem por `spread`. Sem isso o campo vira um tabuleiro pequeno
+ * flutuando no centro, e sem o `spread` a borda frontal estoura a tela.
+ */
+export function fieldScalesFor(w: number, h: number): FieldScales {
+  const spread = 1 / (1 - ((h / 2) * PITCH_SIN) / FIELD_PERSPECTIVE);
+  return { sx: 0.98 / spread, sy: 0.98 / (PITCH_COS * spread) };
+}
 
 /**
  * Ponto do mundo → pixel de tela, relativo ao canto superior esquerdo do teatro.
@@ -64,13 +85,14 @@ export function worldToScreen(
   wy: number,
   w: number,
   h: number,
+  scales: FieldScales = { sx: FIELD_SCALE, sy: FIELD_SCALE },
 ): { x: number; y: number } {
   const lx = (wx / WORLD_W) * w - w / 2;
   const ly = (wy / WORLD_H) * h - h / 2;
   const denom = 1 - (ly * PITCH_SIN) / FIELD_PERSPECTIVE;
   return {
-    x: w / 2 + (FIELD_SCALE * lx) / denom,
-    y: h / 2 + (FIELD_SCALE * ly * PITCH_COS) / denom,
+    x: w / 2 + (scales.sx * lx) / denom,
+    y: h / 2 + (scales.sy * ly * PITCH_COS) / denom,
   };
 }
 
@@ -80,9 +102,10 @@ export function screenToWorld(
   py: number,
   w: number,
   h: number,
+  scales: FieldScales = { sx: FIELD_SCALE, sy: FIELD_SCALE },
 ): { x: number; y: number } {
-  const x1 = (px - w / 2) / FIELD_SCALE;
-  const y1 = (py - h / 2) / FIELD_SCALE;
+  const x1 = (px - w / 2) / scales.sx;
+  const y1 = (py - h / 2) / scales.sy;
   const ly = y1 / (PITCH_COS + (y1 * PITCH_SIN) / FIELD_PERSPECTIVE);
   const lx = x1 * (1 - (ly * PITCH_SIN) / FIELD_PERSPECTIVE);
   return { x: ((lx + w / 2) / w) * WORLD_W, y: ((ly + h / 2) / h) * WORLD_H };
