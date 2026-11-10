@@ -6,7 +6,24 @@
 // exatamente os mesmos limites — nenhum clampa coordenada por conta própria.
 
 export const WORLD_W = 100;
-export const WORLD_H = 46;
+/**
+ * Profundidade do front (largura norte→sul). Subir este valor deixa o campo mais
+ * FUNDO, com mais espaço de manobra entre as duas bases — não é só estética: o motor
+ * usa o mesmo limite para movimento, alcance e captura.
+ */
+export const WORLD_H = 60;
+
+/**
+ * Altura do espaço de projeto em que as arenas do catálogo foram escritas. O catálogo
+ * continua com os números originais (46) e `deepenY` os reescala para o mundo atual —
+ * assim aumentar `WORLD_H` não exige reescrever à mão cada coordenada das arenas.
+ */
+export const DESIGN_H = 46;
+
+/** Reescala uma coordenada Y do espaço de projeto (46) para o mundo atual (`WORLD_H`). */
+export function deepenY(y: number): number {
+  return (y * WORLD_H) / DESIGN_H;
+}
 
 /** Limites de posicionamento de uma unidade (margem de 1 unidade nas bordas). */
 export const WORLD_X_MIN = 1;
@@ -35,78 +52,121 @@ export function clampY(v: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Câmera do teatro (perspectiva de cima, alinhada)
+// Câmera do teatro (vista de cima, alinhada)
 // ---------------------------------------------------------------------------
 //
-// O campo é visto de cima com uma leve inclinação para trás: as duas metades
-// ficam ALINHADAS (azul à esquerda, vermelho à direita), a borda do fundo recua
-// e a da frente fica mais próxima — profundidade de mesa de guerra, sem o giro
-// em diagonal que entortava o tabuleiro. É PURAMENTE apresentação: motor, IA,
-// rotas e captura seguem nas coordenadas do mundo. O mapeamento toque→mundo
-// desfaz a projeção analiticamente (o `getScreenCTM` mente sob perspectiva 3D).
+// O campo é um RETÂNGULO largo: o eixo X é a linha de progressão (o azul avança da
+// esquerda para a direita) e o eixo Y é a largura do front. A câmera encaixa esse
+// retângulo no palco SEM DEFORMAR (escala uniforme) e, quando o palco é mais alto que
+// largo (celular em pé), GIRA o campo 90° para ele ficar "de pé" — o azul embaixo, o
+// vermelho em cima, como numa mesa de guerra vertical.
+//
+// A câmera é uma transformação AFIM, então pode ser aplicada como uma matriz do SVG e
+// invertida analiticamente para o toque. Nada de `perspective`/`rotateX` em CSS: aquele
+// caminho era frágil (uma vírgula errada na `transform` fazia o navegador descartá-la
+// inteira e o campo ser esticado para caber) e o `getScreenCTM` mentia sob 3D.
 
-/** Inclinação da câmera (graus): quanto o fundo do campo recua. */
-export const FIELD_PITCH_DEG = 12;
-/** Distância do observador (px CSS): menor = mais profundidade. */
-export const FIELD_PERSPECTIVE = 2800;
-/**
- * Escala padrão (usada quando não se conhece o tamanho do teatro — p.ex. nos testes).
- * Em produção o componente usa `fieldScalesFor(w, h)`, que faz o campo PREENCHER a
- * área útil sem cortar nenhuma borda.
- */
-export const FIELD_SCALE = 0.95;
+export type FieldOrientation = "landscape" | "portrait";
 
-const PITCH_COS = Math.cos((FIELD_PITCH_DEG * Math.PI) / 180);
-const PITCH_SIN = Math.sin((FIELD_PITCH_DEG * Math.PI) / 180);
+/** O campo fica "de pé" quando o palco é mais alto que largo (celular em pé). */
+export function orientationFor(w: number, h: number): FieldOrientation {
+  return h > w ? "portrait" : "landscape";
+}
 
-export interface FieldScales {
-  sx: number;
-  sy: number;
+/** Matriz afim no formato do SVG: `matrix(a b c d e f)` → x' = a·x + c·y + e, y' = b·x + d·y + f. */
+export interface Camera {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+  orientation: FieldOrientation;
+}
+
+/** Escala (px de palco por unidade de mundo) de uma câmera uniforme. */
+export function cameraScale(cam: Camera): number {
+  return Math.hypot(cam.a, cam.b);
 }
 
 /**
- * Escalas (x e y) que fazem o campo preencher um teatro de `w`×`h` px de layout.
- * A borda FRONTAL é a mais próxima do observador: depois da projeção ela é a mais
- * larga E a mais alta (o `denom` é menor lá), então é ela que limita as duas escalas
- * — por isso as duas dividem por `spread`. Sem isso o campo vira um tabuleiro pequeno
- * flutuando no centro, e sem o `spread` a borda frontal estoura a tela.
+ * Câmera que encaixa o campo num palco `w`×`h`, CENTRADO e com escala uniforme (sem
+ * esticar). Em retrato o campo é girado −90° (azul embaixo, vermelho em cima); a
+ * rotação é própria (determinante positivo), então nada fica espelhado.
  */
-export function fieldScalesFor(w: number, h: number): FieldScales {
-  const spread = 1 / (1 - ((h / 2) * PITCH_SIN) / FIELD_PERSPECTIVE);
-  return { sx: 0.98 / spread, sy: 0.98 / (PITCH_COS * spread) };
-}
-
-/**
- * Ponto do mundo → pixel de tela, relativo ao canto superior esquerdo do teatro.
- * `w`/`h` são o tamanho de layout (não transformado) do teatro.
- */
-export function worldToScreen(
-  wx: number,
-  wy: number,
-  w: number,
-  h: number,
-  scales: FieldScales = { sx: FIELD_SCALE, sy: FIELD_SCALE },
-): { x: number; y: number } {
-  const lx = (wx / WORLD_W) * w - w / 2;
-  const ly = (wy / WORLD_H) * h - h / 2;
-  const denom = 1 - (ly * PITCH_SIN) / FIELD_PERSPECTIVE;
+export function cameraFor(w: number, h: number): Camera {
+  const orient = orientationFor(w, h);
+  if (orient === "portrait") {
+    // Depois do giro o campo ocupa WORLD_H de largura × WORLD_W de altura.
+    const s = Math.min(w / WORLD_H, h / WORLD_W);
+    return {
+      a: 0,
+      b: -s,
+      c: s,
+      d: 0,
+      e: (w - s * WORLD_H) / 2,
+      f: (h + s * WORLD_W) / 2,
+      orientation: orient,
+    };
+  }
+  const s = Math.min(w / WORLD_W, h / WORLD_H);
   return {
-    x: w / 2 + (scales.sx * lx) / denom,
-    y: h / 2 + (scales.sy * ly * PITCH_COS) / denom,
+    a: s,
+    b: 0,
+    c: 0,
+    d: s,
+    e: (w - s * WORLD_W) / 2,
+    f: (h - s * WORLD_H) / 2,
+    orientation: orient,
   };
 }
 
-/** Pixel de tela (relativo ao teatro) → coordenada do mundo. Inverso exato de `worldToScreen`. */
-export function screenToWorld(
+/** Mundo → palco (px de layout). */
+export function worldToStage(
+  cam: Camera,
+  wx: number,
+  wy: number,
+): { x: number; y: number } {
+  return { x: cam.a * wx + cam.c * wy + cam.e, y: cam.b * wx + cam.d * wy + cam.f };
+}
+
+/** Palco (px de layout) → mundo. Inverso exato de `worldToStage`. */
+export function stageToWorld(
+  cam: Camera,
   px: number,
   py: number,
-  w: number,
-  h: number,
-  scales: FieldScales = { sx: FIELD_SCALE, sy: FIELD_SCALE },
 ): { x: number; y: number } {
-  const x1 = (px - w / 2) / scales.sx;
-  const y1 = (py - h / 2) / scales.sy;
-  const ly = y1 / (PITCH_COS + (y1 * PITCH_SIN) / FIELD_PERSPECTIVE);
-  const lx = x1 * (1 - (ly * PITCH_SIN) / FIELD_PERSPECTIVE);
-  return { x: ((lx + w / 2) / w) * WORLD_W, y: ((ly + h / 2) / h) * WORLD_H };
+  const det = cam.a * cam.d - cam.b * cam.c;
+  const dx = px - cam.e;
+  const dy = py - cam.f;
+  return {
+    x: (cam.d * dx - cam.c * dy) / det,
+    y: (-cam.b * dx + cam.a * dy) / det,
+  };
+}
+
+/**
+ * Compatibilidade: ponto do mundo → pixel de tela relativo ao palco `w`×`h`.
+ * Mantido porque testes e a pré-visualização calculam posições por aqui.
+ */
+export function worldToScreen(wx: number, wy: number, w: number, h: number): { x: number; y: number } {
+  return worldToStage(cameraFor(w, h), wx, wy);
+}
+
+/** Compatibilidade: pixel de tela relativo ao palco `w`×`h` → coordenada do mundo. */
+export function screenToWorld(px: number, py: number, w: number, h: number): { x: number; y: number } {
+  return stageToWorld(cameraFor(w, h), px, py);
+}
+
+/**
+ * Transformação local para um rótulo de texto ficar EM PÉ dentro do grupo da cena.
+ * Em retrato a cena está girada −90°, então cada texto recebe +90° em volta do próprio
+ * ponto; em paisagem nada é aplicado (retorna `undefined`).
+ */
+export function uprightText(
+  portrait: boolean,
+  x: number,
+  y: number,
+): string | undefined {
+  return portrait ? `rotate(90 ${x} ${y})` : undefined;
 }

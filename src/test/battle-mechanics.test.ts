@@ -11,6 +11,7 @@ import {
   stepBattle,
 } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
+import { WORLD_H } from "@/game/battle/world";
 import type {
   BattleConfig,
   BattleState,
@@ -545,8 +546,8 @@ describe("motor de batalha — cartas com efeito real", () => {
 
   it("Posto de Socorro cura infantaria aliada ferida (não é decoração)", () => {
     const state = createBattle(supportConfig({ duration: 300 }));
-    const posto = place(state, "blue", "apo-posto", 50, 23);
-    const soldier = place(state, "blue", "inf-fuzileiros", 52, 23);
+    const posto = place(state, "blue", "apo-posto", 50, WORLD_H / 2);
+    const soldier = place(state, "blue", "inf-fuzileiros", 52, WORLD_H / 2);
     expect(posto.heal).toBeGreaterThan(0);
     soldier.hp = soldier.maxHp * 0.4;
     const before = soldier.hp;

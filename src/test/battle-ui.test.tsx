@@ -8,9 +8,10 @@ import { commanders, startingDeck } from "@/game/battle/catalog";
 import { createBattle, deploy } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
 import {
+  cameraFor,
+  orientationFor,
   screenToWorld,
   worldToScreen,
-  fieldScalesFor,
   WORLD_W,
   WORLD_H,
 } from "@/game/battle/world";
@@ -131,7 +132,7 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     // x = 10 → dentro da zona de desdobramento azul (oeste)
-    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(10, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(10, WORLD_H / 2), bubbles: true }));
 
     const ghost = screen.getByTestId("deploy-ghost");
     expect(ghost).toBeInTheDocument();
@@ -150,7 +151,7 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     // x = 90 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
-    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(90, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(90, WORLD_H / 2), bubbles: true }));
 
     expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("true");
   });
@@ -167,11 +168,11 @@ describe("interface da batalha", () => {
     const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
     // desdobra na própria metade; a força nasce na base azul (x≈8)
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }));
 
     // toca a ~10px da unidade (tolerância do teatro pequeno): antes o alvo era o
     // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }));
 
     // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
@@ -232,13 +233,13 @@ describe("interface da batalha", () => {
 
     // desdobra a força aliada (nasce na base azul, x≈8)
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }));
     // seleciona a unidade recém-desdobrada
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }));
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
 
     // clique no inimigo (longe da unidade aliada): o motor recebe a ordem de ataque
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(90, 23), bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(90, WORLD_H / 2), bubbles: true }));
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/reposiciona/i)).toBeInTheDocument();
   });
@@ -255,7 +256,7 @@ describe("interface da batalha", () => {
     const state = createBattle(config);
     state.red.command = 999;
     state.red.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    deploy(state, "red", "inf-fuzileiros", 50, 23, { x: 50, y: 23 });
+    deploy(state, "red", "inf-fuzileiros", 50, WORLD_H / 2, { x: 50, y: WORLD_H / 2 });
     const { container } = render(
       <BattleArena
         state={state}
@@ -303,13 +304,16 @@ describe("interface da batalha", () => {
     const stage = container.querySelector('[data-testid="battle-stage"]') as HTMLElement;
     expect(stage).toBeTruthy();
     const svg = container.querySelector("svg")!;
-    // a câmera é uma perspectiva de cima (rotateX), alinhada (sem giro diagonal)
+    // A câmera é uma matriz afim do SVG (vista de cima, alinhada). Sem CSS `perspective`
+    // nem `rotateX` — aquele caminho era frágil e esticava o campo quando o navegador
+    // descartava a transform inválida.
     const style = svg.getAttribute("style") ?? "";
-    expect(style).toMatch(/perspective\(/);
-    expect(style).toMatch(/rotateX\(/);
-    expect(style).not.toMatch(/rotate\(/);
-    // o mapeamento tela↔mundo é inverso exato (o toque cai onde o jogador aponta),
-    // inclusive com a distorção de perspectiva e a escala do fundo do campo.
+    expect(style).not.toMatch(/perspective\(/);
+    expect(style).not.toMatch(/rotateX\(/);
+    // a cena recebe a matriz da câmera (escala uniforme; giro só em retrato)
+    const scene = svg.querySelector("g[transform^='matrix(']")!;
+    expect(scene).toBeTruthy();
+    // o mapeamento palco↔mundo é inverso exato (o toque cai onde o jogador aponta)
     for (const [wx, wy] of [
       [8, 23],
       [50, 10],
@@ -322,35 +326,45 @@ describe("interface da batalha", () => {
     }
   });
 
-  // O campo deve PREENCHER o palco (não flutuar pequeno no centro) e nenhuma borda
-  // pode sair da tela. Medimos os quatro cantos do mundo projetados com as escalas
-  // dinâmicas e conferimos que eles tocam as bordas do palco sem ultrapassá-las.
-  it("as escalas dinâmicas fazem o campo preencher o palco sem cortar bordas", () => {
+  // O campo encaixa no palco com escala UNIFORME (nada esticado) e, em palco retrato
+  // (celular em pé), é girado 90° para ficar "de pé" — sem cortar bordas em nenhum caso.
+  it("a câmera encaixa o campo sem deformar e gira em retrato", () => {
     const sizes = [
-      [1440, 699],
-      [1280, 519],
-      [390, 641],
-      [1920, 900],
+      [1440, 699, "landscape"],
+      [1280, 519, "landscape"],
+      [390, 641, "portrait"],
+      [390, 780, "portrait"],
+      [844, 390, "landscape"],
+      [1920, 900, "landscape"],
     ] as const;
-    for (const [w, h] of sizes) {
-      const scales = fieldScalesFor(w, h);
+    for (const [w, h, orient] of sizes) {
+      expect(orientationFor(w, h)).toBe(orient);
+      const cam = cameraFor(w, h);
       const corners = [
         [0, 0],
         [WORLD_W, 0],
         [0, WORLD_H],
         [WORLD_W, WORLD_H],
       ] as const;
-      const pts = corners.map(([wx, wy]) => worldToScreen(wx, wy, w, h, scales));
+      const pts = corners.map(([wx, wy]) => worldToScreen(wx, wy, w, h));
       const xs = pts.map((p) => p.x);
       const ys = pts.map((p) => p.y);
-      // sem estourar o palco (tolerância de 1px por arredondamento de perspectiva)
-      expect(Math.min(...xs)).toBeGreaterThanOrEqual(-1);
-      expect(Math.max(...xs)).toBeLessThanOrEqual(w + 1);
-      expect(Math.min(...ys)).toBeGreaterThanOrEqual(-1);
-      expect(Math.max(...ys)).toBeLessThanOrEqual(h + 1);
-      // preenchendo: a largura e a altura úteis chegam perto do palco (>= 90%)
-      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(w * 0.9);
-      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(h * 0.9);
+      // sem estourar o palco
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(-0.5);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(w + 0.5);
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(-0.5);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(h + 0.5);
+      // escala UNIFORME: o campo mantém a proporção real, sem esticar (em retrato o
+      // campo está girado, então a razão em pixels é invertida).
+      const wpx = Math.max(...xs) - Math.min(...xs);
+      const hpx = Math.max(...ys) - Math.min(...ys);
+      const expected = orient === "portrait" ? WORLD_H / WORLD_W : WORLD_W / WORLD_H;
+      expect(wpx / hpx).toBeCloseTo(expected, 3);
+      // e preenche a dimensão que limita o encaixe (>= 95%), sem transbordar a outra
+      expect(wpx / w).toBeLessThanOrEqual(1.001);
+      expect(hpx / h).toBeLessThanOrEqual(1.001);
+      expect(Math.max(wpx / w, hpx / h)).toBeGreaterThan(0.95);
+      expect(cam.orientation).toBe(orient);
     }
   });
 });

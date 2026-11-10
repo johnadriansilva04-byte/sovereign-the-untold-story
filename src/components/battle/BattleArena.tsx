@@ -9,14 +9,13 @@ import {
 import { cn } from "@/lib/utils";
 import { canDeploy, originFor } from "@/game/battle/engine";
 import {
-  FIELD_PERSPECTIVE,
-  FIELD_PITCH_DEG,
-  FIELD_SCALE,
+  cameraFor,
+  cameraScale,
+  stageToWorld,
+  uprightText,
   WORLD_H,
   WORLD_W,
-  fieldScalesFor,
-  screenToWorld,
-  type FieldScales,
+  type Camera,
 } from "@/game/battle/world";
 import type {
   BattleState,
@@ -215,8 +214,7 @@ export function BattleArena({
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  // Tamanho de layout do teatro: alimenta as escalas da câmera para o campo preencher
-  // a área útil em qualquer tela (sem isso o campo flutua pequeno no centro).
+  // Tamanho de layout do palco: alimenta a câmera (encaixe uniforme + giro em retrato).
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const el = stageRef.current;
@@ -227,26 +225,28 @@ export function BattleArena({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const scales: FieldScales =
-    stageSize && stageSize.w > 0 && stageSize.h > 0
-      ? fieldScalesFor(stageSize.w, stageSize.h)
-      : { sx: FIELD_SCALE, sy: FIELD_SCALE };
+  // Sem medida (SSR/jsdom) cai num palco padrão 16:9 — o mesmo encaixe do navegador.
+  const stageW = stageSize?.w ?? 960;
+  const stageH = stageSize?.h ?? 540;
+  const cam: Camera = cameraFor(stageW, stageH);
+  // Em retrato a cena está girada; os rótulos de texto recebem +90° para ficarem em pé.
+  const portrait = cam.orientation === "portrait";
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
   // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
-  // O teatro é desenhado com uma câmera em perspectiva (rotateX + escala). O mapeamento
-  // toque→mundo desfaz a projeção ANALITICAMENTE: sob perspectiva 3D o `getScreenCTM`
-  // devolve uma matriz afim aproximada e erra o ponto tocado (chega a ~60px no fundo do
-  // campo). Medimos o palco NÃO transformado (o contêiner em perspectiva) e aplicamos
-  // as funções exatas de `world`.
+  // O teatro é desenhado em coordenadas do mundo e a câmera é aplicada como uma
+  // MATRIZ do SVG (escala uniforme, sem deformar; giro de 90° quando o palco é retrato).
+  // O toque→mundo desfaz exatamente essa matriz — sem `getScreenCTM`, que erra sob 3D.
   const stageRect = () => stageRef.current?.getBoundingClientRect() ?? null;
 
   const toArenaCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const rect = stageRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
-    return screenToWorld(clientX - rect.left, clientY - rect.top, rect.width, rect.height, scales);
+    // A medida real do palco pode diferir da última observada; usa a atual para a câmera.
+    const live = cameraFor(rect.width, rect.height);
+    return stageToWorld(live, clientX - rect.left, clientY - rect.top);
   };
 
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -290,9 +290,12 @@ export function BattleArena({
   };
 
   const pickUnit = (ax: number, ay: number, list: BattleUnit[]): string | null => {
+    // Tolerância em PIXELS convertida para unidades de mundo (px por unidade).
     let unitsPerPixel = 1;
     const rect = stageRect();
-    if (rect && rect.width > 0) unitsPerPixel = 100 / (rect.width * scales.sx);
+    if (rect && rect.width > 0 && rect.height > 0) {
+      unitsPerPixel = 1 / cameraScale(cameraFor(rect.width, rect.height));
+    }
     const tolerance = Math.max(14 * unitsPerPixel, 3.2);
     let best: { id: string; d: number } | null = null;
     for (const u of list) {
@@ -375,18 +378,13 @@ export function BattleArena({
         data-testid="battle-stage"
         className="relative flex h-full w-full items-center justify-center"
       >
-        {/* A câmera (perspectiva + inclinação + escala) vai numa ÚNICA transformação no
-            SVG. Separar em contêiner 3D + filho deixava as duas faces coplanares no centro
-            do campo (z-fighting), e o toque deixava de chegar ao SVG. Escala por último
-            (mais à esquerda) = encolhe o resultado já projetado, sem cortar as laterais. */}
+        {/* A câmera é uma MATRIZ do SVG (escala uniforme + giro em retrato), aplicada ao
+            grupo da cena. O `viewBox` é o palco em pixels de layout, então o encaixe é 1:1
+            e nada é esticado. O toque usa o inverso da mesma matriz. */}
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}
-          preserveAspectRatio="none"
-          style={{
-            transform: `scale(${scales.sx} ${scales.sy}) perspective(${FIELD_PERSPECTIVE}px) rotateX(${FIELD_PITCH_DEG}deg)`,
-            transformOrigin: "center center",
-          }}
+          viewBox={`0 0 ${stageW} ${stageH}`}
+          preserveAspectRatio="xMidYMid meet"
           className={cn(
             "h-full w-full touch-none select-none",
             pendingCardId ? "cursor-crosshair" : "cursor-default",
@@ -439,10 +437,10 @@ export function BattleArena({
             </pattern>
           </defs>
 
-          {/* O campo inteiro é desenhado em coordenadas do mundo; a câmera em
-            perspectiva é aplicada ao SVG (transform CSS). A cena toda — terreno,
-            territórios, estruturas, unidades, projéteis e efeitos — vive aqui. */}
-          <g>
+          {/* O campo inteiro é desenhado em coordenadas do mundo; a câmera (matriz afim)
+            é aplicada a este grupo. A cena toda — terreno, territórios, estruturas,
+            unidades, projéteis e efeitos — vive aqui. */}
+          <g transform={`matrix(${cam.a} ${cam.b} ${cam.c} ${cam.d} ${cam.e} ${cam.f})`}>
             {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria */}
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
             <rect
@@ -578,28 +576,36 @@ export function BattleArena({
 
             {/* Territórios de expansão */}
             {state.territories.map((t) => (
-              <TerritoryGlyph key={t.id} territory={t} />
+              <TerritoryGlyph key={t.id} territory={t} portrait={portrait} />
             ))}
 
             {/* Pontos de controle */}
             {arena.controlPoints.map((p) => (
-              <ControlPointGlyph key={p.id} point={p} />
+              <ControlPointGlyph key={p.id} point={p} portrait={portrait} />
             ))}
 
             {/* Estruturas */}
             {state.structures.map((s) => (
-              <StructureGlyph key={s.id} structure={s} />
+              <StructureGlyph key={s.id} structure={s} portrait={portrait} />
             ))}
 
             {/* Zonas de efeito (fumaça, gás, reconhecimento) */}
             {state.zones.map((z) => (
-              <ZoneGlyph key={z.id} zone={z} />
+              <ZoneGlyph key={z.id} zone={z} portrait={portrait} />
             ))}
 
             {/* Unidades */}
             {units.map((u) => {
               const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
-              return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} dim={dim} />;
+              return (
+                <UnitGlyph
+                  key={u.id}
+                  unit={u}
+                  selected={u.id === selectedUnitId}
+                  dim={dim}
+                  portrait={portrait}
+                />
+              );
             })}
 
             {/* Projéteis */}
@@ -690,7 +696,7 @@ export function BattleArena({
 // Zonas de efeito (fumaça, gás lacrimogêneo, reconhecimento)
 // ---------------------------------------------------------------------------
 
-function ZoneGlyph({ zone: z }: { zone: EffectZone }) {
+function ZoneGlyph({ zone: z, portrait = false }: { zone: EffectZone; portrait?: boolean }) {
   if (z.kind === "gas") {
     return (
       <g>
@@ -749,6 +755,7 @@ function ZoneGlyph({ zone: z }: { zone: EffectZone }) {
           fontFamily="var(--font-mono)"
           fill="oklch(0.9 0.2 115)"
           fontWeight={700}
+          transform={uprightText(portrait, z.x, z.y - z.radius - 0.6)}
         >
           GÁS
         </text>
@@ -774,7 +781,13 @@ function ZoneGlyph({ zone: z }: { zone: EffectZone }) {
 // Estruturas: base principal, torres e bases avançadas
 // ---------------------------------------------------------------------------
 
-function StructureGlyph({ structure: s }: { structure: Structure }) {
+function StructureGlyph({
+  structure: s,
+  portrait = false,
+}: {
+  structure: Structure;
+  portrait?: boolean;
+}) {
   const color = sideColor(s.side);
   const hpPct = Math.max(0, s.hp / s.maxHp);
   const damaged = hpPct < 0.5;
@@ -832,6 +845,7 @@ function StructureGlyph({ structure: s }: { structure: Structure }) {
           fontSize="2"
           fontFamily="var(--font-mono)"
           fill="var(--doc)"
+          transform={uprightText(portrait, s.x, s.y - s.radius - 3)}
         >
           {Math.round(s.buildProgress)}%
         </text>
@@ -1004,7 +1018,13 @@ function NeutralBaseArt({
   );
 }
 
-function TerritoryGlyph({ territory: t }: { territory: Territory }) {
+function TerritoryGlyph({
+  territory: t,
+  portrait = false,
+}: {
+  territory: Territory;
+  portrait?: boolean;
+}) {
   const owned = t.owner !== "neutro";
   const color = owned ? sideColor(t.owner as Side) : "oklch(0.98 0 0)";
   const contested = t.progress.blue > 0 && t.progress.red > 0;
@@ -1078,6 +1098,7 @@ function TerritoryGlyph({ territory: t }: { territory: Territory }) {
           fontFamily="var(--font-mono)"
           fill="var(--enemy)"
           fontWeight={700}
+          transform={uprightText(portrait, t.x, t.y - t.radius - 0.9)}
         >
           DISPUTA
         </text>
@@ -1115,7 +1136,13 @@ function TerritoryGlyph({ territory: t }: { territory: Territory }) {
 // Pontos de controle
 // ---------------------------------------------------------------------------
 
-function ControlPointGlyph({ point }: { point: ControlPoint }) {
+function ControlPointGlyph({
+  point,
+  portrait = false,
+}: {
+  point: ControlPoint;
+  portrait?: boolean;
+}) {
   const color = point.owner === "neutro" ? "oklch(0.98 0 0)" : sideColor(point.owner);
   const bluePct = point.progress.blue;
   const redPct = point.progress.red;
@@ -1169,6 +1196,7 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
           fontFamily="var(--font-mono)"
           fill="var(--enemy)"
           fontWeight={700}
+          transform={uprightText(portrait, point.x, point.y - point.radius - 1)}
         >
           DISPUTA
         </text>
@@ -1181,6 +1209,7 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
         fontFamily="var(--font-mono)"
         fill={color}
         fontWeight={700}
+        transform={uprightText(portrait, point.x, point.y - point.radius - (contested ? 3.2 : 0.9))}
       >
         {point.sector.toUpperCase()}
       </text>
@@ -1191,6 +1220,7 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
         fontSize="1.9"
         fontFamily="var(--font-mono)"
         fill="oklch(0.9 0.01 90)"
+        transform={uprightText(portrait, point.x, point.y + point.radius + 2.6)}
       >
         {point.name}
       </text>
@@ -1206,10 +1236,12 @@ function UnitGlyph({
   unit,
   selected,
   dim = false,
+  portrait = false,
 }: {
   unit: BattleUnit;
   selected: boolean;
   dim?: boolean;
+  portrait?: boolean;
 }) {
   const color = sideColor(unit.side);
   const airborne = unit.domain === "aereo";
@@ -1287,6 +1319,7 @@ function UnitGlyph({
         fontFamily="var(--font-mono)"
         fill="oklch(0.92 0.01 90)"
         fontWeight={700}
+        transform={uprightText(portrait, unit.x, y + r * 0.5 + 1.75)}
       >
         {unit.short}
       </text>
@@ -1308,6 +1341,11 @@ function UnitGlyph({
             fontFamily="var(--font-mono)"
             fill={LEVEL_TONE(unit.level)}
             fontWeight={700}
+            transform={uprightText(
+              portrait,
+              unit.x - unit.short.length * 0.62 - 1.4,
+              y + r * 0.5 + 1.95,
+            )}
           >
             {unit.level}
           </text>

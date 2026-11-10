@@ -16,6 +16,7 @@ import type {
   SupportCard,
   Territory,
 } from "./types";
+import { deepenY } from "./world";
 
 // ---------------------------------------------------------------------------
 // Cartas militares — cada categoria tem identidade visual e balística própria
@@ -1457,6 +1458,29 @@ export const arenas: Arena[] = [
   },
 ];
 
+// As arenas são autorais num espaço de projeto de 46 unidades de altura. `deepenArena`
+// reescala todo Y para o mundo atual (`WORLD_H`), para aumentar a profundidade do campo
+// sem reescrever à mão cada coordenada. Raios NÃO mudam: as estruturas seguem círculos.
+function deepenArena(a: Arena): Arena {
+  const dy = deepenY;
+  return {
+    ...a,
+    controlPoints: a.controlPoints.map((p) => ({ ...p, y: dy(p.y) })),
+    territories: a.territories.map((t) => ({ ...t, y: dy(t.y) })),
+    structures: a.structures.map((s) => ({ ...s, y: dy(s.y) })),
+    obstacles: a.obstacles.map((o) => ({ ...o, y: dy(o.y) })),
+    routes: a.routes.map((r) => ({
+      from: [r.from[0], dy(r.from[1])] as [number, number],
+      to: [r.to[0], dy(r.to[1])] as [number, number],
+    })),
+    deployZone: {
+      blue: { ...a.deployZone.blue, y: dy(a.deployZone.blue.y), h: dy(a.deployZone.blue.h) },
+      red: { ...a.deployZone.red, y: dy(a.deployZone.red.y), h: dy(a.deployZone.red.h) },
+    },
+  };
+}
+
 export const arenaByTerrain = (terrain: string): Arena =>
-  arenas.find((a) => a.terrain === terrain) ?? arenas[0]!;
-export const arenaById = (id: string): Arena => arenas.find((a) => a.id === id) ?? arenas[0]!;
+  deepenArena(arenas.find((a) => a.terrain === terrain) ?? arenas[0]!);
+export const arenaById = (id: string): Arena =>
+  deepenArena(arenas.find((a) => a.id === id) ?? arenas[0]!);
