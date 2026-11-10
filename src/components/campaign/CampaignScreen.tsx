@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { GameShell } from "@/components/game/shell";
+import { CampaignComic } from "@/components/campaign/CampaignComic";
 import { BattleScreen, toAiDifficulty } from "@/components/battle/BattleScreen";
 import { chapters } from "@/game/campaign";
 import { commanders } from "@/game/battle/catalog";
 import { buildBattleConfig, missionById } from "@/game/battle/missions";
-import { chapterMeta, chapterMetaById, totalChapters } from "@/game/progress/campaign";
+import { chapterMeta, chapterMetaById, chapterOutro, totalChapters } from "@/game/progress/campaign";
 import { difficultyById, modsFromAccessories } from "@/game/progress/catalog";
 import type { Reward } from "@/game/progress/catalog";
 import { activeAccessories, effectiveDeck } from "@/game/progress/profile";
@@ -70,21 +71,43 @@ export function CampaignScreen() {
 
   if (view.kind === "reward") {
     const meta = chapterMetaById(view.chapterId)!;
+    const chapter = chapters.find((c) => c.id === meta.id);
+    const mission = missionById(meta.missionId);
+    // Próxima missão calculada a partir do perfil MAIS RECENTE (após completeChapter),
+    // para o botão "Próxima missão" avançar de verdade em vez de repetir a fase.
+    const nextMeta = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
+    const nextChapter = nextMeta ? chapters.find((c) => c.id === nextMeta.id) : null;
+
+    // Vitória: página de gibi com a história e os fatos. Derrota/empate: tela enxuta.
+    if (view.result.outcome === "vitoria" && chapter) {
+      return (
+        <GameShell full>
+          <CampaignComic
+            chapter={chapter}
+            meta={meta}
+            terrain={mission?.terrain ?? "Cidade"}
+            result={view.result}
+            reward={view.reward}
+            nextTitle={nextChapter?.title ?? null}
+            onNext={() =>
+              setView(nextMeta ? { kind: "battle", chapterId: nextMeta.id } : { kind: "overview" })
+            }
+            onMap={() => setView({ kind: "overview" })}
+          />
+        </GameShell>
+      );
+    }
+
     return (
       <GameShell full>
         <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center px-4 text-center">
           <RewardScreen
             meta={meta}
+            act={chapter?.act ?? ""}
             result={view.result}
             reward={view.reward}
-            onNext={() => {
-              if (view.result.outcome !== "vitoria") {
-                setView({ kind: "battle", chapterId: view.chapterId });
-                return;
-              }
-              const next = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
-              setView(next ? { kind: "battle", chapterId: next.id } : { kind: "overview" });
-            }}
+            nextTitle={null}
+            onNext={() => setView({ kind: "battle", chapterId: view.chapterId })}
             onMap={() => setView({ kind: "overview" })}
           />
         </div>
@@ -206,62 +229,82 @@ function CampaignOverview({
 
 function RewardScreen({
   meta,
+  act,
   result,
   reward,
+  nextTitle,
   onNext,
   onMap,
 }: {
   meta: (typeof chapterMeta)[number];
+  act: string;
   result: BattleResult;
   reward: Reward;
+  nextTitle: string | null;
   onNext: () => void;
   onMap: () => void;
 }) {
   const won = result.outcome === "vitoria";
+  const draw = result.outcome === "empate";
   const loot = [
-    ...(reward.cards ?? []).map((c) => `+ Carta: ${c}`),
-    ...(reward.accessories ?? []).map((a) => `+ Acessório: ${a}`),
-    ...(reward.techs ?? []).map((t) => `+ Tecnologia: ${t}`),
-    ...(reward.research ? [`+ ${reward.research} pesquisa`] : []),
-    ...(reward.sovereigns ? [`+ ${reward.sovereigns} Sovereigns`] : []),
+    ...(reward.cards ?? []).map((c) => `Carta desbloqueada · ${c}`),
+    ...(reward.accessories ?? []).map((a) => `Acessório · ${a}`),
+    ...(reward.techs ?? []).map((t) => `Tecnologia · ${t}`),
+    ...(reward.research ? [`+${reward.research} pesquisa`] : []),
+    ...(reward.sovereigns ? [`+${reward.sovereigns} Sovereigns`] : []),
   ];
+  const story = chapterOutro(meta, result.outcome);
 
   return (
-    <div className="w-full space-y-5">
+    <div className="flex w-full flex-col items-center gap-4">
+      <p className="label-mono text-primary">
+        {act} · Capítulo {meta.number}
+      </p>
+
       <h1
         className={cn(
-          "font-display text-6xl font-black uppercase",
-          won ? "text-fact" : "text-destructive",
+          "font-display text-6xl font-black uppercase leading-none sm:text-7xl",
+          won ? "text-fact" : draw ? "text-muted-foreground" : "text-destructive",
         )}
       >
-        {won ? "Vitória" : result.outcome === "empate" ? "Empate" : "Derrota"}
+        {won ? "Vitória" : draw ? "Empate" : "Derrota"}
       </h1>
 
+      <p className="max-w-xl font-serif text-base italic leading-relaxed text-foreground/90">
+        {story}
+      </p>
+
       {won && loot.length > 0 && (
-        <ul className="mx-auto max-w-md space-y-1 border border-border bg-card/60 p-4 text-left font-mono text-xs">
-          {loot.map((l) => (
-            <li key={l} className="text-fact">
-              {l}
-            </li>
-          ))}
-        </ul>
+        <div className="w-full max-w-md border border-border bg-card/60 p-4 text-left">
+          <p className="label-mono mb-2 text-fact">Desbloqueado</p>
+          <ul className="space-y-1 font-mono text-xs">
+            {loot.map((l) => (
+              <li key={l} className="text-fact">
+                + {l}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
-      <div className="flex flex-wrap justify-center gap-3">
+      <div className="flex w-full max-w-md flex-col items-stretch gap-2">
         <button
           onClick={onNext}
-          className="bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground hover:brightness-110"
+          className="bg-primary px-8 py-4 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110"
         >
-          {won ? "Próxima missão" : "Tentar de novo"}
+          {won
+            ? nextTitle
+              ? `Próxima missão · ${nextTitle}`
+              : "Concluir campanha"
+            : "Tentar de novo"}
         </button>
         <button
           onClick={onMap}
-          className="border border-border px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+          className="border border-border px-8 py-3 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
         >
-          Mapa
+          Voltar ao mapa
         </button>
       </div>
-      <p className="font-mono text-[10px] text-muted-foreground">Capítulo {meta.number}</p>
     </div>
   );
 }

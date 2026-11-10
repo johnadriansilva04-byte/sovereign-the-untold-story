@@ -30,6 +30,18 @@ const ENEMY = "var(--enemy)";
 
 const sideColor = (s: Side): string => (s === "blue" ? ALLY : ENEMY);
 
+// Terreno por tipo de missão: cada fase tem um chão próprio (mata, urbano, montanha,
+// rio, fortificado), em vez do mesmo verde de todas as arenas.
+const GROUND_BY_TERRAIN: Record<string, { base: string; accent: string }> = {
+  Cidade: { base: "oklch(0.24 0.008 250)", accent: "oklch(0.3 0.01 250)" },
+  Floresta: { base: "oklch(0.24 0.03 145)", accent: "oklch(0.29 0.045 140)" },
+  "Campo aberto": { base: "oklch(0.3 0.035 95)", accent: "oklch(0.34 0.045 92)" },
+  Montanha: { base: "oklch(0.3 0.012 70)", accent: "oklch(0.36 0.016 68)" },
+  "Travessia de rio": { base: "oklch(0.26 0.03 200)", accent: "oklch(0.33 0.05 210)" },
+  "Região fortificada": { base: "oklch(0.27 0.015 60)", accent: "oklch(0.32 0.02 58)" },
+};
+const DEFAULT_GROUND = { base: "oklch(0.26 0.02 120)", accent: "oklch(0.3 0.03 120)" };
+
 export function BattleArena({
   state,
   pendingCardId,
@@ -41,6 +53,7 @@ export function BattleArena({
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const arena = state.config.arena;
+  const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
   // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
@@ -222,10 +235,17 @@ export function BattleArena({
             <stop offset="60%" stopColor="#ffffff" stopOpacity="0.12" />
             <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
           </radialGradient>
+          <linearGradient id="groundDepth" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
+            <stop offset="45%" stopColor="oklch(0 0 0)" stopOpacity="0" />
+            <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
+          </linearGradient>
         </defs>
 
-        {/* Terreno base */}
-        <rect x="0" y="0" width="100" height="100" fill="oklch(0.26 0.03 120)" />
+        {/* Terreno base — a cor muda por terreno, para cada fase ter cara própria */}
+        <rect x="0" y="0" width="100" height="100" fill={ground.base} />
+        <rect x="0" y="0" width="100" height="100" fill={ground.accent} opacity="0.5" />
+        <rect x="0" y="0" width="100" height="100" fill="url(#groundDepth)" />
         <rect x="0" y="0" width="100" height="100" fill="url(#enemyZone)" />
         <rect
           x="0"
@@ -792,15 +812,23 @@ function UnitGlyph({
         height="0.9"
         fill={unit.hp / unit.maxHp > 0.4 ? "var(--fact)" : "var(--enemy)"}
       />
+      {/* etiqueta da unidade: pequena placa escura, legível sobre qualquer terreno */}
+      <rect
+        x={unit.x - unit.short.length * 0.62}
+        y={y + r * 0.5}
+        width={unit.short.length * 1.24}
+        height="2.4"
+        rx="0.4"
+        fill="oklch(0.12 0.008 90 / 0.72)"
+      />
       <text
         x={unit.x}
-        y={y + 0.9}
+        y={y + r * 0.5 + 1.75}
         textAnchor="middle"
-        fontSize="2"
+        fontSize="1.7"
         fontFamily="var(--font-mono)"
-        fill="oklch(0.08 0 0)"
+        fill="oklch(0.92 0.01 90)"
         fontWeight={700}
-        transform={`rotate(0)`}
       >
         {unit.short}
       </text>
@@ -838,182 +866,213 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
       {children}
     </g>
   );
+  // Tons neutros para armas/cano e detalhes — evita o visual "neon" das cores de equipe.
+  const dark = "oklch(0.17 0.008 90)";
+  const steel = "oklch(0.32 0.008 90)";
+  // Corpo humano visto de cima (nariz para +x): pernas, torso, braços e capacete.
+  // A arma entra como parâmetro para cada especialidade manter silhueta própria.
+  const soldier = (weapon: ReactNode, opts: { bulky?: boolean; helmet?: string } = {}) =>
+    body(
+      <>
+        <rect x="-0.62" y="-0.44" width="0.8" height="0.3" rx="0.12" fill={color} />
+        <rect x="-0.62" y="0.14" width="0.8" height="0.3" rx="0.12" fill={color} />
+        <rect
+          x={opts.bulky ? -0.24 : -0.12}
+          y={opts.bulky ? -0.62 : -0.5}
+          width={opts.bulky ? 1.12 : 0.98}
+          height={opts.bulky ? 1.24 : 1.02}
+          rx="0.24"
+          fill={color}
+        />
+        <rect x="0.34" y="-0.52" width="0.58" height="0.24" rx="0.1" fill={color} />
+        <rect x="0.34" y="0.28" width="0.58" height="0.24" rx="0.1" fill={color} />
+        <circle
+          cx="0.04"
+          cy="0"
+          r={opts.bulky ? 0.6 : 0.5}
+          fill={opts.helmet ?? color}
+          stroke={dark}
+          strokeWidth="0.14"
+        />
+        {weapon}
+      </>,
+    );
   switch (model) {
     case "soldado-fuzil":
-      return body(
+      return soldier(
         <>
-          <circle r="0.7" fill={color} />
-          <rect x="-0.3" y="-0.7" width="1.7" height="1.4" fill={color} rx="0.2" />
-          <line x1="0.6" y1="0" x2="2.2" y2="0" stroke={color} strokeWidth="0.4" />
+          <rect x="0.5" y="-0.15" width="1.85" height="0.3" rx="0.07" fill={dark} />
+          <rect x="1.5" y="0.05" width="0.32" height="0.34" rx="0.06" fill={dark} />
         </>,
       );
     case "soldado-assalto":
-      return body(
+      return soldier(
         <>
-          <circle r="0.8" fill={color} />
-          <rect x="-0.3" y="-0.9" width="1.9" height="1.8" fill={color} rx="0.25" />
-          <line x1="0.7" y1="-0.3" x2="2.3" y2="-0.3" stroke={color} strokeWidth="0.4" />
-          <rect x="-0.9" y="-1" width="0.8" height="2" fill={color} opacity={0.7} />
+          <rect x="-0.95" y="-0.42" width="0.42" height="0.84" rx="0.14" fill={steel} />
+          <rect x="0.5" y="-0.17" width="1.5" height="0.34" rx="0.07" fill={dark} />
+          <rect x="0.86" y="0.14" width="0.3" height="0.5" rx="0.06" fill={dark} />
         </>,
+        { bulky: true },
       );
     case "soldado-antitanque":
-      return body(
+      return soldier(
         <>
-          <circle r="0.7" fill={color} />
-          <rect x="-0.3" y="-0.7" width="1.5" height="1.4" fill={color} rx="0.2" />
-          <rect x="0.6" y="-0.5" width="2.4" height="1" fill={color} rx="0.15" />
-          <line x1="0.9" y1="-0.6" x2="0.9" y2="0.6" stroke={color} strokeWidth="0.3" />
+          <rect x="0.1" y="-0.82" width="2.15" height="0.5" rx="0.2" fill={steel} />
+          <circle cx="2.32" cy="-0.57" r="0.24" fill={dark} />
+          <line x1="0.35" y1="-0.57" x2="0.9" y2="-0.2" stroke={dark} strokeWidth="0.16" />
         </>,
+        { helmet: steel },
       );
     case "engenheiro":
-      return body(
+      return soldier(
         <>
-          <circle r="0.7" fill={color} />
-          <rect x="-0.3" y="-0.7" width="1.4" height="1.4" fill={color} rx="0.2" />
-          <rect x="0.4" y="-0.9" width="1" height="1.8" fill="var(--doc)" opacity={0.85} />
-          <line x1="1.2" y1="-1.1" x2="1.2" y2="1.1" stroke="var(--doc)" strokeWidth="0.3" />
+          <rect x="-0.95" y="-0.36" width="0.62" height="0.72" rx="0.12" fill="var(--doc)" />
+          <line x1="-0.95" y1="0" x2="-0.33" y2="0" stroke={dark} strokeWidth="0.12" />
+          <rect x="0.42" y="-0.13" width="0.7" height="0.26" rx="0.06" fill={dark} />
         </>,
+        { helmet: "var(--doc)" },
+      );
+    case "paraquedista":
+      return soldier(
+        <>
+          <rect x="-1.15" y="-0.6" width="0.66" height="1.2" rx="0.22" fill={color} opacity={0.85} />
+          <line x1="-0.5" y1="-0.4" x2="0.1" y2="-0.3" stroke={dark} strokeWidth="0.1" />
+          <line x1="-0.5" y1="0.4" x2="0.1" y2="0.3" stroke={dark} strokeWidth="0.1" />
+          <rect x="0.5" y="-0.15" width="1.5" height="0.3" rx="0.07" fill={dark} />
+        </>,
+        { helmet: "var(--fact)" },
       );
     case "canhao":
       return body(
         <>
-          <rect x="-1.6" y="-1" width="2.4" height="2" fill={color} rx="0.25" />
-          <circle cx="-1.2" cy="-1.1" r="0.5" fill="oklch(0.2 0 0)" />
-          <circle cx="-1.2" cy="1.1" r="0.5" fill="oklch(0.2 0 0)" />
-          <rect x="0.6" y="-0.35" width="2.8" height="0.7" fill={color} rx="0.15" />
+          <rect x="-1.9" y="-1.05" width="2.6" height="2.1" rx="0.28" fill={steel} />
+          <rect x="-1.7" y="-0.7" width="2.2" height="1.4" rx="0.18" fill={color} />
+          <circle cx="-1.45" cy="-1.15" r="0.55" fill={dark} stroke={steel} strokeWidth="0.14" />
+          <circle cx="-1.45" cy="1.15" r="0.55" fill={dark} stroke={steel} strokeWidth="0.14" />
+          <rect x="0.6" y="-0.28" width="3" height="0.56" rx="0.1" fill={dark} />
+          <rect x="3.5" y="-0.42" width="0.4" height="0.84" rx="0.08" fill={steel} />
         </>,
       );
     case "artilharia-pesada":
       return body(
         <>
-          <rect x="-2" y="-1.3" width="3" height="2.6" fill={color} rx="0.3" />
-          <circle cx="-1.5" cy="-1.4" r="0.6" fill="oklch(0.2 0 0)" />
-          <circle cx="-1.5" cy="1.4" r="0.6" fill="oklch(0.2 0 0)" />
-          <rect x="0.8" y="-0.45" width="3.6" height="0.9" fill={color} rx="0.15" />
-          <rect x="-0.4" y="-0.6" width="1.4" height="1.2" fill={color} opacity={0.6} />
+          <rect x="-2.3" y="-1.35" width="3.4" height="2.7" rx="0.32" fill={steel} />
+          <rect x="-2" y="-0.9" width="2.8" height="1.8" rx="0.2" fill={color} />
+          <circle cx="-1.8" cy="-1.5" r="0.62" fill={dark} stroke={steel} strokeWidth="0.14" />
+          <circle cx="-1.8" cy="1.5" r="0.62" fill={dark} stroke={steel} strokeWidth="0.14" />
+          <circle cx="0.1" cy="0" r="0.75" fill={steel} />
+          <rect x="0.8" y="-0.34" width="4" height="0.68" rx="0.12" fill={dark} />
+          <rect x="4.6" y="-0.52" width="0.5" height="1.04" rx="0.1" fill={steel} />
         </>,
       );
     case "lmf":
       return body(
         <>
-          <rect x="-1.8" y="-1.1" width="2.6" height="2.2" fill={color} rx="0.25" />
-          <rect
-            x="0.7"
-            y="-1"
-            width="1.9"
-            height="2"
-            fill="oklch(0.18 0 0)"
-            stroke={color}
-            strokeWidth="0.3"
-          />
-          {[-0.6, -0.2, 0.2, 0.6].map((yy) => (
-            <circle key={yy} cx="0.9" cy={yy} r="0.18" fill={color} />
+          <rect x="-2" y="-1.15" width="3" height="2.3" rx="0.28" fill={steel} />
+          <rect x="-1.8" y="-0.8" width="2.6" height="1.6" rx="0.18" fill={color} />
+          <circle cx="-1.6" cy="-1.25" r="0.5" fill={dark} stroke={steel} strokeWidth="0.12" />
+          <circle cx="-1.6" cy="1.25" r="0.5" fill={dark} stroke={steel} strokeWidth="0.12" />
+          <rect x="0.6" y="-1.05" width="2.1" height="2.1" rx="0.14" fill={dark} stroke={steel} strokeWidth="0.16" />
+          {[-0.62, -0.22, 0.22, 0.62].map((yy) => (
+            <circle key={yy} cx="0.95" cy={yy} r="0.2" fill={steel} />
           ))}
         </>,
       );
     case "lancador-missil":
       return body(
         <>
-          <rect x="-2.2" y="-1" width="3" height="2" fill={color} rx="0.25" />
-          <circle cx="-1.7" cy="-1.1" r="0.5" fill="oklch(0.2 0 0)" />
-          <circle cx="-1.7" cy="1.1" r="0.5" fill="oklch(0.2 0 0)" />
-          <rect x="0.7" y="-0.8" width="3" height="1.6" fill={color} rx="0.5" />
+          <rect x="-2.5" y="-1.1" width="3.3" height="2.2" rx="0.28" fill={steel} />
+          <rect x="-2.3" y="-0.75" width="2.9" height="1.5" rx="0.18" fill={color} />
+          <circle cx="-2.1" cy="-1.2" r="0.52" fill={dark} stroke={steel} strokeWidth="0.12" />
+          <circle cx="-2.1" cy="1.2" r="0.52" fill={dark} stroke={steel} strokeWidth="0.12" />
+          <rect x="0.5" y="-0.9" width="3.3" height="1.8" rx="0.42" fill={dark} stroke={steel} strokeWidth="0.16" />
+          <line x1="0.9" y1="0" x2="3.6" y2="0" stroke={steel} strokeWidth="0.16" />
         </>,
       );
     case "tanque":
       return body(
         <>
-          <rect x="-2.2" y="-1.4" width="4.2" height="2.8" fill={color} rx="0.3" />
-          <rect x="-2.2" y="-1.7" width="4.2" height="0.5" fill="oklch(0.15 0 0)" />
-          <rect x="-2.2" y="1.2" width="4.2" height="0.5" fill="oklch(0.15 0 0)" />
-          <circle cx="0" cy="0" r="1.05" fill={color} opacity={0.9} />
-          <rect
-            x="0.8"
-            y="-0.28"
-            width="3.4"
-            height="0.56"
-            fill="oklch(0.15 0 0)"
-            stroke={color}
-            strokeWidth="0.25"
-          />
+          {/* esteiras */}
+          <rect x="-2.4" y="-1.75" width="4.6" height="0.62" rx="0.12" fill={dark} />
+          <rect x="-2.4" y="1.13" width="4.6" height="0.62" rx="0.12" fill={dark} />
+          {/* casco */}
+          <rect x="-2.35" y="-1.2" width="4.5" height="2.4" rx="0.28" fill={color} />
+          <path d="M2.15 -1.2 L2.9 0 L2.15 1.2 Z" fill={color} />
+          {/* torre + canhão */}
+          <circle cx="-0.1" cy="0" r="1.05" fill={steel} />
+          <circle cx="-0.1" cy="0" r="0.66" fill={color} />
+          <rect x="0.7" y="-0.26" width="3.7" height="0.52" rx="0.1" fill={dark} />
+          <rect x="4.15" y="-0.4" width="0.5" height="0.8" rx="0.1" fill={steel} />
         </>,
       );
     case "vbld":
       return body(
         <>
-          <path d="M-2 -1.3 L1.6 -1.3 L2.4 0 L1.6 1.3 L-2 1.3 Z" fill={color} />
-          <circle cx="0" cy="0" r="0.7" fill="oklch(0.18 0 0)" stroke={color} strokeWidth="0.2" />
-          <line x1="1.2" y1="0" x2="2.6" y2="0" stroke={color} strokeWidth="0.4" />
+          <rect x="-2.3" y="-1.55" width="4.4" height="0.55" rx="0.1" fill={dark} />
+          <rect x="-2.3" y="1" width="4.4" height="0.55" rx="0.1" fill={dark} />
+          <path d="M-2.1 -1.25 L1.7 -1.25 L2.6 0 L1.7 1.25 L-2.1 1.25 Z" fill={color} />
+          <circle cx="-0.1" cy="0" r="0.72" fill={steel} />
+          <circle cx="-0.1" cy="0" r="0.36" fill={dark} />
+          <rect x="1.1" y="-0.16" width="1.7" height="0.32" rx="0.08" fill={dark} />
         </>,
       );
     case "drone-recon":
       return body(
         <>
-          <ellipse rx="0.9" ry="0.5" fill={color} />
-          <line x1="-1.6" y1="-1" x2="1.6" y2="1" stroke={color} strokeWidth="0.3" />
-          <line x1="-1.6" y1="1" x2="1.6" y2="-1" stroke={color} strokeWidth="0.3" />
+          <line x1="-1.7" y1="-1.05" x2="1.7" y2="1.05" stroke={steel} strokeWidth="0.34" />
+          <line x1="-1.7" y1="1.05" x2="1.7" y2="-1.05" stroke={steel} strokeWidth="0.34" />
+          <rect x="-1.05" y="-0.5" width="2.1" height="1" rx="0.34" fill={steel} />
+          <ellipse rx="0.72" ry="0.42" fill={color} />
           {[-1.5, 1.5].map((xx) =>
             [-1, 1].map((yy) => (
-              <circle key={`${xx}-${yy}`} cx={xx} cy={yy} r="0.35" fill={color} opacity={0.7}>
+              <circle key={`${xx}-${yy}`} cx={xx} cy={yy} r="0.34" fill={steel} opacity={0.85}>
                 <animate
                   attributeName="opacity"
-                  values="0.3;0.8;0.3"
+                  values="0.35;0.85;0.35"
                   dur="0.3s"
                   repeatCount="indefinite"
                 />
               </circle>
             )),
           )}
-          <circle cx="0" cy="0" r="0.35" fill="oklch(0.95 0 0 / 0.9)" />
+          <circle cx="0.15" cy="0" r="0.3" fill="var(--ai)" />
         </>,
       );
     case "drone-combate":
       return body(
         <>
-          <ellipse rx="1.1" ry="0.65" fill={color} />
-          <line x1="-1.8" y1="-1.2" x2="1.8" y2="1.2" stroke={color} strokeWidth="0.3" />
-          <line x1="-1.8" y1="1.2" x2="1.8" y2="-1.2" stroke={color} strokeWidth="0.3" />
-          <rect
-            x="0.9"
-            y="-0.25"
-            width="1.6"
-            height="0.5"
-            fill="oklch(0.15 0 0)"
-            stroke={color}
-            strokeWidth="0.2"
-          />
-          <circle cx="0" cy="0" r="0.4" fill="var(--enemy)" opacity={0.8} />
+          <line x1="-1.9" y1="-1.25" x2="1.9" y2="1.25" stroke={steel} strokeWidth="0.34" />
+          <line x1="-1.9" y1="1.25" x2="1.9" y2="-1.25" stroke={steel} strokeWidth="0.34" />
+          <rect x="-1.25" y="-0.65" width="2.5" height="1.3" rx="0.4" fill={steel} />
+          <ellipse rx="0.9" ry="0.55" fill={color} />
+          <rect x="0.9" y="-0.2" width="1.7" height="0.4" rx="0.08" fill={dark} />
+          <circle cx="-0.2" cy="0" r="0.34" fill="var(--enemy)" />
         </>,
       );
     case "aa":
       return body(
         <>
-          <rect x="-1.4" y="-1" width="2" height="2" fill={color} rx="0.25" />
-          <line x1="0.4" y1="-0.4" x2="2.6" y2="-0.6" stroke={color} strokeWidth="0.35" />
-          <line x1="0.4" y1="0.4" x2="2.6" y2="0.6" stroke={color} strokeWidth="0.35" />
+          <rect x="-1.5" y="-1.05" width="2.2" height="2.1" rx="0.28" fill={steel} />
+          <rect x="-1.3" y="-0.7" width="1.8" height="1.4" rx="0.16" fill={color} />
+          <line x1="0.5" y1="-0.42" x2="2.8" y2="-0.72" stroke={dark} strokeWidth="0.34" />
+          <line x1="0.5" y1="0.42" x2="2.8" y2="0.72" stroke={dark} strokeWidth="0.34" />
         </>,
       );
     case "fortificacao":
       return body(
         <>
-          <rect x="-2" y="-1.6" width="4" height="3.2" fill={color} rx="0.2" />
-          <rect
-            x="-1.4"
-            y="-1"
-            width="2.8"
-            height="2"
-            fill="oklch(0.18 0 0)"
-            stroke={color}
-            strokeWidth="0.2"
-          />
-          <line x1="0.4" y1="0" x2="2.6" y2="0" stroke={color} strokeWidth="0.4" />
+          <rect x="-2.1" y="-1.7" width="4.2" height="3.4" rx="0.24" fill={steel} />
+          <rect x="-1.5" y="-1.1" width="3" height="2.2" rx="0.18" fill={color} />
+          <rect x="-0.5" y="-0.5" width="1" height="1" rx="0.14" fill={dark} />
+          <rect x="0.4" y="-0.16" width="2.4" height="0.32" rx="0.08" fill={dark} />
         </>,
       );
     case "posto":
       return body(
         <>
-          <rect x="-1.4" y="-1.4" width="2.8" height="2.8" fill={color} rx="0.2" />
-          <rect x="-0.4" y="-0.4" width="0.8" height="0.8" fill="var(--fact)" />
+          <rect x="-1.5" y="-1.5" width="3" height="3" rx="0.24" fill={steel} />
+          <rect x="-1" y="-1" width="2" height="2" rx="0.16" fill={color} />
+          <circle cx="0" cy="0" r="0.5" fill="var(--fact)" />
         </>,
       );
     default:

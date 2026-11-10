@@ -63,6 +63,9 @@ export function BattleScreen(props: BattleScreenProps) {
   const [phase, setPhase] = useState<Phase>(props.presetConfig ? "batalha" : "preparacao");
   const [setup, setSetup] = useState<Setup | null>(null);
   const [awarded, setAwarded] = useState(false);
+  // Cada nova tentativa ("Repetir operação") remonta a batalha viva com um novo id,
+  // reiniciando estado/tempo. Sem isso o botão não fazia nada.
+  const [runId, setRunId] = useState(0);
 
   const config: BattleConfig | null = useMemo(() => {
     if (props.presetConfig) return props.presetConfig;
@@ -80,19 +83,24 @@ export function BattleScreen(props: BattleScreenProps) {
     });
   }, [setup, props.presetConfig, profile]);
 
+  // Dificuldade efetiva: no modo preparação vem do Setup; no modo campanha/PvP
+  // (presetConfig) ela vive na própria config — antes `setup` era null e o
+  // registro de conclusão nunca acontecia, travando o avanço da campanha.
+  const effectiveDifficulty: Difficulty = setup?.difficulty ?? props.initialDifficulty ?? "veterano";
+
   const handleComplete = useCallback(
     (result: BattleResult) => {
       if (awarded) return;
       setAwarded(true);
-      if (props.onComplete && setup) props.onComplete(result, setup.difficulty);
-      else if (setup)
+      if (props.onComplete) props.onComplete(result, effectiveDifficulty);
+      else
         completeChapter({
           chapterId: chapterIdFor(result.configId),
           result,
-          difficulty: setup.difficulty,
+          difficulty: effectiveDifficulty,
         });
     },
-    [awarded, props, setup, completeChapter],
+    [awarded, props, effectiveDifficulty, completeChapter],
   );
 
   if (phase === "preparacao" || !config) {
@@ -117,12 +125,13 @@ export function BattleScreen(props: BattleScreenProps) {
 
   return (
     <LiveBattle
-      key={`${config.id}-${config.seed}`}
+      key={`${config.id}-${config.seed}-${runId}`}
       config={config}
-      llmCommander={setup?.difficulty === "llm"}
+      llmCommander={effectiveDifficulty === "llm"}
       onComplete={handleComplete}
       onReplay={() => {
         setAwarded(false);
+        setRunId((n) => n + 1);
         setPhase("batalha");
       }}
       onNewMission={
