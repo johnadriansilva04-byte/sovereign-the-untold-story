@@ -87,11 +87,13 @@ export function BattlePrep({
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col overflow-y-auto px-4 py-3 [@media(max-height:560px)]:py-1.5">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5 [@media(max-height:560px)]:gap-y-1 [@media(max-height:560px)]:pb-1.5">
         <div>
           <p className="label-mono text-primary">Preparação para a batalha</p>
-          <h2 className="font-display text-2xl font-black uppercase leading-none">Mobilização</h2>
+          <h2 className="font-display text-2xl font-black uppercase leading-none [@media(max-height:560px)]:text-xl">
+            Mobilização
+          </h2>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
           <span>
@@ -113,8 +115,8 @@ export function BattlePrep({
         </button>
       </div>
 
-      <div className="mt-2.5 grid min-h-0 flex-1 gap-2.5 lg:grid-cols-[1.5fr_1fr]">
-        <section className="hud-panel hud-corners flex min-h-0 flex-col p-3">
+      <div className="mt-2.5 grid min-h-0 flex-1 gap-2.5 [@media(max-height:560px)]:flex-none [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-1.5 lg:grid-cols-[1.5fr_1fr]">
+        <section className="hud-panel hud-corners flex min-h-0 flex-col p-3 [@media(max-height:560px)]:p-2">
           <div className="flex items-center justify-between">
             <p className="label-mono">Baralho de composição militar</p>
             <span
@@ -212,7 +214,7 @@ export function BattlePrep({
             </div>
           </section>
 
-          <section className="hud-panel hud-corners flex min-h-0 flex-col p-3">
+          <section className="hud-panel hud-corners flex min-h-0 flex-col p-3 [@media(max-height:560px)]:p-2">
             <p className="label-mono mb-1.5">Doutrina militar</p>
             <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto pr-1">
               {doctrineList.map((d) => (
@@ -235,12 +237,12 @@ export function BattlePrep({
         </div>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5">
+      <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:pt-1.5">
         <button
           disabled={locked}
           onClick={() => onStart({ mission, deck, commander, doctrine, difficulty })}
           className={cn(
-            "px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] transition",
+            "px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] transition [@media(max-height:560px)]:py-1.5 [@media(max-height:560px)]:text-xs",
             locked
               ? "cursor-not-allowed border border-border text-muted-foreground"
               : "bg-primary text-primary-foreground shadow-brass hover:brightness-110",

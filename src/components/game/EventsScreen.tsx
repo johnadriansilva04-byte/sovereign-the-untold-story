@@ -184,12 +184,12 @@ export function EventsScreen() {
 
   return (
     <GameShell full>
-      <div className="mx-auto flex h-full w-full max-w-5xl flex-col justify-center gap-4 px-4 py-3">
+      <div className="mx-auto flex h-full w-full max-w-5xl flex-col gap-4 px-4 py-3">
         <PageTitle compact kicker="Sala de situação · Turno 14" title="Eventos e histórico">
           O que o mundo fez enquanto você lutava — clique para expandir cada registro.
         </PageTitle>
 
-        <div className="grid min-h-0 gap-4 lg:grid-cols-2">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-2">
           <Panel
             title="Feed da guerra"
             action={

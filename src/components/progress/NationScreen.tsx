@@ -20,8 +20,8 @@ export function NationScreen() {
   };
 
   return (
-    <GameShell>
-      <div className="flex h-full min-h-0 flex-col gap-3">
+    <GameShell full>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-3 overflow-y-auto px-4 py-3">
         <PageTitle kicker="Administração nacional" title="Nação" compact>
           A pesquisa desbloqueia cartas e possibilidades de jogo.
         </PageTitle>
@@ -41,7 +41,7 @@ export function NationScreen() {
           <Info label="Bônus econômico" value={`+${(economyBonus(nation) * 100).toFixed(1)}%`} />
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-3">
+        <div className="grid gap-3 lg:grid-cols-3">
           {BRANCHES.map((b) => (
             <Panel key={b.id} title={b.label}>
               <div className="space-y-2">
