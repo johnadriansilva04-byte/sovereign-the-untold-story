@@ -16,7 +16,7 @@ import type {
   SupportCard,
   Territory,
 } from "./types";
-import { deepenY } from "./world";
+import { deepenY, spreadX } from "./world";
 
 // ---------------------------------------------------------------------------
 // Cartas militares — cada categoria tem identidade visual e balística própria
@@ -42,7 +42,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 4.4,
     range: 6,
     cooldown: 0.9,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 2.2,
     model: "soldado-fuzil",
@@ -71,7 +71,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 3.6,
     range: 5.5,
     cooldown: 0.32,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 2.4,
     model: "soldado-assalto",
@@ -101,7 +101,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 3.8,
     range: 15,
     cooldown: 2.6,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 2.2,
     model: "soldado-antitanque",
@@ -162,7 +162,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 3.6,
     range: 16,
     cooldown: 2.4,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 2.1,
     model: "sniper",
@@ -194,7 +194,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 2.4,
     range: 18,
     cooldown: 3.2,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 2.3,
     model: "morteiro",
@@ -225,7 +225,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 2.9,
     range: 13,
     cooldown: 1.8,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.2,
     model: "caca-tanques",
@@ -255,7 +255,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 1.9,
     range: 24,
     cooldown: 2.4,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 2.8,
     model: "canhao",
@@ -283,7 +283,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 1.3,
     range: 38,
     cooldown: 3.6,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.0,
     model: "artilharia-pesada",
@@ -314,7 +314,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 1.8,
     range: 34,
     cooldown: 3.2,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.0,
     model: "lancador-missil",
@@ -342,7 +342,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 1.4,
     range: 36,
     cooldown: 3.8,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.4,
     model: "lmf",
@@ -372,7 +372,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 2.6,
     range: 9,
     cooldown: 1.6,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.4,
     model: "tanque",
@@ -402,7 +402,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 3.4,
     range: 8,
     cooldown: 1.1,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.0,
     model: "vbld",
@@ -523,7 +523,7 @@ export const militaryCards: MilitaryCard[] = [
     speed: 0,
     range: 9,
     cooldown: 1.6,
-    targets: "terra",
+    targets: "ambos",
     domain: "terra",
     radius: 3.6,
     model: "fortificacao",
@@ -1458,29 +1458,41 @@ export const arenas: Arena[] = [
   },
 ];
 
-// As arenas são autorais num espaço de projeto de 46 unidades de altura. `deepenArena`
-// reescala todo Y para o mundo atual (`WORLD_H`), para aumentar a profundidade do campo
-// sem reescrever à mão cada coordenada. Raios NÃO mudam: as estruturas seguem círculos.
-function deepenArena(a: Arena): Arena {
+// As arenas são autorais num espaço de projeto de 100×46. `toWorldArena` reescala
+// X (spreadX) e Y (deepenY) para o mundo atual (`WORLD_W`/`WORLD_H`), deixando o campo
+// mais LARGO e mais FUNDO sem reescrever à mão cada coordenada. Os RAIOS NÃO mudam:
+// estruturas e territórios seguem círculos (nunca elipses).
+function toWorldArena(a: Arena): Arena {
+  const sx = spreadX;
   const dy = deepenY;
   return {
     ...a,
-    controlPoints: a.controlPoints.map((p) => ({ ...p, y: dy(p.y) })),
-    territories: a.territories.map((t) => ({ ...t, y: dy(t.y) })),
-    structures: a.structures.map((s) => ({ ...s, y: dy(s.y) })),
-    obstacles: a.obstacles.map((o) => ({ ...o, y: dy(o.y) })),
+    controlPoints: a.controlPoints.map((p) => ({ ...p, x: sx(p.x), y: dy(p.y) })),
+    territories: a.territories.map((t) => ({ ...t, x: sx(t.x), y: dy(t.y) })),
+    structures: a.structures.map((s) => ({ ...s, x: sx(s.x), y: dy(s.y) })),
+    obstacles: a.obstacles.map((o) => ({ ...o, x: sx(o.x), y: dy(o.y) })),
     routes: a.routes.map((r) => ({
-      from: [r.from[0], dy(r.from[1])] as [number, number],
-      to: [r.to[0], dy(r.to[1])] as [number, number],
+      from: [sx(r.from[0]), dy(r.from[1])] as [number, number],
+      to: [sx(r.to[0]), dy(r.to[1])] as [number, number],
     })),
     deployZone: {
-      blue: { ...a.deployZone.blue, y: dy(a.deployZone.blue.y), h: dy(a.deployZone.blue.h) },
-      red: { ...a.deployZone.red, y: dy(a.deployZone.red.y), h: dy(a.deployZone.red.h) },
+      blue: {
+        x: sx(a.deployZone.blue.x),
+        y: dy(a.deployZone.blue.y),
+        w: sx(a.deployZone.blue.w),
+        h: dy(a.deployZone.blue.h),
+      },
+      red: {
+        x: sx(a.deployZone.red.x),
+        y: dy(a.deployZone.red.y),
+        w: sx(a.deployZone.red.w),
+        h: dy(a.deployZone.red.h),
+      },
     },
   };
 }
 
 export const arenaByTerrain = (terrain: string): Arena =>
-  deepenArena(arenas.find((a) => a.terrain === terrain) ?? arenas[0]!);
+  toWorldArena(arenas.find((a) => a.terrain === terrain) ?? arenas[0]!);
 export const arenaById = (id: string): Arena =>
-  deepenArena(arenas.find((a) => a.id === id) ?? arenas[0]!);
+  toWorldArena(arenas.find((a) => a.id === id) ?? arenas[0]!);

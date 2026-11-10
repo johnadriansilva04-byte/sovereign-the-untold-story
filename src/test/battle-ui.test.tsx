@@ -132,7 +132,10 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     // x = 10 → dentro da zona de desdobramento azul (oeste)
-    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(10, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointermove", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
+    );
 
     const ghost = screen.getByTestId("deploy-ghost");
     expect(ghost).toBeInTheDocument();
@@ -151,7 +154,10 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     // x = 90 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
-    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(90, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointermove", { ...worldToClient(90, WORLD_H / 2), bubbles: true }),
+    );
 
     expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("true");
   });
@@ -168,11 +174,17 @@ describe("interface da batalha", () => {
     const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
     // desdobra na própria metade; a força nasce na base azul (x≈8)
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
+    );
 
     // toca a ~10px da unidade (tolerância do teatro pequeno): antes o alvo era o
     // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }),
+    );
 
     // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
@@ -233,13 +245,22 @@ describe("interface da batalha", () => {
 
     // desdobra a força aliada (nasce na base azul, x≈8)
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
+    );
     // seleciona a unidade recém-desdobrada
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }),
+    );
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
 
     // clique no inimigo (longe da unidade aliada): o motor recebe a ordem de ataque
-    fireEvent(svg, new MouseEvent("pointerdown", { ...worldToClient(90, WORLD_H / 2), bubbles: true }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(90, WORLD_H / 2), bubbles: true }),
+    );
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/reposiciona/i)).toBeInTheDocument();
   });

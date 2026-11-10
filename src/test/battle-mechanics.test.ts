@@ -263,8 +263,12 @@ describe("motor de batalha — expansão territorial e construção", () => {
     expect(spawned.length).toBeGreaterThan(0);
     for (const u of spawned) {
       expect(u.x).toBeLessThan(50); // nasceu no lado azul (oeste)
-      expect(u.goalX).toBe(90); // caminha para o destino ordenado (leste)
+      expect(u.goalX).toBeGreaterThan(50); // caminha para o destino ordenado (leste)
     }
+    // O destino é o ponto clicado: a formação se distribui em volta dele, mas o
+    // CENTRO da tropa coincide com a ordem.
+    const cx = spawned.reduce((a, u) => a + (u.goalX ?? 0), 0) / spawned.length;
+    expect(cx).toBeCloseTo(90, 0);
   });
 });
 
@@ -297,16 +301,16 @@ describe("motor de batalha — armas e projéteis reais", () => {
   // 9. Canhões efetivamente disparam com projétil visível.
   it("9. canhão gera projétil visível com trajetória até o impacto", () => {
     const state = createBattle(testConfig());
-    const cannon = place(state, "blue", "art-canhao", 50, 62);
-    const target = place(state, "red", "inf-fuzileiros", 50, 48);
+    const cannon = place(state, "blue", "art-canhao", 55, WORLD_H / 2);
+    const target = place(state, "red", "inf-fuzileiros", 68, WORLD_H / 2);
     const hpBefore = target.hp;
     let sawShell = false;
     let dmg = false;
     for (let i = 0; i < 600 && state.running; i++) {
-      cannon.x = 50;
-      cannon.y = 62;
-      target.x = 50;
-      target.y = 48;
+      cannon.x = 55;
+      cannon.y = WORLD_H / 2;
+      target.x = 68;
+      target.y = WORLD_H / 2;
       cannon.order = "manter";
       target.order = "manter";
       cannon.hp = cannon.maxHp;
@@ -322,15 +326,15 @@ describe("motor de batalha — armas e projéteis reais", () => {
   // 10. Mísseis possuem trajetória e impacto.
   it("10. lançador de mísseis gera míssil com trajetória e explosão no impacto", () => {
     const state = createBattle(testConfig());
-    const launcher = place(state, "blue", "mss-lancador", 50, 64);
-    const target = place(state, "red", "inf-fuzileiros", 50, 46);
+    const launcher = place(state, "blue", "mss-lancador", 58, WORLD_H / 2);
+    const target = place(state, "red", "inf-fuzileiros", 72, WORLD_H / 2);
     let sawMissile = false;
     let sawExplosion = false;
     for (let i = 0; i < 600 && state.running; i++) {
-      launcher.x = 50;
-      launcher.y = 64;
-      target.x = 50;
-      target.y = 46;
+      launcher.x = 58;
+      launcher.y = WORLD_H / 2;
+      target.x = 72;
+      target.y = WORLD_H / 2;
       launcher.order = "manter";
       target.order = "manter";
       launcher.hp = launcher.maxHp;
@@ -347,17 +351,17 @@ describe("motor de batalha — armas e projéteis reais", () => {
   // 11. Tanques movimentam a torre e disparam.
   it("11. tanque mira, dispara e causa dano", () => {
     const state = createBattle(testConfig());
-    const tank = place(state, "blue", "bld-tanque", 40, 23);
-    const target = place(state, "red", "inf-fuzileiros", 46, 20);
+    const tank = place(state, "blue", "bld-tanque", 60, 12);
+    const target = place(state, "red", "inf-fuzileiros", 66, 9);
     const aim0 = tank.aim;
     const hpBefore = target.hp;
     let moved = false;
     let dmg = false;
     for (let i = 0; i < 600 && state.running; i++) {
-      tank.x = 40;
-      tank.y = 23;
-      target.x = 46;
-      target.y = 20;
+      tank.x = 60;
+      tank.y = 12;
+      target.x = 66;
+      target.y = 9;
       tank.order = "manter";
       target.order = "manter";
       tank.hp = tank.maxHp;
@@ -505,7 +509,11 @@ describe("motor de batalha — IA autônoma", () => {
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
     // ordem do jogador (como o useBattle faz): marcha até o ponto e volta a caçar
     expect(
-      deploy(state, "blue", "inf-fuzileiros", 20, 23, { x: 20, y: 23, holdAtArrival: false }),
+      deploy(state, "blue", "inf-fuzileiros", 30, WORLD_H / 2, {
+        x: 30,
+        y: WORLD_H / 2,
+        holdAtArrival: false,
+      }),
     ).toBe(true);
     const unit = state.blue.units.at(-1)!;
     expect(unit.holdAtGoal).toBe(false);
@@ -638,7 +646,10 @@ describe("motor de batalha — cartas com efeito real", () => {
     expect(deploy(local, "blue", "inf-fuzileiros", enemyBase.x - 6, enemyBase.y)).toBe(true);
     const trooper = local.blue.units[0]!;
     expect(trooper.x).toBeLessThan(50); // nasceu na base azul (oeste)
-    expect(trooper.goalX).toBeCloseTo(enemyBase.x - 6, 0); // recebeu o destino inimigo
+    // O destino é o ponto clicado: a formação se distribui em volta dele.
+    const goals = local.blue.units.map((u) => u.goalX ?? 0);
+    const cx = goals.reduce((a, v) => a + v, 0) / goals.length;
+    expect(cx).toBeCloseTo(enemyBase.x - 6, 0); // centro da tropa no destino inimigo
   });
 
   // 8/9. O clique num inimigo manda a força atacá-lo (o alvo explícito é respeitado).

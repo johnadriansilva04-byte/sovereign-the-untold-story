@@ -88,7 +88,7 @@ BattleConfig  ──►  createBattle()  ──►  BattleState
 | `obus`       | Artilharia pesada            | Projétil `shell` em **arco** (`arc`), grande explosão.             |
 | `lmf`        | Lançador múltiplo            | **Salva de 5 foguetes** com dispersão e jitter determinístico.     |
 | `missil`     | Lançador de mísseis          | Projétil `missile` guiado, longo alcance, explosão.                |
-| `antiaereo`  | Defesa antiaérea             | Guiado (`homing`), só contra alvos aéreos (`targets: "aereo"`).    |
+| `antiaereo`  | Defesa antiaérea             | Guiado (`homing`); especialista em alvos aéreos (`targets: "aereo"`). |
 | `drone`      | Drones                       | Armamento leve aéreo; o de combate é guiado e com splash.          |
 
 Campos do `WeaponSpec`: `projectileSpeed` (u/s), `splash` (raio de dano em área; 0 = alvo único),
@@ -171,7 +171,7 @@ Cada carta tem um **modelo visual próprio** (`model`) — silhueta, proporção
 | Defesa Antiaérea         | `def-aa`           | 4     | 320  | 55   | 20      | 1,0 s    | 2,0    | `aa`           | `antiaereo` (guiado)  |
 | Fortificação de Campanha | `def-fortificacao` | 5     | 900  | 22   | 9       | 1,6 s    | 0      | `fortificacao` | `canhao` (splash 1,5) |
 
-- AA: **só atinge alvos aéreos** (`targets: "aereo"`).
+- AA: **especialista em alvos aéreos** (`targets: "aereo"`), com alcance longo (20) e mísseis guiados.
 - Fortificação: estática (velocidade 0); ancora posição e concede **cobertura** aliada.
 
 ### 2.6 Drones
@@ -181,7 +181,9 @@ Cada carta tem um **modelo visual próprio** (`model`) — silhueta, proporção
 | Drone de Reconhecimento | `rec-drone`         | 2     | 90   | 6    | 13      | 1,4 s    | 8,0    | `drone-recon`   | `drone` (traçante)           |
 | Drone de Combate        | `rec-drone-combate` | 4     | 150  | 55   | 10      | 1,5 s    | 7,0    | `drone-combate` | `drone` (guiado, splash 2,5) |
 
-> Domínio `aereo`: ignora obstáculos e **não pode ser atingido por arma terrestre** — só a AA alcança.
+> Domínio `aereo`: ignora obstáculos. As unidades de combate atiram em alvos aéreos
+> (`targets: "ambos"`), então um drone **nunca é invencível**; a Defesa Antiaérea é o
+> contra-específico (alcance e cadência maiores contra o ar).
 
 ---
 
@@ -415,7 +417,7 @@ consumido automaticamente.
 | Canhões disparam                | `fireWeapon` (`canhao`)                       | Projétil `shell` com recuo e splash.                     |
 | Mísseis com trajetória          | `updateProjectiles` (`missile`/`rocket`)      | Arco/perseguição, colisão, explosão.                     |
 | Tanque gira torre e atira       | `aim` + `recoil` + `fireWeapon`               | Torre mira o alvo; canhão recua ao disparar.             |
-| Drones voam e agem              | `domain: "aereo"` + `updateUnit`              | Ignoram obstáculos; atingíveis só por AA.                |
+| Drones voam e agem              | `domain: "aereo"` + `updateUnit`              | Ignoram obstáculos; atingíveis por unidades `ambos` e pela AA. |
 | Todas as armas causam dano      | `applyHit` / `damageUnit` / `damageStructure` | Dano calculado com cobertura e multiplicadores.          |
 | Unidades identificam alvos      | `selectTarget` + `priorityFor`                | Priorizam categorias; não atacam fora do alcance.        |
 | Cartas em ordem fixa            | `useBattle` (mão/fila)                        | Rotação determinística, sem randomização.                |

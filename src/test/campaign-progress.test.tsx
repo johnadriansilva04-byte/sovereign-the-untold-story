@@ -81,8 +81,10 @@ describe("página de gibi pós-vitória", () => {
     expect(screen.getByRole("heading", { name: chapter.title })).toBeInTheDocument();
     // narrativa (outro do capítulo)
     expect(screen.getByText(meta.outro)).toBeInTheDocument();
-    // fatos da narrativa
-    expect(screen.getByText("Fatos por trás da história")).toBeInTheDocument();
+    // os fatos NÃO ficam inline (a página não rola): abrem numa tela nova pelo botão
+    const factsBtn = screen.getByRole("button", { name: /Fatos da história/ });
+    expect(factsBtn).toBeInTheDocument();
+    expect(screen.queryByText("Fatos por trás da história")).not.toBeInTheDocument();
     // recompensa com nomes legíveis (nunca ids crus)
     expect(screen.getByText(/Tecnologia · Infantaria Avançada/)).toBeInTheDocument();
     expect(screen.getByText(/\+120 Sovereigns/)).toBeInTheDocument();
@@ -90,6 +92,25 @@ describe("página de gibi pós-vitória", () => {
     expect(
       screen.getByRole("button", { name: /Próxima missão · O Blecaute de Dados/ }),
     ).toBeInTheDocument();
+  });
+
+  it("abre os fatos numa tela nova (dialog) ao clicar, sem listar inline", async () => {
+    const chapter = chapters.find((c) => c.id === "c1")!;
+    const meta = chapterMetaById("c1")!;
+    render(
+      <CampaignComic
+        chapter={chapter}
+        meta={meta}
+        terrain="Cidade"
+        result={fakeResult("vitoria")}
+        reward={{ research: 1, sovereigns: 120, techs: ["t1"], cards: ["inf-fuzil"] }}
+        nextTitle="O Blecaute de Dados"
+        onNext={vi.fn()}
+        onMap={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Fatos da história/ }));
+    expect(await screen.findByText("Fatos por trás da história")).toBeInTheDocument();
   });
 });
 

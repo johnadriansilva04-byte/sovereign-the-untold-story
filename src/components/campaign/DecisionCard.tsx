@@ -35,13 +35,13 @@ export function DecisionCard({
   onCancel?: () => void;
 }) {
   return (
-    <div className="mx-auto flex h-full w-full max-w-5xl flex-col justify-center gap-4 px-4 py-4">
+    <div className="mx-auto flex h-full w-full max-w-5xl flex-col justify-center gap-4 px-4 py-4 [@media(max-height:560px)]:gap-1 [@media(max-height:560px)]:py-1">
       <div className="flex items-baseline justify-between gap-4">
         <div>
           <p className="label-mono text-primary">
             {act} · Capítulo {chapterNumber}
           </p>
-          <h1 className="font-display text-3xl font-black uppercase leading-none sm:text-4xl">
+          <h1 className="font-display text-3xl font-black uppercase leading-none sm:text-4xl [@media(max-height:560px)]:text-xl">
             {title}
           </h1>
         </div>
@@ -50,11 +50,11 @@ export function DecisionCard({
         </span>
       </div>
 
-      <p className="max-w-3xl font-serif text-base italic leading-snug text-foreground/90">
+      <p className="max-w-3xl font-serif text-base italic leading-snug text-foreground/90 [@media(max-height:560px)]:text-xs">
         {decision.prompt}
       </p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 [@media(max-height:560px)]:grid-cols-2 [@media(max-height:560px)]:gap-1.5">
         {decision.options.map((opt) => {
           const active = selected === opt.id;
           return (
@@ -62,7 +62,7 @@ export function DecisionCard({
               key={opt.id}
               onClick={() => onChoose(opt.id)}
               className={cn(
-                "hud-panel hud-corners group flex flex-col items-start gap-3 p-5 text-left transition",
+                "hud-panel hud-corners group flex flex-col items-start gap-3 p-5 text-left transition [@media(max-height:560px)]:gap-0.5 [@media(max-height:560px)]:p-2",
                 active ? "border-primary" : "border-border hover:border-primary/70",
               )}
             >
@@ -74,14 +74,16 @@ export function DecisionCard({
               >
                 {TAG_LABEL[opt.tag]}
               </span>
-              <span className="font-display text-xl font-black uppercase leading-tight">
+              <span className="font-display text-xl font-black uppercase leading-tight [@media(max-height:560px)]:text-sm">
                 {opt.label}
               </span>
-              <span className="font-serif text-sm leading-snug text-foreground/80">{opt.text}</span>
+              <span className="font-serif text-sm leading-snug text-foreground/80 [@media(max-height:560px)]:hidden">
+                {opt.text}
+              </span>
               <EffectSummary option={opt} />
               <span
                 className={cn(
-                  "mt-1 w-full px-6 py-2.5 text-center font-mono text-xs uppercase tracking-[0.2em] transition",
+                  "mt-1 w-full px-6 py-2.5 text-center font-mono text-xs uppercase tracking-[0.2em] transition [@media(max-height:560px)]:py-1 [@media(max-height:560px)]:text-[11px]",
                   active
                     ? "bg-primary text-primary-foreground"
                     : "border border-primary/50 text-primary group-hover:bg-primary/10",
@@ -97,7 +99,7 @@ export function DecisionCard({
       {onCancel && (
         <button
           onClick={onCancel}
-          className="mx-auto border border-border px-6 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
+          className="mx-auto border border-border px-6 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1"
         >
           Voltar ao mapa
         </button>

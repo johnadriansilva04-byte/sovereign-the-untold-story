@@ -211,15 +211,15 @@ function CampaignOverview({
     : undefined;
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-5 px-4 py-4">
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-5 px-4 py-4 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1">
       {/* Progresso da guerra */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-baseline gap-3">
-          <span className="font-display text-4xl font-black leading-none">
+          <span className="font-display text-4xl font-black leading-none [@media(max-height:560px)]:text-2xl">
             {completed}
             <span className="text-muted-foreground">/{totalChapters}</span>
           </span>
-          <div className="h-3 w-52 overflow-hidden border border-border bg-muted">
+          <div className="h-3 w-52 overflow-hidden border border-border bg-muted [@media(max-height:560px)]:w-40">
             <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
         </div>
@@ -244,7 +244,7 @@ function CampaignOverview({
       ) : (
         <button
           onClick={onLaunch}
-          className="hud-panel hud-corners group flex flex-col items-start gap-3 border-primary/60 p-6 text-left transition hover:border-primary"
+          className="hud-panel hud-corners group flex flex-col items-start gap-3 border-primary/60 p-6 text-left transition hover:border-primary [@media(max-height:560px)]:gap-1 [@media(max-height:560px)]:p-2.5"
         >
           <div className="flex w-full items-center justify-between">
             <span className="label-mono text-primary">
@@ -254,13 +254,13 @@ function CampaignOverview({
               {difficultyById(currentMeta.difficulty).name}
             </span>
           </div>
-          <span className="font-display text-4xl font-black uppercase leading-none sm:text-5xl">
+          <span className="font-display text-4xl font-black uppercase leading-none sm:text-5xl [@media(max-height:560px)]:text-2xl">
             {currentChapter.title}
           </span>
           <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             {mission?.terrain} · {Math.round((mission?.duration ?? 0) / 60)} min
           </span>
-          <span className="max-w-2xl font-serif text-sm italic text-foreground/85">
+          <span className="max-w-2xl font-serif text-sm italic text-foreground/85 [@media(max-height:560px)]:line-clamp-2">
             {currentMeta.intro}
           </span>
           {decision && (
@@ -279,7 +279,7 @@ function CampaignOverview({
         </button>
       )}
 
-      <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground [@media(max-height:420px)]:hidden">
         Missão a missão — cada vitória libera a próxima operação.
       </p>
     </div>
@@ -317,21 +317,21 @@ function RewardScreen({
   const story = chapterOutro(meta, result.outcome);
 
   return (
-    <div className="flex w-full flex-col items-center gap-4">
+    <div className="flex w-full flex-col items-center gap-4 [@media(max-height:560px)]:gap-2">
       <p className="label-mono text-primary">
         {act} · Capítulo {meta.number}
       </p>
 
       <h1
         className={cn(
-          "font-display text-6xl font-black uppercase leading-none sm:text-7xl",
+          "font-display text-6xl font-black uppercase leading-none sm:text-7xl [@media(max-height:560px)]:text-4xl",
           won ? "text-fact" : draw ? "text-muted-foreground" : "text-destructive",
         )}
       >
         {won ? "Vitória" : draw ? "Empate" : "Derrota"}
       </h1>
 
-      <p className="max-w-xl font-serif text-base italic leading-relaxed text-foreground/90">
+      <p className="max-w-xl font-serif text-base italic leading-relaxed text-foreground/90 [@media(max-height:560px)]:text-sm [@media(max-height:560px)]:leading-snug">
         {story}
       </p>
 
@@ -342,9 +342,9 @@ function RewardScreen({
       )}
 
       {won && loot.length > 0 && (
-        <div className="w-full max-w-md border border-border bg-card/60 p-4 text-left">
+        <div className="w-full max-w-md border border-border bg-card/60 p-4 text-left [@media(max-height:560px)]:p-2.5">
           <p className="label-mono mb-2 text-fact">Desbloqueado</p>
-          <ul className="space-y-1 font-mono text-xs">
+          <ul className="space-y-1 font-mono text-xs [@media(max-height:560px)]:space-y-0.5">
             {loot.map((l) => (
               <li key={l} className="text-fact">
                 {l.startsWith("+") ? l : `+ ${l}`}
@@ -357,7 +357,7 @@ function RewardScreen({
       <div className="flex w-full max-w-md flex-col items-stretch gap-2">
         <button
           onClick={onNext}
-          className="bg-primary px-8 py-4 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110"
+          className="bg-primary px-8 py-4 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110 [@media(max-height:560px)]:py-2"
         >
           {won
             ? nextTitle
@@ -367,7 +367,7 @@ function RewardScreen({
         </button>
         <button
           onClick={onMap}
-          className="border border-border px-8 py-3 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
+          className="border border-border px-8 py-3 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1.5"
         >
           Voltar ao mapa
         </button>

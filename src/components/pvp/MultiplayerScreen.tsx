@@ -241,9 +241,9 @@ export function MultiplayerScreen() {
 
   return (
     <GameShell full>
-      <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-3">
+      <div className="mx-auto flex h-full w-full max-w-7xl flex-col px-4 py-3 [@media(max-height:560px)]:py-2">
         {/* Cabeçalho compacto — recursos numa linha, sem rolagem */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5 [@media(max-height:560px)]:pb-1.5">
           <div>
             <p className="label-mono text-primary">PvP · Teatro de operações</p>
             <h1 className="font-display text-2xl font-black uppercase leading-none">Multiplayer</h1>
@@ -262,7 +262,7 @@ export function MultiplayerScreen() {
         </div>
 
         {/* Seletor de modo */}
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
+        <div className="mt-2.5 flex flex-wrap gap-1.5 [@media(max-height:560px)]:mt-1.5">
           {pvpModes.map((m) => (
             <button
               key={m.id}
@@ -286,14 +286,14 @@ export function MultiplayerScreen() {
         </div>
 
         {/* Adversários — cartões compactos; clicar abre o dossiê sem rolar a página */}
-        <div className="mt-2.5 min-h-0 flex-1">
+        <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto pr-1 [@media(max-height:560px)]:mt-1.5">
           <div className="grid h-full grid-cols-2 content-start gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
             {opponents.map((o) => (
               <button
                 key={o.id}
                 onClick={() => setOpponentId(o.id)}
                 className={cn(
-                  "hud-panel hud-corners flex flex-col justify-between p-3 text-left transition",
+                  "hud-panel hud-corners flex flex-col justify-between p-3 text-left transition [@media(max-height:560px)]:p-2",
                   o.id === opponentId ? "border-primary/70" : "hover:border-primary/40",
                 )}
               >
@@ -327,7 +327,7 @@ export function MultiplayerScreen() {
         </div>
 
         {/* Ação principal fixa no rodapé da tela */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5">
+        <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:pt-1.5">
           <button
             onClick={() => (modeDef.stakeCards > 0 ? setView({ kind: "stakes" }) : startBattle())}
             className="bg-primary px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"

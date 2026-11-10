@@ -13,6 +13,10 @@ import {
   cameraScale,
   stageToWorld,
   uprightText,
+  FIELD_H,
+  FIELD_MARGIN_X,
+  FIELD_MARGIN_Y,
+  FIELD_W,
   WORLD_H,
   WORLD_W,
   type Camera,
@@ -145,12 +149,15 @@ function terrainDetails(terrain: string): TerrainDetail[] {
         : terrain === "Cidade"
           ? ["rock", "tuft"]
           : ["tuft", "tuft", "rock"];
-  // 9 colunas × 5 linhas = 45 pontos, com deslocamento irregular (não é grade).
-  for (let gy = 0; gy < 5; gy++) {
-    for (let gx = 0; gx < 9; gx++) {
-      const n = gy * 9 + gx;
-      const x = 5 + gx * 11 + (jitter(n) - 0.5) * 7;
-      const y = 4 + gy * 9.5 + (jitter(n + 100) - 0.5) * 6;
+  // Grade irregular que cobre todo o campo (não é grade visual: o deslocamento
+  // pseudoaleatório quebra o alinhamento). Escala junto com as dimensões do mundo.
+  const cols = 11;
+  const rows = 7;
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const n = gy * cols + gx;
+      const x = (WORLD_W / cols) * (gx + 0.5) + (jitter(n) - 0.5) * (WORLD_W / cols) * 0.6;
+      const y = (WORLD_H / rows) * (gy + 0.5) + (jitter(n + 100) - 0.5) * (WORLD_H / rows) * 0.6;
       if (x < 2 || x > WORLD_W - 2 || y < 2 || y > WORLD_H - 2) continue;
       out.push({ kind: kinds[n % kinds.length]!, x, y, s: 0.6 + jitter(n + 7) * 0.7 });
     }
@@ -443,13 +450,23 @@ export function BattleArena({
           <g transform={`matrix(${cam.a} ${cam.b} ${cam.c} ${cam.d} ${cam.e} ${cam.f})`}>
             {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria */}
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
+            {/* BEIRADA: faixa de borda fora da área de manobra (bases nunca encostam na parede) */}
             <rect
-              x="0"
-              y="0"
-              width={WORLD_W}
-              height={WORLD_H}
+              x={FIELD_MARGIN_X}
+              y={FIELD_MARGIN_Y}
+              width={FIELD_W}
+              height={FIELD_H}
               fill={ground.accent}
-              opacity="0.45"
+              opacity="0.5"
+            />
+            <rect
+              x={FIELD_MARGIN_X}
+              y={FIELD_MARGIN_Y}
+              width={FIELD_W}
+              height={FIELD_H}
+              fill="none"
+              stroke="oklch(0 0 0 / 0.35)"
+              strokeWidth="0.6"
             />
             {/* Manchas de solo: variam a superfície sem virar grade artificial */}
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />

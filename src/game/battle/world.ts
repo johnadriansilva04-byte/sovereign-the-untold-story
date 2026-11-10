@@ -5,36 +5,57 @@
 // Manter as dimensões num único lugar garante que motor, IA e renderizador usem
 // exatamente os mesmos limites — nenhum clampa coordenada por conta própria.
 
-export const WORLD_W = 100;
+export const WORLD_W = 132;
 /**
  * Profundidade do front (largura norte→sul). Subir este valor deixa o campo mais
  * FUNDO, com mais espaço de manobra entre as duas bases — não é só estética: o motor
  * usa o mesmo limite para movimento, alcance e captura.
  */
-export const WORLD_H = 60;
+export const WORLD_H = 76;
 
 /**
- * Altura do espaço de projeto em que as arenas do catálogo foram escritas. O catálogo
- * continua com os números originais (46) e `deepenY` os reescala para o mundo atual —
- * assim aumentar `WORLD_H` não exige reescrever à mão cada coordenada das arenas.
+ * BEIRADA do teatro: faixa de borda (em unidades de mundo) que fica FORA da área de
+ * manobra. O conteúdo do catálogo é mapeado para dentro dela, então as bases nunca
+ * encostam na parede — há respiro entre a base e a borda do mapa.
  */
+export const FIELD_MARGIN_X = 8;
+export const FIELD_MARGIN_Y = 6;
+
+/**
+ * Dimensões do espaço de PROJETO em que as arenas do catálogo foram escritas (100×46).
+ * O catálogo mantém os números originais e `spreadX`/`deepenY` os reescalam para a área
+ * ÚTIL do mundo atual (dentro das beiradas) — assim aumentar `WORLD_W`/`WORLD_H` não
+ * exige reescrever à mão cada coordenada das arenas. Os RAIOS não são reescalados:
+ * territórios e estruturas seguem círculos.
+ */
+export const DESIGN_W = 100;
 export const DESIGN_H = 46;
 
-/** Reescala uma coordenada Y do espaço de projeto (46) para o mundo atual (`WORLD_H`). */
-export function deepenY(y: number): number {
-  return (y * WORLD_H) / DESIGN_H;
+/** Largura útil do campo (área de manobra, dentro das beiradas). */
+export const FIELD_W = WORLD_W - 2 * FIELD_MARGIN_X;
+/** Profundidade útil do campo (área de manobra, dentro das beiradas). */
+export const FIELD_H = WORLD_H - 2 * FIELD_MARGIN_Y;
+
+/** Reescala uma coordenada X do projeto (0..100) para a área útil do mundo. */
+export function spreadX(x: number): number {
+  return FIELD_MARGIN_X + (x * FIELD_W) / DESIGN_W;
 }
 
-/** Limites de posicionamento de uma unidade (margem de 1 unidade nas bordas). */
-export const WORLD_X_MIN = 1;
-export const WORLD_X_MAX = WORLD_W - 1;
-export const WORLD_Y_MIN = 1;
-export const WORLD_Y_MAX = WORLD_H - 1;
+/** Reescala uma coordenada Y do projeto (0..46) para a área útil do mundo. */
+export function deepenY(y: number): number {
+  return FIELD_MARGIN_Y + (y * FIELD_H) / DESIGN_H;
+}
+
+/** Limites de posicionamento de uma unidade (a beirada é intransponível). */
+export const WORLD_X_MIN = FIELD_MARGIN_X;
+export const WORLD_X_MAX = WORLD_W - FIELD_MARGIN_X;
+export const WORLD_Y_MIN = FIELD_MARGIN_Y;
+export const WORLD_Y_MAX = WORLD_H - FIELD_MARGIN_Y;
 
 /** Ponto de partida padrão de cada lado quando não há base no mapa (azul: oeste). */
 export const HOME_POINT: Record<"blue" | "red", { x: number; y: number }> = {
-  blue: { x: 9, y: WORLD_H / 2 },
-  red: { x: WORLD_W - 9, y: WORLD_H / 2 },
+  blue: { x: spreadX(8), y: WORLD_H / 2 },
+  red: { x: spreadX(92), y: WORLD_H / 2 },
 };
 
 /** Ângulo de mira inicial: o azul encara o leste (+x), o vermelho o oeste (−x). */
@@ -122,20 +143,12 @@ export function cameraFor(w: number, h: number): Camera {
 }
 
 /** Mundo → palco (px de layout). */
-export function worldToStage(
-  cam: Camera,
-  wx: number,
-  wy: number,
-): { x: number; y: number } {
+export function worldToStage(cam: Camera, wx: number, wy: number): { x: number; y: number } {
   return { x: cam.a * wx + cam.c * wy + cam.e, y: cam.b * wx + cam.d * wy + cam.f };
 }
 
 /** Palco (px de layout) → mundo. Inverso exato de `worldToStage`. */
-export function stageToWorld(
-  cam: Camera,
-  px: number,
-  py: number,
-): { x: number; y: number } {
+export function stageToWorld(cam: Camera, px: number, py: number): { x: number; y: number } {
   const det = cam.a * cam.d - cam.b * cam.c;
   const dx = px - cam.e;
   const dy = py - cam.f;
@@ -149,12 +162,22 @@ export function stageToWorld(
  * Compatibilidade: ponto do mundo → pixel de tela relativo ao palco `w`×`h`.
  * Mantido porque testes e a pré-visualização calculam posições por aqui.
  */
-export function worldToScreen(wx: number, wy: number, w: number, h: number): { x: number; y: number } {
+export function worldToScreen(
+  wx: number,
+  wy: number,
+  w: number,
+  h: number,
+): { x: number; y: number } {
   return worldToStage(cameraFor(w, h), wx, wy);
 }
 
 /** Compatibilidade: pixel de tela relativo ao palco `w`×`h` → coordenada do mundo. */
-export function screenToWorld(px: number, py: number, w: number, h: number): { x: number; y: number } {
+export function screenToWorld(
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+): { x: number; y: number } {
   return stageToWorld(cameraFor(w, h), px, py);
 }
 
@@ -163,10 +186,6 @@ export function screenToWorld(px: number, py: number, w: number, h: number): { x
  * Em retrato a cena está girada −90°, então cada texto recebe +90° em volta do próprio
  * ponto; em paisagem nada é aplicado (retorna `undefined`).
  */
-export function uprightText(
-  portrait: boolean,
-  x: number,
-  y: number,
-): string | undefined {
+export function uprightText(portrait: boolean, x: number, y: number): string | undefined {
   return portrait ? `rotate(90 ${x} ${y})` : undefined;
 }

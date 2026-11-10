@@ -62,11 +62,16 @@ const FORT_COVER_RADIUS = 10; // raio da cobertura concedida
 const BASE_INCOME = 0.14; // energia/s gerada por cada base avançada operacional
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
 const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
+// Teto de EXÉRCITO por lado: quantas unidades vivas um lado pode manter em campo ao
+// mesmo tempo. Sem isto a IA (e o jogador) empilha soldados sem limite — o campo vira
+// uma multidão ilegível. Uma carta só é aceita se o esquadrão couber inteiro no teto.
+export const MAX_UNITS_PER_SIDE = 34;
 // Separação entre unidades: quantas vezes a soma dos raios elas mantêm de distância
-// e quanto do excesso é corrigido por passo (evita o empilhamento sem "explodir" a
-// formação). O fator > 1 cria um respiro visível entre as tropas.
+// e quanto do excesso é corrigido por passo. O fator é calibrado para a PEGADA VISUAL
+// (o desenho usa `MODEL_SCALE` × raio): dois corpos nunca ficam um por dentro do outro,
+// mas ainda há um respiro — não é um "empurra-empurra" exagerado.
 const SEPARATION_FACTOR = 1.25;
-const SEPARATION_PUSH = 0.35;
+const SEPARATION_PUSH = 0.55;
 
 export const other = (s: Side): Side => (s === "blue" ? "red" : "blue");
 
@@ -276,7 +281,22 @@ export function canDeploy(
   const cfg = side === "blue" ? state.blue : state.red;
   const card = cardById(cardId);
   if (cfg.command < effectiveCost(card, cfg.doctrine)) return false;
-  return cfg.deck.hand.some((h) => h.cardId === cardId);
+  if (!cfg.deck.hand.some((h) => h.cardId === cardId)) return false;
+  // Teto de exército: a carta só entra se o esquadrão couber no limite do lado.
+  if (card.kind === "militar") {
+    const level = cfg.cardLevels?.[cardId] ?? 1;
+    const squad = squadCount(militaryById(cardId), level);
+    if (aliveUnits(state, side) + squad > MAX_UNITS_PER_SIDE) return false;
+  }
+  return true;
+}
+
+/** Unidades vivas de um lado (o teto de exército conta só quem está em campo). */
+export function aliveUnits(state: BattleState, side: Side): number {
+  const cfg = side === "blue" ? state.blue : state.red;
+  let n = 0;
+  for (const u of cfg.units) if (u.alive) n++;
+  return n;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +336,10 @@ export function deploy(
   if (!inHand) return false;
 
   if (card.kind === "militar") {
+    // Teto de exército: recusa a carta se o esquadrão não couber inteiro em campo.
+    const level = cfg.cardLevels?.[cardId] ?? 1;
+    const squad = squadCount(militaryById(cardId), level);
+    if (aliveUnits(state, side) + squad > MAX_UNITS_PER_SIDE) return false;
     const force = deployForce(state, side, card.id, order);
     if (force === 0) return false;
     cfg.command -= cost;
@@ -368,7 +392,9 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
   const cfg = side === "blue" ? state.blue : state.red;
   const level = cfg.cardLevels?.[cardId] ?? 1;
   const count = squadCount(card, level);
-  const spacing = card.squad?.spacing ?? 2.4;
+  // Espaçamento da formação nunca menor que a separação entre unidades — assim a
+  // tropa já nasce aberta e não aparece "um soldado por dentro do outro" no desembarque.
+  const spacing = Math.max(card.squad?.spacing ?? 2.4, card.radius * 2 * SEPARATION_FACTOR);
   const origin = originFor(state, side, order.x, order.y);
   const groupId = `g${state.nextId++}`;
 
@@ -383,8 +409,10 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
       clamp(origin.y + off.dy, WORLD_Y_MIN, WORLD_Y_MAX),
     );
     u.groupId = groupId;
-    u.goalX = clamp(order.x, WORLD_X_MIN, WORLD_X_MAX);
-    u.goalY = clamp(order.y, WORLD_Y_MIN, WORLD_Y_MAX);
+    // O destino também recebe o deslocamento da formação: a tropa mantém o desenho ao
+    // chegar (em vez de todas mirarem o mesmo pixel e se empurrarem no destino).
+    u.goalX = clamp(order.x + off.dx, WORLD_X_MIN, WORLD_X_MAX);
+    u.goalY = clamp(order.y + off.dy, WORLD_Y_MIN, WORLD_Y_MAX);
     // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
     // holdAtArrival=false e a força volta a caçar o inimigo em vez de congelar.
     u.holdAtGoal = order.holdAtArrival ?? true;
@@ -398,7 +426,9 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
 }
 
 // Formação visual: linha de frente com fileiras, para o jogador identificar o
-// pelotão/coluna/esquadrilha como um conjunto e não como um pixel empilhado.
+// pelotão/coluna/esquadrilha como um conjunto e não como um pixel empilhado. As
+// fileiras usam o MESMO espaçamento das colunas: assim a tropa já nasce com a
+// separação mínima entre unidades e não precisa se "empurrar" ao desembarcar.
 function formationOffsets(count: number, spacing: number): { dx: number; dy: number }[] {
   const out: { dx: number; dy: number }[] = [];
   const perRow = Math.min(count, Math.max(2, Math.ceil(Math.sqrt(count))));
@@ -407,7 +437,7 @@ function formationOffsets(count: number, spacing: number): { dx: number; dy: num
     const col = i % perRow;
     const rowCount = Math.min(perRow, count - row * perRow);
     const dx = (col - (rowCount - 1) / 2) * spacing;
-    const dy = row * spacing * 0.85;
+    const dy = row * spacing;
     out.push({ dx, dy });
   }
   return out;
@@ -1504,30 +1534,44 @@ function applySeparation(state: BattleState): void {
     for (const u of cfg.units) if (u.alive) list.push(u);
   }
   const immovable = (u: BattleUnit) => u.order === "manter" && !u.engaged;
-  for (let i = 0; i < list.length; i++) {
-    const a = list[i]!;
-    for (let j = i + 1; j < list.length; j++) {
-      const b = list[j]!;
-      // Só separa unidades do mesmo domínio (aéreas sobrevoam as terrestres).
-      if (a.domain !== b.domain) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const d = Math.hypot(dx, dy);
-      const minDist = (a.radius + b.radius) * SEPARATION_FACTOR;
-      if (d >= minDist) continue;
-      const aFixed = immovable(a);
-      const bFixed = immovable(b);
-      if (aFixed && bFixed) continue;
-      const ux = d === 0 ? (i % 2 === 0 ? 1 : -1) : dx / d;
-      const uy = d === 0 ? 0 : dy / d;
-      const overlap = (minDist - d) * SEPARATION_PUSH;
-      // O deslocamento total é dividido só entre as unidades que podem mover.
-      const aShare = aFixed ? 0 : bFixed ? overlap : overlap / 2;
-      const bShare = bFixed ? 0 : aFixed ? overlap : overlap / 2;
-      a.x = clamp(a.x - ux * aShare, WORLD_X_MIN, WORLD_X_MAX);
-      a.y = clamp(a.y - uy * aShare, WORLD_Y_MIN, WORLD_Y_MAX);
-      b.x = clamp(b.x + ux * bShare, WORLD_X_MIN, WORLD_X_MAX);
-      b.y = clamp(b.y + uy * bShare, WORLD_Y_MIN, WORLD_Y_MAX);
+  // Três passadas por tick: uma única correção deixa pares muito sobrepostos ainda
+  // colados por vários quadros; iterar resolve o empilhamento visível de imediato.
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i]!;
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j]!;
+        // Só separa unidades do mesmo domínio (aéreas sobrevoam as terrestres).
+        if (a.domain !== b.domain) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        const minDist = (a.radius + b.radius) * SEPARATION_FACTOR;
+        if (d >= minDist) continue;
+        // Direção de empurrão: quando as duas estão no MESMO ponto (d≈0), sorteia um
+        // ângulo determinístico do par para elas se abrirem em vez de ficar coladas.
+        let ux: number;
+        let uy: number;
+        if (d < 1e-4) {
+          const ang = ((i * 31 + j * 17) % 360) * (Math.PI / 180);
+          ux = Math.cos(ang);
+          uy = Math.sin(ang);
+        } else {
+          ux = dx / d;
+          uy = dy / d;
+        }
+        const overlap = (minDist - d) * SEPARATION_PUSH;
+        // Unidade "manter" não é arrastada, mas também não pode ficar empilhada: se as
+        // duas são imóveis, cada uma cede metade (nunca `continue`, senão ficam coladas).
+        const aFixed = immovable(a);
+        const bFixed = immovable(b);
+        const aShare = aFixed && !bFixed ? 0 : bFixed && !aFixed ? overlap : overlap / 2;
+        const bShare = bFixed && !aFixed ? 0 : aFixed && !bFixed ? overlap : overlap / 2;
+        a.x = clamp(a.x - ux * aShare, WORLD_X_MIN, WORLD_X_MAX);
+        a.y = clamp(a.y - uy * aShare, WORLD_Y_MIN, WORLD_Y_MAX);
+        b.x = clamp(b.x + ux * bShare, WORLD_X_MIN, WORLD_X_MAX);
+        b.y = clamp(b.y + uy * bShare, WORLD_Y_MIN, WORLD_Y_MAX);
+      }
     }
   }
 }

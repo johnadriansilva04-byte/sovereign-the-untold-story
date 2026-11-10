@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { archiveById } from "@/game/campaign";
 import type { Chapter } from "@/game/types";
 import type { BattleResult, TerrainKind } from "@/game/battle/types";
@@ -70,6 +73,7 @@ export function CampaignComic({
   onNext: () => void;
   onMap: () => void;
 }) {
+  const [showFacts, setShowFacts] = useState(false);
   const scene = SCENE[terrain] ?? DEFAULT_SCENE;
   const story = chapterOutro(meta, result.outcome);
   const lines = chapter.dialogue.slice(0, 3);
@@ -131,19 +135,23 @@ export function CampaignComic({
         </Panel>
       </div>
 
-      {/* Fatos da narrativa — a verdade histórica por trás do quadro */}
-      {facts.length > 0 && (
-        <section className="shrink-0 border-t-4 border-primary pt-1.5">
-          <p className="label-mono mb-1 text-primary">Fatos por trás da história</p>
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Fatos da narrativa: abrem numa tela nova (sem expandir a página) */}
+      <Dialog open={showFacts} onOpenChange={setShowFacts}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden border-primary/40 bg-background">
+          <DialogHeader>
+            <DialogTitle className="text-left">
+              <span className="label-mono text-primary">Fatos por trás da história</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
             {facts.map((f) => (
-              <div key={f.id} className="border border-border bg-card/60 p-2">
+              <div key={f.id} className="border border-border bg-card/60 p-2.5">
                 <div className="mb-1 flex items-center gap-2">
                   <EvidenceBadge kind={f.kind} />
                   <span className="font-mono text-[10px] text-muted-foreground">{f.date}</span>
                 </div>
                 <p className="font-display text-sm font-bold uppercase leading-tight">{f.title}</p>
-                <p className="mt-0.5 line-clamp-3 font-serif text-xs text-foreground/85">
+                <p className="mt-0.5 font-serif text-xs leading-snug text-foreground/85">
                   {f.text}
                 </p>
                 {f.source && (
@@ -154,17 +162,27 @@ export function CampaignComic({
               </div>
             ))}
           </div>
-        </section>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Avanço */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <button
-          onClick={onMap}
-          className="border border-border px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
-        >
-          Voltar ao mapa
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onMap}
+            className="border border-border px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
+          >
+            Voltar ao mapa
+          </button>
+          {facts.length > 0 && (
+            <button
+              onClick={() => setShowFacts(true)}
+              className="border border-fact px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-fact transition hover:bg-fact/10"
+            >
+              Fatos da história · {facts.length}
+            </button>
+          )}
+        </div>
         <button
           onClick={onNext}
           className="bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110"
