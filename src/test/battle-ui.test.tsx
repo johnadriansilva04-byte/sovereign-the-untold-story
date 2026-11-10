@@ -7,7 +7,7 @@ import { BattleScreen } from "@/components/battle/BattleScreen";
 import { commanders, startingDeck } from "@/game/battle/catalog";
 import { createBattle, deploy } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
-import { fieldBounds, fieldFromWorld, worldFromField } from "@/game/battle/world";
+import { screenToWorld, worldToScreen } from "@/game/battle/world";
 import { ProfileProvider } from "@/game/progress/store";
 import { createProfile } from "@/game/progress/profile";
 
@@ -55,11 +55,9 @@ describe("interface da batalha", () => {
   });
 
   it("desdobra uma unidade ao clicar na zona aliada do teatro", () => {
-    // jsdom não calcula layout; fornecemos um retângulo estável para o mapeamento de coordenadas.
-    const proto = SVGSVGElement.prototype as unknown as {
-      getBoundingClientRect: () => DOMRect;
-    };
-    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 460 }) as DOMRect;
+    // jsdom não calcula layout; o stub do palco (contêiner em perspectiva) dá um
+    // retângulo estável para o mapeamento de coordenadas.
+    stubStageRect();
 
     render(
       <ProfileProvider>
@@ -82,27 +80,41 @@ describe("interface da batalha", () => {
   });
 
   // jsdom não calcula layout; fixamos um retângulo estável para o mapeamento de coordenadas.
-  const stubSvgRect = () => {
-    const proto = SVGSVGElement.prototype as unknown as {
+  // O mapeamento lê o PALCO (o contêiner em perspectiva). Patchamos a prototype para
+  // valer mesmo antes do render e devolver o stub só para o palco.
+  const stubStageRect = () => {
+    const proto = HTMLElement.prototype as unknown as {
       getBoundingClientRect: () => DOMRect;
     };
-    proto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 460 }) as DOMRect;
+    const orig = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function (this: HTMLElement) {
+      if (this.getAttribute?.("data-testid") === "battle-stage") {
+        return {
+          left: 0,
+          top: 0,
+          width: 1000,
+          height: 460,
+          right: 1000,
+          bottom: 460,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return orig.call(this);
+    };
   };
 
-  // O teatro é desenhado inclinado e o viewBox cobre a rotação; para clicar num
-  // ponto do MUNDO nos testes, aplicamos a rotação e projetamos na caixa do campo
-  // sobre o retângulo stub (1000×460).
+  // A câmera do teatro é uma perspectiva de cima (rotateX). Para clicar num ponto
+  // do MUNDO nos testes, projetamos esse ponto no pixel de tela correspondente
+  // usando a mesma matemática do componente (palco stub 1000×460).
   const worldToClient = (wx: number, wy: number) => {
-    const b = fieldBounds();
-    const f = fieldFromWorld(wx, wy);
-    return {
-      clientX: ((f.x - b.x) / b.w) * 1000,
-      clientY: ((f.y - b.y) / b.h) * 460,
-    };
+    const s = worldToScreen(wx, wy, 1000, 460);
+    return { clientX: s.x, clientY: s.y };
   };
 
   it("pré-visualiza o posicionamento válido ao mover o ponteiro sobre o território aliado", () => {
-    stubSvgRect();
+    stubStageRect();
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -113,7 +125,7 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     // x = 10 → dentro da zona de desdobramento azul (oeste)
-    fireEvent(svg, new MouseEvent("pointermove", { clientX: 100, clientY: 230, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(10, 23), bubbles: true }));
 
     const ghost = screen.getByTestId("deploy-ghost");
     expect(ghost).toBeInTheDocument();
@@ -121,7 +133,7 @@ describe("interface da batalha", () => {
   });
 
   it("marca o posicionamento como válido em qualquer ponto do teatro (a força marcha até lá)", () => {
-    stubSvgRect();
+    stubStageRect();
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -132,13 +144,13 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     // x = 90 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
-    fireEvent(svg, new MouseEvent("pointermove", { clientX: 900, clientY: 230, bubbles: true }));
+    fireEvent(svg, new MouseEvent("pointermove", { ...worldToClient(90, 23), bubbles: true }));
 
     expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("true");
   });
 
   it("seleciona a unidade aliada tocando perto dela (alvo tolerante em teatro pequeno)", () => {
-    stubSvgRect();
+    stubStageRect();
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -162,7 +174,7 @@ describe("interface da batalha", () => {
   });
 
   it("não seleciona nada quando o toque fica longe de qualquer unidade", () => {
-    stubSvgRect();
+    stubStageRect();
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -182,7 +194,7 @@ describe("interface da batalha", () => {
   });
 
   it("desdobra a força soltando a carta sobre o teatro (arrastar e soltar)", () => {
-    stubSvgRect();
+    stubStageRect();
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -203,7 +215,7 @@ describe("interface da batalha", () => {
   });
 
   it("clicar num inimigo manda a unidade selecionada atacá-lo", () => {
-    stubSvgRect();
+    stubStageRect();
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -260,7 +272,7 @@ describe("interface da batalha", () => {
     expect(svg.textContent ?? "").toContain("FUZ");
   });
 
-  it("desenha o teatro em diagonal (câmera inclinada) sem mudar a lógica", () => {
+  it("desenha o teatro com câmera em perspectiva alinhada, sem mudar a lógica", () => {
     const config = buildBattleConfig({
       nation: defaultNation,
       mission: missionById("m-apagao"),
@@ -282,20 +294,23 @@ describe("interface da batalha", () => {
         onSelectPoint={vi.fn()}
       />,
     );
+    const stage = container.querySelector('[data-testid="battle-stage"]') as HTMLElement;
+    expect(stage).toBeTruthy();
     const svg = container.querySelector("svg")!;
-    // o grupo do campo carrega a rotação da câmera
-    const tilted = [...svg.querySelectorAll("g[transform]")].some((g) =>
-      /rotate\(-?\d+(?:\.\d+)? 50 23\)/.test(g.getAttribute("transform") ?? ""),
-    );
-    expect(tilted).toBe(true);
-    // o mapeamento mundo↔desenho é inverso exato (o toque cai onde o jogador aponta)
+    // a câmera é uma perspectiva de cima (rotateX), alinhada (sem giro diagonal)
+    const style = svg.getAttribute("style") ?? "";
+    expect(style).toMatch(/perspective\(/);
+    expect(style).toMatch(/rotateX\(/);
+    expect(style).not.toMatch(/rotate\(/);
+    // o mapeamento tela↔mundo é inverso exato (o toque cai onde o jogador aponta),
+    // inclusive com a distorção de perspectiva e a escala do fundo do campo.
     for (const [wx, wy] of [
       [8, 23],
       [50, 10],
       [92, 40],
     ] as const) {
-      const f = fieldFromWorld(wx, wy);
-      const back = worldFromField(f.x, f.y);
+      const s = worldToScreen(wx, wy, 1000, 460);
+      const back = screenToWorld(s.x, s.y, 1000, 460);
       expect(back.x).toBeCloseTo(wx, 6);
       expect(back.y).toBeCloseTo(wy, 6);
     }

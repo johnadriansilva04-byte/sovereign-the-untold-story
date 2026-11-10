@@ -388,6 +388,9 @@ function FrontLineScore({ state }: { state: BattleState }) {
   const advRed = state.structures.filter(
     (s) => s.side === "red" && s.kind === "base-avancada" && !s.underConstruction,
   ).length;
+  // Bases neutras do centro: quantas ainda faltam conquistar e o total da partida.
+  const neutralBases = state.territories.filter((t) => t.base);
+  const neutralLeft = neutralBases.filter((t) => t.owner === "neutro").length;
   const cell = (v: number, other: number, tone: "ally" | "enemy") => (
     <span
       className={cn(
@@ -413,6 +416,20 @@ function FrontLineScore({ state }: { state: BattleState }) {
         <span className="text-border">×</span>
         {cell(advRed, advBlue, "enemy")}
       </span>
+      {neutralBases.length > 0 && (
+        <>
+          <span className="h-3 w-px bg-border" />
+          <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Neutras a tomar
+            <span
+              className={cn("tabular-nums", neutralLeft === 0 ? "text-foreground" : "text-primary")}
+            >
+              {neutralLeft}
+            </span>
+            <span className="text-border">/{neutralBases.length}</span>
+          </span>
+        </>
+      )}
     </div>
   );
 }

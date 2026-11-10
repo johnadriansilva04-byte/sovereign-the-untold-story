@@ -954,7 +954,14 @@ const cp = (
   progress: { blue: 0, red: 0 },
 });
 
-const terr = (id: string, name: string, x: number, y: number, radius = 5): Territory => ({
+const terr = (
+  id: string,
+  name: string,
+  x: number,
+  y: number,
+  radius = 5,
+  base = false,
+): Territory => ({
   id,
   name,
   x,
@@ -962,6 +969,7 @@ const terr = (id: string, name: string, x: number, y: number, radius = 5): Terri
   radius,
   owner: "neutro",
   progress: { blue: 0, red: 0 },
+  ...(base ? { base: true } : {}),
 });
 
 // Bases principais + duas torres defensivas por lado. O azul defende o OESTE, o
@@ -1077,7 +1085,15 @@ function standardTerritories(): Territory[] {
     "t-w2": ["t-e2", "Ponte Leste"],
     "t-w3": ["t-e3", "Mata Leste"],
   };
-  const list: Territory[] = [terr("t-c", "Nó Central", 50, 23, 4.6)];
+  const list: Territory[] = [
+    // BASES NEUTRAS no meio do mapa: instalações militares já erguidas, de ninguém.
+    // São o prêmio central da partida — quem as toma ganha posição no centro, sem
+    // precisar construir. Ladeiam o nó central.
+    terr("bn-n", "Base Neutra Norte", 50, 13, 6.4, true),
+    terr("bn-s", "Base Neutra Sul", 50, 33, 6.4, true),
+    // Nó central: ponto de expansão clássico (marcador de captura sem base erguida).
+    terr("t-c", "Nó Central", 50, 23, 4.6),
+  ];
   for (const [id, name, x, y, r] of blue) {
     list.push(terr(id, name, x, y, r));
     const [rid, rname] = redNames[id]!;

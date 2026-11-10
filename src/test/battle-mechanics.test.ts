@@ -156,6 +156,24 @@ describe("motor de batalha — expansão territorial e construção", () => {
     expect(t.owner).toBe("neutro");
   });
 
+  // 4c. Base NEUTRA do centro: capturar transforma o marcador em base operacional real.
+  it("4c. capturar base neutra ergue uma base avançada operacional do lado vencedor", () => {
+    const state = createBattle(testConfig());
+    const nb = state.territories.find((t) => t.base)!;
+    expect(nb).toBeDefined();
+    expect(nb.owner).toBe("neutro");
+    const unit = place(state, "blue", "inf-fuzileiros", nb.x, nb.y);
+    unit.order = "manter";
+    advance(state, 15);
+    expect(nb.owner).toBe("blue");
+    const op = state.structures.find((s) => s.territoryId === nb.id && s.alive);
+    expect(op).toBeDefined();
+    expect(op!.side).toBe("blue");
+    expect(op!.underConstruction).toBe(false);
+    expect(op!.hp).toBeGreaterThan(0);
+    expect(op!.dmg).toBeGreaterThan(0);
+  });
+
   // 5. Engenheiros constroem novas bases; 6. bases avançadas recebem dano e podem ser destruídas.
   it("5/6. engenheiro constrói base avançada que opera e pode ser destruída", () => {
     const state = createBattle(testConfig({ duration: 900 }));

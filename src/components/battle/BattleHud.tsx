@@ -77,8 +77,8 @@ interface HandBarProps {
 export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover }: HandBarProps) {
   const queue = side.deck.queue.map((id) => cardMeta(id));
   return (
-    <div className="flex items-stretch gap-3">
-      <div className="grid flex-1 grid-cols-4 gap-2">
+    <div className="flex items-stretch gap-2">
+      <div className="grid flex-1 grid-cols-4 gap-1.5">
         {side.deck.hand.map((h, slot) => {
           const card = cardMeta(h.cardId);
           const cost = costOf(h.cardId);
@@ -99,7 +99,7 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
                 if (!selected) onPick(h.cardId);
               }}
               className={cn(
-                "relative flex min-w-0 flex-col items-start justify-between gap-1 border bg-gradient-to-b to-transparent p-2 text-left transition",
+                "relative flex min-w-0 flex-col items-start justify-between gap-0.5 border bg-gradient-to-b to-transparent px-1.5 py-1 text-left transition",
                 CATEGORY_BG[card.category] ?? "from-card",
                 selected
                   ? "-translate-y-1 border-primary shadow-brass"
@@ -108,10 +108,10 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
               )}
             >
               <span className="flex w-full items-center justify-between">
-                <span className="text-lg leading-none">{cardIcon(card)}</span>
+                <span className="text-sm leading-none">{cardIcon(card)}</span>
                 <span
                   className={cn(
-                    "flex h-7 w-7 items-center justify-center font-mono text-sm font-bold",
+                    "flex h-5 w-5 items-center justify-center font-mono text-[11px] font-bold",
                     affordable
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground",
@@ -120,12 +120,12 @@ export function HandBar({ side, pendingCardId, costOf, cardMeta, onPick, onHover
                   {cost}
                 </span>
               </span>
-              <span className="line-clamp-2 font-display text-sm font-bold uppercase leading-none sm:text-base">
+              <span className="line-clamp-1 font-display text-[11px] font-bold uppercase leading-tight">
                 {card.name}
               </span>
               <span
                 className={cn(
-                  "border px-1 font-mono text-[9px] uppercase tracking-wider",
+                  "border px-1 font-mono text-[8px] uppercase tracking-wider",
                   CATEGORY_TONE[card.category] ?? "border-border",
                 )}
               >

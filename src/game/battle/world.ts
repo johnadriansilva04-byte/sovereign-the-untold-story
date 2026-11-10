@@ -35,73 +35,55 @@ export function clampY(v: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Campo DIAGONAL (câmera superior inclinada)
+// Câmera do teatro (perspectiva de cima, alinhada)
 // ---------------------------------------------------------------------------
 //
-// O teatro é apresentado em diagonal, como uma câmera levemente girada sobre o
-// campo. A inclinação é PURAMENTE visual: o motor, a IA, as rotas e a captura
-// continuam usando as coordenadas do mundo (X = progressão, Y = front). O
-// renderizador aplica a rotação ao desenhar e o mapeamento de toque aplica a
-// rotação inversa — assim o que o jogador toca é exatamente o ponto do mundo.
+// O campo é visto de cima com uma leve inclinação para trás: as duas metades
+// ficam ALINHADAS (azul à esquerda, vermelho à direita), a borda do fundo recua
+// e a da frente fica mais próxima — profundidade de mesa de guerra, sem o giro
+// em diagonal que entortava o tabuleiro. É PURAMENTE apresentação: motor, IA,
+// rotas e captura seguem nas coordenadas do mundo. O mapeamento toque→mundo
+// desfaz a projeção analiticamente (o `getScreenCTM` mente sob perspectiva 3D).
 
-/** Rotação do campo, em graus, em torno do centro do teatro (negativo = sobe à direita). */
-export const FIELD_TILT_DEG = -8;
+/** Inclinação da câmera (graus): quanto o fundo do campo recua. */
+export const FIELD_PITCH_DEG = 32;
+/** Distância do observador (px CSS): menor = mais profundidade. */
+export const FIELD_PERSPECTIVE = 2400;
+/** Escala da cena: compensa o alargamento da borda frontal da projeção. */
+export const FIELD_SCALE = 0.82;
 
-const FIELD_CX = WORLD_W / 2;
-const FIELD_CY = WORLD_H / 2;
-
-/** `transform` SVG que inclina o teatro em diagonal (usar no grupo do campo). */
-export function fieldTransform(): string {
-  return `rotate(${FIELD_TILT_DEG} ${FIELD_CX} ${FIELD_CY})`;
-}
+const PITCH_COS = Math.cos((FIELD_PITCH_DEG * Math.PI) / 180);
+const PITCH_SIN = Math.sin((FIELD_PITCH_DEG * Math.PI) / 180);
 
 /**
- * Caixa que envolve o teatro JÁ inclinado. Usada como `viewBox` do SVG para que a
- * rotação não corte os cantos do campo: o tabuleiro aparece inteiro sobre o fundo.
+ * Ponto do mundo → pixel de tela, relativo ao canto superior esquerdo do teatro.
+ * `w`/`h` são o tamanho de layout (não transformado) do teatro.
  */
-export function fieldBounds(): { x: number; y: number; w: number; h: number } {
-  const corners: [number, number][] = [
-    [0, 0],
-    [WORLD_W, 0],
-    [0, WORLD_H],
-    [WORLD_W, WORLD_H],
-  ];
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const [wx, wy] of corners) {
-    const f = fieldFromWorld(wx, wy);
-    minX = Math.min(minX, f.x);
-    maxX = Math.max(maxX, f.x);
-    minY = Math.min(minY, f.y);
-    maxY = Math.max(maxY, f.y);
-  }
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+export function worldToScreen(
+  wx: number,
+  wy: number,
+  w: number,
+  h: number,
+): { x: number; y: number } {
+  const lx = (wx / WORLD_W) * w - w / 2;
+  const ly = (wy / WORLD_H) * h - h / 2;
+  const denom = 1 - (ly * PITCH_SIN) / FIELD_PERSPECTIVE;
+  return {
+    x: w / 2 + (FIELD_SCALE * lx) / denom,
+    y: h / 2 + (FIELD_SCALE * ly * PITCH_COS) / denom,
+  };
 }
 
-/** `viewBox` do SVG do teatro, cobrindo o campo inclinado sem cortar cantos. */
-export function fieldViewBox(): string {
-  const b = fieldBounds();
-  return `${b.x} ${b.y} ${b.w} ${b.h}`;
-}
-
-/** Converte um ponto do desenho inclinado de volta para coordenadas do mundo. */
-export function worldFromField(lx: number, ly: number): { x: number; y: number } {
-  const a = (-FIELD_TILT_DEG * Math.PI) / 180;
-  const dx = lx - FIELD_CX;
-  const dy = ly - FIELD_CY;
-  const cos = Math.cos(a);
-  const sin = Math.sin(a);
-  return { x: FIELD_CX + dx * cos - dy * sin, y: FIELD_CY + dx * sin + dy * cos };
-}
-
-/** Converte coordenadas do mundo para o ponto correspondente no desenho inclinado. */
-export function fieldFromWorld(wx: number, wy: number): { x: number; y: number } {
-  const a = (FIELD_TILT_DEG * Math.PI) / 180;
-  const dx = wx - FIELD_CX;
-  const dy = wy - FIELD_CY;
-  const cos = Math.cos(a);
-  const sin = Math.sin(a);
-  return { x: FIELD_CX + dx * cos - dy * sin, y: FIELD_CY + dx * sin + dy * cos };
+/** Pixel de tela (relativo ao teatro) → coordenada do mundo. Inverso exato de `worldToScreen`. */
+export function screenToWorld(
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+): { x: number; y: number } {
+  const x1 = (px - w / 2) / FIELD_SCALE;
+  const y1 = (py - h / 2) / FIELD_SCALE;
+  const ly = y1 / (PITCH_COS + (y1 * PITCH_SIN) / FIELD_PERSPECTIVE);
+  const lx = x1 * (1 - (ly * PITCH_SIN) / FIELD_PERSPECTIVE);
+  return { x: ((lx + w / 2) / w) * WORLD_W, y: ((ly + h / 2) / h) * WORLD_H };
 }

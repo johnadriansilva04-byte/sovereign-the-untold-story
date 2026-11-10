@@ -21,14 +21,7 @@ import {
   squadPowerScale,
   startingDeck,
 } from "./catalog";
-import {
-  HOME_AIM,
-  HOME_POINT,
-  WORLD_X_MAX,
-  WORLD_X_MIN,
-  WORLD_Y_MAX,
-  WORLD_Y_MIN,
-} from "./world";
+import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
   BattleAction,
@@ -257,7 +250,14 @@ export function insideDeployZone(state: BattleState, side: Side, x: number, y: n
 // `canDeploy` cobre o resto (energia e carta na mão), para a pré-visualização da UI
 // nunca divergir do que `deploy` de fato aceita.
 export function placementValid(_state: BattleState, _side: Side, x: number, y: number): boolean {
-  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= WORLD_X_MAX + 1 && y >= 0 && y <= WORLD_Y_MAX + 1;
+  return (
+    Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    x >= 0 &&
+    x <= WORLD_X_MAX + 1 &&
+    y >= 0 &&
+    y <= WORLD_Y_MAX + 1
+  );
 }
 
 export function canDeploy(
@@ -1679,6 +1679,33 @@ function setTerritoryOwner(state: BattleState, t: Territory, side: Side): void {
   t.progress = { blue: side === "blue" ? 100 : 0, red: side === "red" ? 100 : 0 };
   const cfg = side === "blue" ? state.blue : state.red;
   pushLog(state, side, "captura", `${cfg.countryName} conquista território ${t.name}.`);
+  // Base NEUTRA tomada: vira uma base avançada OPERACIONAL de verdade (estrutura com
+  // vida, alcance e defesa) — não é só uma troca de cor no marcador.
+  if (t.base && !state.structures.some((s) => s.alive && s.territoryId === t.id)) {
+    const spec: StructureSpec = {
+      id: `nbase-${state.nextId++}`,
+      kind: "base-avancada",
+      side,
+      name: t.name,
+      x: t.x,
+      y: t.y,
+      radius: 6,
+      hp: 2000,
+      dmg: 70,
+      range: 17,
+      cooldown: 1.0,
+      targets: "ambos",
+    };
+    const s = makeStructure(spec);
+    s.territoryId = t.id;
+    state.structures.push(s);
+    pushLog(
+      state,
+      side,
+      "construcao",
+      `${cfg.countryName} assume ${t.name} como base operacional.`,
+    );
+  }
 }
 
 function capturePower(
@@ -1758,9 +1785,7 @@ export function isVisibleTo(state: BattleState, unit: BattleUnit, viewer: Side):
 
 // Ponto da base principal inimiga (objetivo final de um avanço ofensivo).
 function enemyBasePoint(state: BattleState, side: Side): { x: number; y: number } | null {
-  const b = state.structures.find(
-    (s) => s.alive && s.side !== side && s.kind === "base-principal",
-  );
+  const b = state.structures.find((s) => s.alive && s.side !== side && s.kind === "base-principal");
   return b ? { x: b.x, y: b.y } : null;
 }
 

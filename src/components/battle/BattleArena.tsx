@@ -3,12 +3,12 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNod
 import { cn } from "@/lib/utils";
 import { canDeploy, originFor } from "@/game/battle/engine";
 import {
+  FIELD_PERSPECTIVE,
+  FIELD_PITCH_DEG,
+  FIELD_SCALE,
   WORLD_H,
   WORLD_W,
-  fieldBounds,
-  fieldTransform,
-  fieldViewBox,
-  worldFromField,
+  screenToWorld,
 } from "@/game/battle/world";
 import type {
   BattleState,
@@ -71,34 +71,23 @@ export function BattleArena({
   onMoveSelected,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
-  // Caixa do campo JÁ inclinado: o viewBox cobre a rotação inteira, para o teatro
-  // diagonal não ter os cantos cortados.
-  const bounds = fieldBounds();
   // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
+  // O teatro é desenhado com uma câmera em perspectiva (rotateX + escala). O mapeamento
+  // toque→mundo desfaz a projeção ANALITICAMENTE: sob perspectiva 3D o `getScreenCTM`
+  // devolve uma matriz afim aproximada e erra o ponto tocado (chega a ~60px no fundo do
+  // campo). Medimos o palco NÃO transformado (o contêiner em perspectiva) e aplicamos
+  // as funções exatas de `world`.
+  const stageRect = () => stageRef.current?.getBoundingClientRect() ?? null;
+
   const toArenaCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
-    const svg = svgRef.current;
-    if (!svg) return null;
-    // getScreenCTM cobre letterbox/preserveAspectRatio; o fallback por retângulo
-    // mantém o mapeamento funcional em ambientes sem CTM (ex.: jsdom).
-    const ctm = typeof svg.getScreenCTM === "function" ? svg.getScreenCTM() : null;
-    if (ctm) {
-      const point = svg.createSVGPoint();
-      point.x = clientX;
-      point.y = clientY;
-      const local = point.matrixTransform(ctm.inverse());
-      // o campo é desenhado inclinado; desfaz a rotação para voltar ao mundo.
-      return worldFromField(local.x, local.y);
-    }
-    const rect = svg.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
-    return worldFromField(
-      bounds.x + ((clientX - rect.left) / rect.width) * bounds.w,
-      bounds.y + ((clientY - rect.top) / rect.height) * bounds.h,
-    );
+    const rect = stageRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    return screenToWorld(clientX - rect.left, clientY - rect.top, rect.width, rect.height);
   };
 
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -142,12 +131,9 @@ export function BattleArena({
   };
 
   const pickUnit = (ax: number, ay: number, list: BattleUnit[]): string | null => {
-    const svg = svgRef.current;
     let unitsPerPixel = 1;
-    if (svg) {
-      const rect = svg.getBoundingClientRect();
-      if (rect.width > 0) unitsPerPixel = 100 / rect.width;
-    }
+    const rect = stageRect();
+    if (rect && rect.width > 0) unitsPerPixel = 100 / (rect.width * FIELD_SCALE);
     const tolerance = Math.max(14 * unitsPerPixel, 3.2);
     let best: { id: string; d: number } | null = null;
     for (const u of list) {
@@ -219,244 +205,285 @@ export function BattleArena({
 
   return (
     <div className="relative h-full w-full">
-      <svg
-        ref={svgRef}
-        viewBox={fieldViewBox()}
-        preserveAspectRatio="none"
-        className={cn(
-          "h-full w-full touch-none select-none",
-          pendingCardId ? "cursor-crosshair" : "cursor-default",
-        )}
-        onPointerDown={handlePointer}
-        onPointerMove={handleMove}
-        onPointerLeave={clearGhost}
-        onDragOver={(e) => {
-          if (!pendingCardId) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-          const coords = toArenaCoords(e.clientX, e.clientY);
-          if (coords) setGhost(coords);
-        }}
-        onDrop={(e) => {
-          if (!pendingCardId) return;
-          e.preventDefault();
-          const coords = toArenaCoords(e.clientX, e.clientY);
-          if (coords) onPlace(coords.x, coords.y, pickTarget(coords.x, coords.y));
-          setGhost(null);
-        }}
+      {/* Fundo do "teatro de operações": preenche os cantos que a inclinação da
+          câmera expõe (o fundo do campo recua e deixa a mesa à vista). */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,oklch(0.2_0.02_120),oklch(0.1_0.01_120))]"
+      />
+      <div
+        ref={stageRef}
+        data-testid="battle-stage"
+        className="relative flex h-full w-full items-center justify-center"
       >
-        <defs>
-          <linearGradient id="allyZone" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={ALLY} stopOpacity="0.24" />
-            <stop offset="100%" stopColor={ALLY} stopOpacity="0.03" />
-          </linearGradient>
-          <linearGradient id="enemyZone" x1="1" y1="0" x2="0" y2="0">
-            <stop offset="0%" stopColor={ENEMY} stopOpacity="0.24" />
-            <stop offset="100%" stopColor={ENEMY} stopOpacity="0.03" />
-          </linearGradient>
-          <radialGradient id="terrGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
-            <stop offset="60%" stopColor="#ffffff" stopOpacity="0.12" />
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-          </radialGradient>
-          <linearGradient id="groundDepth" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
-            <stop offset="45%" stopColor="oklch(0 0 0)" stopOpacity="0" />
-            <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
-          </linearGradient>
-        </defs>
+        {/* A câmera (perspectiva + inclinação + escala) vai numa ÚNICA transformação no
+            SVG. Separar em contêiner 3D + filho deixava as duas faces coplanares no centro
+            do campo (z-fighting), e o toque deixava de chegar ao SVG. Escala por último
+            (mais à esquerda) = encolhe o resultado já projetado, sem cortar as laterais. */}
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}
+          preserveAspectRatio="none"
+          style={{
+            transform: `scale(${FIELD_SCALE}) perspective(${FIELD_PERSPECTIVE}px) rotateX(${FIELD_PITCH_DEG}deg)`,
+            transformOrigin: "center center",
+          }}
+          className={cn(
+            "h-full w-full touch-none select-none",
+            pendingCardId ? "cursor-crosshair" : "cursor-default",
+          )}
+          onPointerDown={handlePointer}
+          onPointerMove={handleMove}
+          onPointerLeave={clearGhost}
+          onDragOver={(e) => {
+            if (!pendingCardId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            const coords = toArenaCoords(e.clientX, e.clientY);
+            if (coords) setGhost(coords);
+          }}
+          onDrop={(e) => {
+            if (!pendingCardId) return;
+            e.preventDefault();
+            const coords = toArenaCoords(e.clientX, e.clientY);
+            if (coords) onPlace(coords.x, coords.y, pickTarget(coords.x, coords.y));
+            setGhost(null);
+          }}
+        >
+          <defs>
+            <linearGradient id="allyZone" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor={ALLY} stopOpacity="0.24" />
+              <stop offset="100%" stopColor={ALLY} stopOpacity="0.03" />
+            </linearGradient>
+            <linearGradient id="enemyZone" x1="1" y1="0" x2="0" y2="0">
+              <stop offset="0%" stopColor={ENEMY} stopOpacity="0.24" />
+              <stop offset="100%" stopColor={ENEMY} stopOpacity="0.03" />
+            </linearGradient>
+            <radialGradient id="terrGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
+              <stop offset="60%" stopColor="#ffffff" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id="groundDepth" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
+              <stop offset="45%" stopColor="oklch(0 0 0)" stopOpacity="0" />
+              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.18" />
+            </linearGradient>
+            {/* Textura fina do solo: trama sutil para o terreno não ler como bloco liso */}
+            <pattern id="groundTex" width="3" height="3" patternUnits="userSpaceOnUse">
+              <rect width="3" height="3" fill="none" />
+              <circle cx="0.7" cy="0.7" r="0.12" fill="oklch(1 0 0 / 0.05)" />
+              <circle cx="2.1" cy="1.6" r="0.1" fill="oklch(0 0 0 / 0.08)" />
+              <circle cx="1.2" cy="2.4" r="0.09" fill="oklch(1 0 0 / 0.04)" />
+            </pattern>
+          </defs>
 
-        {/* Fundo do teatro (não inclinado): preenche os cantos que a rotação
-            deixa à mostra, para o campo ler como um tabuleiro sobre a mesa. */}
-        <rect
-          x={bounds.x}
-          y={bounds.y}
-          width={bounds.w}
-          height={bounds.h}
-          fill={ground.accent}
-          opacity="0.35"
-        />
-
-        {/* Teatro inclinado: a câmera gira o campo em diagonal. A cena inteira
-            (terreno, territórios, estruturas, unidades, projéteis, efeitos) é
-            desenhada em coordenadas do mundo e rotacionada de uma só vez — a
-            lógica de jogo e a movimentação não mudam. */}
-        <g transform={fieldTransform()}>
-          {/* Terreno base — a cor muda por terreno, para cada fase ter cara própria */}
-          <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
-          <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.accent} opacity="0.5" />
-          <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
-          {/* Metades: oeste = aliado (azul), leste = inimigo (vermelho) */}
-          <rect x="0" y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#allyZone)" />
-          <rect x={WORLD_W / 2} y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#enemyZone)" />
-
-          {/* Linhas de grade tênues */}
-          {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
-            <line
-              key={`v${i}`}
-              x1={(i * WORLD_W) / 10}
-              y1="0"
-              x2={(i * WORLD_W) / 10}
-              y2={WORLD_H}
-              stroke="oklch(1 0 0 / 0.045)"
-              strokeWidth="0.2"
-            />
-          ))}
-          {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
-            <line
-              key={`h${i}`}
-              x1="0"
-              y1={(i * WORLD_H) / 10}
-              x2={WORLD_W}
-              y2={(i * WORLD_H) / 10}
-              stroke="oklch(1 0 0 / 0.045)"
-              strokeWidth="0.2"
-            />
-          ))}
-
-          {/* Linha divisória das metades (vertical: frente oeste↔leste) */}
-          <line
-            x1={WORLD_W / 2}
-            y1="0"
-            x2={WORLD_W / 2}
-            y2={WORLD_H}
-            stroke="oklch(1 0 0 / 0.18)"
-            strokeWidth="0.3"
-            strokeDasharray="2 2"
-          />
-
-          {/* Zonas de desdobramento */}
-          {(["red", "blue"] as Side[]).map((s) => {
-            const z = arena.deployZone[s];
-            const active = pendingCardId && s === "blue";
-            return (
-              <rect
-                key={s}
-                x={z.x}
-                y={z.y}
-                width={z.w}
-                height={z.h}
-                fill={active ? sideColor(s) : "none"}
-                fillOpacity={active ? 0.12 : 0}
-                stroke={sideColor(s)}
-                strokeOpacity={active ? 0.75 : 0.3}
-                strokeDasharray="1.5 1.5"
-                strokeWidth={active ? 0.5 : 0.3}
-              />
-            );
-          })}
-
-          {/* Obstáculos */}
-          {arena.obstacles.map((o) => (
-            <circle
-              key={o.id}
-              cx={o.x}
-              cy={o.y}
-              r={o.radius}
-              fill={obstacleFill(o.kind)}
-              opacity={o.kind === "barricada" ? 0.6 : 0.7}
-              stroke={o.kind === "barricada" ? sideColor(o.side ?? "blue") : "oklch(1 0 0 / 0.1)"}
-              strokeWidth="0.3"
-            />
-          ))}
-
-          {/* Territórios de expansão */}
-          {state.territories.map((t) => (
-            <TerritoryGlyph key={t.id} territory={t} />
-          ))}
-
-          {/* Pontos de controle */}
-          {arena.controlPoints.map((p) => (
-            <ControlPointGlyph key={p.id} point={p} />
-          ))}
-
-          {/* Estruturas */}
-          {state.structures.map((s) => (
-            <StructureGlyph key={s.id} structure={s} />
-          ))}
-
-          {/* Zonas de efeito (fumaça, gás, reconhecimento) */}
-          {state.zones.map((z) => (
-            <ZoneGlyph key={z.id} zone={z} />
-          ))}
-
-          {/* Unidades */}
-          {units.map((u) => {
-            const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
-            return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} dim={dim} />;
-          })}
-
-          {/* Projéteis */}
-          {state.projectiles.map((p) => (
-            <ProjectileGlyph key={p.id} projectile={p} />
-          ))}
-
-          {/* Efeitos visuais */}
-          {state.effects.map((e) => (
-            <EffectGlyph key={e.id} effect={e} />
-          ))}
-
-          {/* Alcance da unidade selecionada */}
-          {selected && (
-            <circle
-              cx={selected.x}
-              cy={selected.y}
-              r={selected.range}
+          {/* O campo inteiro é desenhado em coordenadas do mundo; a câmera em
+            perspectiva é aplicada ao SVG (transform CSS). A cena toda — terreno,
+            territórios, estruturas, unidades, projéteis e efeitos — vive aqui. */}
+          <g>
+            {/* Terreno base — a cor muda por terreno, para cada fase ter cara própria */}
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.accent} opacity="0.5" />
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
+            {/* Moldura do tabuleiro: leitura de "mesa de guerra" e borda nítida */}
+            <rect
+              x="0.6"
+              y="0.6"
+              width={WORLD_W - 1.2}
+              height={WORLD_H - 1.2}
               fill="none"
-              stroke="var(--primary)"
+              stroke="oklch(1 0 0 / 0.14)"
+              strokeWidth="0.5"
+            />
+            <rect
+              x="1.4"
+              y="1.4"
+              width={WORLD_W - 2.8}
+              height={WORLD_H - 2.8}
+              fill="none"
+              stroke="oklch(1 0 0 / 0.06)"
+              strokeWidth="0.25"
+            />
+            {/* Metades: oeste = aliado (azul), leste = inimigo (vermelho) */}
+            <rect x="0" y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#allyZone)" />
+            <rect
+              x={WORLD_W / 2}
+              y="0"
+              width={WORLD_W / 2}
+              height={WORLD_H}
+              fill="url(#enemyZone)"
+            />
+
+            {/* Linhas de grade tênues */}
+            {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
+              <line
+                key={`v${i}`}
+                x1={(i * WORLD_W) / 10}
+                y1="0"
+                x2={(i * WORLD_W) / 10}
+                y2={WORLD_H}
+                stroke="oklch(1 0 0 / 0.045)"
+                strokeWidth="0.2"
+              />
+            ))}
+            {Array.from({ length: 9 }, (_, i) => i + 1).map((i) => (
+              <line
+                key={`h${i}`}
+                x1="0"
+                y1={(i * WORLD_H) / 10}
+                x2={WORLD_W}
+                y2={(i * WORLD_H) / 10}
+                stroke="oklch(1 0 0 / 0.045)"
+                strokeWidth="0.2"
+              />
+            ))}
+
+            {/* Linha divisória das metades (vertical: frente oeste↔leste) */}
+            <line
+              x1={WORLD_W / 2}
+              y1="0"
+              x2={WORLD_W / 2}
+              y2={WORLD_H}
+              stroke="oklch(1 0 0 / 0.18)"
               strokeWidth="0.3"
               strokeDasharray="2 2"
-              opacity={0.6}
             />
-          )}
 
-          {/* Pré-visualização do posicionamento: validação ao vivo + rota da força */}
-          {ghost && (
-            <g pointerEvents="none" data-testid="deploy-ghost" data-valid={ghostValid}>
-              {ghostOrigin && (
-                <>
-                  <line
-                    x1={ghostOrigin.x}
-                    y1={ghostOrigin.y}
-                    x2={ghost.x}
-                    y2={ghost.y}
-                    stroke={ALLY}
-                    strokeWidth="0.4"
-                    strokeDasharray="2 1.5"
-                    opacity={0.85}
-                  />
-                  <circle
-                    cx={ghostOrigin.x}
-                    cy={ghostOrigin.y}
-                    r="2.6"
-                    fill="none"
-                    stroke={ALLY}
-                    strokeWidth="0.5"
-                    opacity={0.9}
-                  />
-                  <circle cx={ghostOrigin.x} cy={ghostOrigin.y} r="1" fill={ALLY} opacity={0.9} />
-                </>
-              )}
+            {/* Zonas de desdobramento */}
+            {(["red", "blue"] as Side[]).map((s) => {
+              const z = arena.deployZone[s];
+              const active = pendingCardId && s === "blue";
+              return (
+                <rect
+                  key={s}
+                  x={z.x}
+                  y={z.y}
+                  width={z.w}
+                  height={z.h}
+                  fill={active ? sideColor(s) : "none"}
+                  fillOpacity={active ? 0.12 : 0}
+                  stroke={sideColor(s)}
+                  strokeOpacity={active ? 0.75 : 0.3}
+                  strokeDasharray="1.5 1.5"
+                  strokeWidth={active ? 0.5 : 0.3}
+                />
+              );
+            })}
+
+            {/* Obstáculos */}
+            {arena.obstacles.map((o) => (
               <circle
-                cx={ghost.x}
-                cy={ghost.y}
-                r="3.2"
+                key={o.id}
+                cx={o.x}
+                cy={o.y}
+                r={o.radius}
+                fill={obstacleFill(o.kind)}
+                opacity={o.kind === "barricada" ? 0.6 : 0.7}
+                stroke={o.kind === "barricada" ? sideColor(o.side ?? "blue") : "oklch(1 0 0 / 0.1)"}
+                strokeWidth="0.3"
+              />
+            ))}
+
+            {/* Territórios de expansão */}
+            {state.territories.map((t) => (
+              <TerritoryGlyph key={t.id} territory={t} />
+            ))}
+
+            {/* Pontos de controle */}
+            {arena.controlPoints.map((p) => (
+              <ControlPointGlyph key={p.id} point={p} />
+            ))}
+
+            {/* Estruturas */}
+            {state.structures.map((s) => (
+              <StructureGlyph key={s.id} structure={s} />
+            ))}
+
+            {/* Zonas de efeito (fumaça, gás, reconhecimento) */}
+            {state.zones.map((z) => (
+              <ZoneGlyph key={z.id} zone={z} />
+            ))}
+
+            {/* Unidades */}
+            {units.map((u) => {
+              const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
+              return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} dim={dim} />;
+            })}
+
+            {/* Projéteis */}
+            {state.projectiles.map((p) => (
+              <ProjectileGlyph key={p.id} projectile={p} />
+            ))}
+
+            {/* Efeitos visuais */}
+            {state.effects.map((e) => (
+              <EffectGlyph key={e.id} effect={e} />
+            ))}
+
+            {/* Alcance da unidade selecionada */}
+            {selected && (
+              <circle
+                cx={selected.x}
+                cy={selected.y}
+                r={selected.range}
                 fill="none"
-                stroke={ghostValid ? "var(--ally)" : "var(--destructive)"}
-                strokeWidth="0.5"
-                strokeDasharray={ghostValid ? undefined : "1.2 1"}
+                stroke="var(--primary)"
+                strokeWidth="0.3"
+                strokeDasharray="2 2"
+                opacity={0.6}
               />
-              <circle
-                cx={ghost.x}
-                cy={ghost.y}
-                r="1"
-                fill={ghostValid ? "var(--ally)" : "var(--destructive)"}
-                opacity={0.9}
-              />
-            </g>
-          )}
-        </g>
-      </svg>
+            )}
+
+            {/* Pré-visualização do posicionamento: validação ao vivo + rota da força */}
+            {ghost && (
+              <g pointerEvents="none" data-testid="deploy-ghost" data-valid={ghostValid}>
+                {ghostOrigin && (
+                  <>
+                    <line
+                      x1={ghostOrigin.x}
+                      y1={ghostOrigin.y}
+                      x2={ghost.x}
+                      y2={ghost.y}
+                      stroke={ALLY}
+                      strokeWidth="0.4"
+                      strokeDasharray="2 1.5"
+                      opacity={0.85}
+                    />
+                    <circle
+                      cx={ghostOrigin.x}
+                      cy={ghostOrigin.y}
+                      r="2.6"
+                      fill="none"
+                      stroke={ALLY}
+                      strokeWidth="0.5"
+                      opacity={0.9}
+                    />
+                    <circle cx={ghostOrigin.x} cy={ghostOrigin.y} r="1" fill={ALLY} opacity={0.9} />
+                  </>
+                )}
+                <circle
+                  cx={ghost.x}
+                  cy={ghost.y}
+                  r="3.2"
+                  fill="none"
+                  stroke={ghostValid ? "var(--ally)" : "var(--destructive)"}
+                  strokeWidth="0.5"
+                  strokeDasharray={ghostValid ? undefined : "1.2 1"}
+                />
+                <circle
+                  cx={ghost.x}
+                  cy={ghost.y}
+                  r="1"
+                  fill={ghostValid ? "var(--ally)" : "var(--destructive)"}
+                  opacity={0.9}
+                />
+              </g>
+            )}
+          </g>
+        </svg>
+      </div>
 
       {pendingCardId && (
         <div className="pointer-events-none absolute left-2 top-2 border border-primary bg-background/90 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary">
@@ -719,6 +746,74 @@ function TowerGlyph({ s, color }: { s: Structure; color: string }) {
 // Territórios de expansão
 // ---------------------------------------------------------------------------
 
+// Instalação militar neutra no meio do mapa: um bunker/complexo pequeno desenhado
+// sobre o marcador. Muda de cor quando o território é tomado (neutral → facção).
+function NeutralBaseArt({
+  x,
+  y,
+  r,
+  color,
+  owned,
+}: {
+  x: number;
+  y: number;
+  r: number;
+  color: string;
+  owned: boolean;
+}) {
+  const s = r / 6; // escala relativa ao raio do marcador
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      {/* plataforma */}
+      <rect
+        x={-4.6 * s}
+        y={-3.4 * s}
+        width={9.2 * s}
+        height={6.8 * s}
+        fill="oklch(0.22 0.01 250)"
+        stroke={color}
+        strokeOpacity={owned ? 0.9 : 0.7}
+        strokeWidth={0.35 * s}
+      />
+      {/* bunker central */}
+      <rect
+        x={-2.6 * s}
+        y={-1.9 * s}
+        width={5.2 * s}
+        height={3.8 * s}
+        fill="oklch(0.3 0.012 250)"
+        stroke="oklch(1 0 0 / 0.25)"
+        strokeWidth={0.22 * s}
+      />
+      {/* torre de radar / antena */}
+      <line x1={0} y1={-1.9 * s} x2={0} y2={-4.2 * s} stroke={color} strokeWidth={0.3 * s} />
+      <circle cx={0} cy={-4.6 * s} r={0.7 * s} fill={color} opacity={0.9}>
+        {!owned && (
+          <animate attributeName="opacity" values="0.5;1;0.5" dur="1.6s" repeatCount="indefinite" />
+        )}
+      </circle>
+      {/* cantos fortificados */}
+      {(
+        [
+          [-4.6, -3.4],
+          [4.6, -3.4],
+          [-4.6, 3.4],
+          [4.6, 3.4],
+        ] as const
+      ).map(([cx, cy], i) => (
+        <circle
+          key={i}
+          cx={cx * s}
+          cy={cy * s}
+          r={0.75 * s}
+          fill={color}
+          opacity={owned ? 0.9 : 0.6}
+        />
+      ))}
+    </g>
+  );
+}
+
 function TerritoryGlyph({ territory: t }: { territory: Territory }) {
   const owned = t.owner !== "neutro";
   const color = owned ? sideColor(t.owner as Side) : "oklch(0.98 0 0)";
@@ -727,6 +822,9 @@ function TerritoryGlyph({ territory: t }: { territory: Territory }) {
   const ringColor = t.progress.blue >= t.progress.red ? ALLY : ENEMY;
   return (
     <g>
+      {/* Base neutra: instalação militar já erguida no meio do mapa. Além do
+          marcador de captura, desenha a estrutura (quem a toma assume a posição). */}
+      {t.base && <NeutralBaseArt x={t.x} y={t.y} r={t.radius} color={color} owned={owned} />}
       {/* halo neon da facção (destaque forte no terreno) */}
       <circle cx={t.x} cy={t.y} r={t.radius * 1.9} fill="url(#terrGlow)" opacity={owned ? 0.5 : 1}>
         {!owned && (
@@ -754,7 +852,16 @@ function TerritoryGlyph({ territory: t }: { territory: Territory }) {
         )}
       </circle>
       {/* núcleo */}
-      <circle cx={t.x} cy={t.y} r={t.radius * 0.34} fill={color} opacity={owned ? 0.85 : 0.95} />
+      <circle
+        cx={t.x}
+        cy={t.y}
+        r={t.radius * 0.34}
+        fill={color}
+        opacity={owned ? 0.85 : 0.95}
+        data-testid={`territory-${t.id}`}
+        data-world-x={t.x}
+        data-world-y={t.y}
+      />
       {/* anel de progresso de captura — ultra visível */}
       {!owned && progress > 0 && (
         <circle

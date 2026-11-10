@@ -174,6 +174,8 @@ export interface Obstacle {
 
 // Ponto de expansão territorial: círculo branco luminoso que pode ser conquistado
 // e, em seguida, receber uma base avançada construída por engenheiros.
+// Quando `base` é true, o ponto é uma BASE NEUTRA já erguida no meio do mapa: além
+// do marcador de captura, desenha uma instalação militar neutra a ser tomada.
 export interface Territory {
   id: string;
   name: string;
@@ -182,6 +184,7 @@ export interface Territory {
   radius: number;
   owner: Side | "neutro";
   progress: Record<Side, number>; // 0-100
+  base?: boolean;
 }
 
 // Estrutura fixa do motor (base principal, torre defensiva ou base avançada).
