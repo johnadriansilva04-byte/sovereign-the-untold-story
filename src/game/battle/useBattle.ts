@@ -18,6 +18,7 @@ import type {
   BattleResult,
   BattleState,
   Card,
+  DeployTarget,
   Order,
   Side,
 } from "@/game/battle/types";
@@ -35,8 +36,15 @@ export interface UseBattle {
   llmActive: boolean;
   setPaused: (p: boolean) => void;
   setSpeed: (s: number) => void;
-  playCard: (cardId: string, x: number, y: number) => { ok: boolean; error?: string };
+  playCard: (
+    cardId: string,
+    x: number,
+    y: number,
+    target?: DeployTarget,
+  ) => { ok: boolean; error?: string };
   issueOrder: (order: Order, unitId?: string, objectiveId?: string) => void;
+  /** Manda a unidade selecionada para um ponto do mapa, ou para cima de um alvo. */
+  moveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => boolean;
   restart: () => void;
   cardMeta: (cardId: string) => Card;
   costOf: (cardId: string) => number;
@@ -135,14 +143,52 @@ export function useBattle(
     return () => cancelAnimationFrame(raf);
   }, [wantsLlm]);
 
-  const playCard = useCallback((cardId: string, x: number, y: number) => {
-    const st = stateRef.current;
-    // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
-    // inimigo (holdAtArrival=false) — não congela no destino.
-    const ok = deploy(st, "blue", cardId, x, y, { x, y, holdAtArrival: false });
-    forceRender();
-    return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
-  }, []);
+  const playCard = useCallback(
+    (cardId: string, x: number, y: number, target?: DeployTarget) => {
+      const st = stateRef.current;
+      // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
+      // inimigo (holdAtArrival=false) — não congela no destino. Quando o clique
+      // acertou um alvo (inimigo/estrutura/território), a força já marcha para atacá-lo.
+      const order: {
+        x: number;
+        y: number;
+        holdAtArrival: boolean;
+        targetUnitId?: string;
+        targetStructureId?: string;
+        targetTerritoryId?: string;
+      } = { x, y, holdAtArrival: false };
+      if (target?.unitId) order.targetUnitId = target.unitId;
+      if (target?.structureId) order.targetStructureId = target.structureId;
+      if (target?.territoryId) order.targetTerritoryId = target.territoryId;
+      const ok = deploy(st, "blue", cardId, x, y, order);
+      forceRender();
+      return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
+    },
+    [],
+  );
+
+  const moveSelected = useCallback(
+    (unitId: string, x: number, y: number, target?: DeployTarget) => {
+      const action: {
+        type: "reposicionar";
+        side: Side;
+        unitId: string;
+        x: number;
+        y: number;
+        holdAtArrival: boolean;
+        targetUnitId?: string;
+        targetStructureId?: string;
+        targetTerritoryId?: string;
+      } = { type: "reposicionar", side: "blue", unitId, x, y, holdAtArrival: false };
+      if (target?.unitId) action.targetUnitId = target.unitId;
+      if (target?.structureId) action.targetStructureId = target.structureId;
+      if (target?.territoryId) action.targetTerritoryId = target.territoryId;
+      const ok = applyAction(stateRef.current, action).ok;
+      forceRender();
+      return ok;
+    },
+    [],
+  );
 
   const issueOrder = useCallback((order: Order, unitId?: string, objectiveId?: string) => {
     const action = { type: "ordem", side: "blue", order } as {
@@ -187,6 +233,7 @@ export function useBattle(
     setSpeed,
     playCard,
     issueOrder,
+    moveSelected,
     restart,
     cardMeta,
     costOf,

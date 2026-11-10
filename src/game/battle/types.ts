@@ -542,6 +542,14 @@ export interface DeployAction {
   targetTerritoryId?: string;
 }
 
+// Alvo explícito de uma ordem: o que o jogador clicou no teatro. A força marcha
+// até lá e ataca aquilo (unidade, estrutura ou território) em vez de escolher sozinha.
+export interface DeployTarget {
+  unitId?: string | undefined;
+  structureId?: string | undefined;
+  territoryId?: string | undefined;
+}
+
 export interface SupportAction {
   type: "apoio";
   side: Side;
@@ -570,6 +578,8 @@ export interface RepositionAction {
   targetUnitId?: string;
   targetStructureId?: string;
   targetTerritoryId?: string;
+  /** Ao chegar, para (padrão) ou volta a caçar o inimigo? */
+  holdAtArrival?: boolean;
 }
 
 export type BattleAction = DeployAction | SupportAction | OrderAction | RepositionAction;

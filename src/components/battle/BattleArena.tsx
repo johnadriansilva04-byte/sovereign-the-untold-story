@@ -6,6 +6,7 @@ import type {
   BattleState,
   BattleUnit,
   ControlPoint,
+  DeployTarget,
   Projectile,
   Side,
   Structure,
@@ -18,8 +19,9 @@ interface Props {
   pendingCardId: string | null;
   pendingIsGlobal: boolean;
   selectedUnitId: string | null;
-  onPlace: (x: number, y: number) => void;
+  onPlace: (x: number, y: number, target?: DeployTarget) => void;
   onSelectUnit: (id: string | null) => void;
+  onMoveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => void;
   onSelectPoint: (pointId: string) => void;
 }
 
@@ -35,6 +37,7 @@ export function BattleArena({
   selectedUnitId,
   onPlace,
   onSelectUnit,
+  onMoveSelected,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const arena = state.config.arena;
@@ -65,22 +68,44 @@ export function BattleArena({
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
     const coords = toArenaCoords(e.clientX, e.clientY);
     if (!coords) return;
-    // Com carta na mão, o clique no teatro é uma ORDEM (desdobrar).
+    // Com carta na mão, o clique no teatro é uma ORDEM (desdobrar). Se o clique
+    // acertou um inimigo/estrutura/território, a força já marcha para atacá-lo.
     if (pendingCardId) {
-      onPlace(coords.x, coords.y);
+      onPlace(coords.x, coords.y, pickTarget(coords.x, coords.y));
       return;
     }
-    // Sem carta: o clique seleciona a unidade aliada mais próxima. A tolerância é
-    // medida em PIXELS (não em unidades da arena) para continuar clicável quando o
-    // teatro encolhe — antes o alvo era o próprio glifo (poucos pixels) e o toque
-    // errava a unidade.
+    // Sem carta: o clique sobre um inimigo manda a unidade SELECIONADA atacá-lo.
+    const enemyId = pickEnemyUnit(coords.x, coords.y);
+    if (selectedUnitId && enemyId) {
+      const enemy = units.find((u) => u.id === enemyId);
+      if (enemy) onMoveSelected(selectedUnitId, enemy.x, enemy.y, { unitId: enemyId });
+      return;
+    }
+    // Clique sobre uma unidade ALIADA: seleciona-a (ou desmarca se já estava).
     const hitId = pickAllyUnit(coords.x, coords.y);
-    if (hitId) onSelectUnit(hitId === selectedUnitId ? null : hitId);
-    else onSelectUnit(null);
+    if (hitId) {
+      onSelectUnit(hitId === selectedUnitId ? null : hitId);
+      return;
+    }
+    // Com uma unidade selecionada, o clique no restante do teatro é uma ORDEM de
+    // movimento: ela marcha até o ponto (ou até a estrutura/território clicado).
+    if (selectedUnitId) {
+      onMoveSelected(selectedUnitId, coords.x, coords.y, pickTarget(coords.x, coords.y));
+      return;
+    }
+    onSelectUnit(null);
   };
 
   // Unidade aliada mais próxima do ponto, dentro de uma tolerância em pixels.
   const pickAllyUnit = (ax: number, ay: number): string | null => {
+    return pickUnit(ax, ay, state.blue.units);
+  };
+
+  const pickEnemyUnit = (ax: number, ay: number): string | null => {
+    return pickUnit(ax, ay, state.red.units);
+  };
+
+  const pickUnit = (ax: number, ay: number, list: BattleUnit[]): string | null => {
     const svg = svgRef.current;
     let unitsPerPixel = 1;
     if (svg) {
@@ -89,12 +114,45 @@ export function BattleArena({
     }
     const tolerance = Math.max(14 * unitsPerPixel, 3.2);
     let best: { id: string; d: number } | null = null;
-    for (const u of state.blue.units) {
+    for (const u of list) {
       if (!u.alive) continue;
       const d = Math.hypot(ax - u.x, ay - u.y);
       if (d <= Math.max(tolerance, u.radius + 1.6) && (!best || d < best.d)) best = { id: u.id, d };
     }
     return best?.id ?? null;
+  };
+
+  // Alvo explícito sob o ponto clicado: inimigo > estrutura > território. É o que
+  // transforma "clique no chão" em "clique no objetivo" — o motor recebe o alvo e a
+  // força marcha direto para cima dele.
+  const pickTarget = (ax: number, ay: number): DeployTarget | undefined => {
+    const enemyId = pickEnemyUnit(ax, ay);
+    if (enemyId) return { unitId: enemyId };
+    const struct = nearestStructure(ax, ay);
+    if (struct) return { structureId: struct.id };
+    const terr = nearestTerritory(ax, ay);
+    if (terr) return { territoryId: terr.id };
+    return undefined;
+  };
+
+  const nearestStructure = (ax: number, ay: number): Structure | null => {
+    let best: { s: Structure; d: number } | null = null;
+    for (const s of state.structures) {
+      if (!s.alive || s.side === "blue") continue;
+      const d = Math.hypot(ax - s.x, ay - s.y);
+      if (d <= s.radius + 2 && (!best || d < best.d)) best = { s, d };
+    }
+    return best?.s ?? null;
+  };
+
+  const nearestTerritory = (ax: number, ay: number): Territory | null => {
+    let best: { t: Territory; d: number } | null = null;
+    for (const t of state.territories) {
+      if (t.owner === "blue") continue;
+      const d = Math.hypot(ax - t.x, ay - t.y);
+      if (d <= t.radius + 1.5 && (!best || d < best.d)) best = { t, d };
+    }
+    return best?.t ?? null;
   };
 
   const handleMove = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -146,7 +204,7 @@ export function BattleArena({
           if (!pendingCardId) return;
           e.preventDefault();
           const coords = toArenaCoords(e.clientX, e.clientY);
-          if (coords) onPlace(coords.x, coords.y);
+          if (coords) onPlace(coords.x, coords.y, pickTarget(coords.x, coords.y));
           setGhost(null);
         }}
       >
@@ -280,11 +338,8 @@ export function BattleArena({
 
         {/* Unidades */}
         {units.map((u) => {
-          const visible = u.side === "blue" || u.seen.blue || u.revealed > 0;
-          if (!visible) {
-            return <circle key={u.id} cx={u.x} cy={u.y} r={1.2} fill="oklch(0.5 0 0 / 0.45)" />;
-          }
-          return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} />;
+          const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
+          return <UnitGlyph key={u.id} unit={u} selected={u.id === selectedUnitId} dim={dim} />;
         })}
 
         {/* Projéteis */}
@@ -667,30 +722,45 @@ function ControlPointGlyph({ point }: { point: ControlPoint }) {
 // Unidades — silhuetas distintas por modelo
 // ---------------------------------------------------------------------------
 
-function UnitGlyph({ unit, selected }: { unit: BattleUnit; selected: boolean }) {
+function UnitGlyph({
+  unit,
+  selected,
+  dim = false,
+}: {
+  unit: BattleUnit;
+  selected: boolean;
+  dim?: boolean;
+}) {
   const color = sideColor(unit.side);
   const airborne = unit.domain === "aereo";
   const y = airborne ? unit.y - 2.4 : unit.y;
+  // Escala visual por modelo: os soldados e veículos apareciam minúsculos no teatro.
+  // A escala NÃO altera a simulação (raio, alcance, dano) — só o desenho — para o
+  // jogador enxergar a diferença entre fuzileiro, tanque e drone à primeira vista.
+  const scale = MODEL_SCALE[unit.model] ?? 1;
+  const r = unit.radius * scale;
   return (
-    <g pointerEvents="none">
+    <g pointerEvents="none" opacity={dim ? 0.55 : 1}>
       {airborne && (
         <ellipse
           cx={unit.x}
           cy={unit.y + 1.6}
-          rx={unit.radius * 0.9}
-          ry={unit.radius * 0.4}
+          rx={r * 0.9}
+          ry={r * 0.4}
           fill="oklch(0 0 0 / 0.35)"
         />
       )}
-      <circle cx={unit.x} cy={y} r={unit.radius + 0.8} fill={color} opacity={0.16} />
-      <g transform={`translate(${unit.x} ${y}) rotate(${(unit.aim * 180) / Math.PI})`}>
+      <circle cx={unit.x} cy={y} r={r + 0.8} fill={color} opacity={0.16} />
+      <g
+        transform={`translate(${unit.x} ${y}) rotate(${(unit.aim * 180) / Math.PI}) scale(${scale})`}
+      >
         {unitModel(unit.model, color, selected)}
       </g>
       {unit.smoke > 0 && (
         <circle
           cx={unit.x}
           cy={y}
-          r={unit.radius * 1.1}
+          r={r * 1.1}
           fill="none"
           stroke="oklch(1 0 0 / 0.5)"
           strokeWidth="0.25"
@@ -701,7 +771,7 @@ function UnitGlyph({ unit, selected }: { unit: BattleUnit; selected: boolean }) 
         <circle
           cx={unit.x}
           cy={y}
-          r={unit.radius * 1.2}
+          r={r * 1.2}
           fill="none"
           stroke="var(--ai)"
           strokeWidth="0.25"
@@ -709,16 +779,16 @@ function UnitGlyph({ unit, selected }: { unit: BattleUnit; selected: boolean }) 
       )}
       {/* barra de vida */}
       <rect
-        x={unit.x - unit.radius}
-        y={y - unit.radius - 1.8}
-        width={unit.radius * 2}
+        x={unit.x - r}
+        y={y - r - 1.8}
+        width={r * 2}
         height="0.9"
         fill="oklch(0 0 0 / 0.5)"
       />
       <rect
-        x={unit.x - unit.radius}
-        y={y - unit.radius - 1.8}
-        width={unit.radius * 2 * Math.max(0, unit.hp / unit.maxHp)}
+        x={unit.x - r}
+        y={y - r - 1.8}
+        width={r * 2 * Math.max(0, unit.hp / unit.maxHp)}
         height="0.9"
         fill={unit.hp / unit.maxHp > 0.4 ? "var(--fact)" : "var(--enemy)"}
       />
@@ -737,6 +807,27 @@ function UnitGlyph({ unit, selected }: { unit: BattleUnit; selected: boolean }) 
     </g>
   );
 }
+
+// Escala de desenho por modelo. Infantaria sobe mais (era o caso mais crítico);
+// veículos e aeronaves sobem o suficiente para não competir com o terreno.
+const MODEL_SCALE: Record<BattleUnit["model"], number> = {
+  "soldado-fuzil": 1.9,
+  "soldado-assalto": 1.85,
+  "soldado-antitanque": 1.85,
+  engenheiro: 1.9,
+  canhao: 1.4,
+  "artilharia-pesada": 1.35,
+  lmf: 1.35,
+  "lancador-missil": 1.4,
+  tanque: 1.45,
+  vbld: 1.45,
+  "drone-recon": 1.5,
+  "drone-combate": 1.5,
+  aa: 1.4,
+  fortificacao: 1.3,
+  posto: 1.4,
+  paraquedista: 1.9,
+};
 
 // Desenha o modelo da unidade centrado na origem, com o "nariz" apontando para +x.
 function unitModel(model: BattleUnit["model"], color: string, selected: boolean): ReactNode {

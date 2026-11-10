@@ -26,6 +26,7 @@ import type {
   BattleState,
   Card,
   Commander,
+  DeployTarget,
   Doctrine,
   Order,
 } from "@/game/battle/types";
@@ -179,9 +180,9 @@ export function LiveBattle({
     pendingCard?.kind === "apoio" && GLOBAL_SUPPORT.includes(pendingCard.ability);
 
   const handlePlace = useCallback(
-    (x: number, y: number) => {
+    (x: number, y: number, target?: DeployTarget) => {
       if (!pendingCardId) return;
-      const res = battle.playCard(pendingCardId, x, y);
+      const res = battle.playCard(pendingCardId, x, y, target);
       if (!res.ok) {
         toast.error(res.error ?? "Ação recusada.");
         return;
@@ -189,6 +190,13 @@ export function LiveBattle({
       setPendingCardId(null);
     },
     [battle, pendingCardId],
+  );
+
+  const handleMoveSelected = useCallback(
+    (unitId: string, x: number, y: number, target?: DeployTarget) => {
+      battle.moveSelected(unitId, x, y, target);
+    },
+    [battle],
   );
 
   const handlePick = useCallback((cardId: string) => {
@@ -263,6 +271,7 @@ export function LiveBattle({
           selectedUnitId={selectedUnitId}
           onPlace={handlePlace}
           onSelectUnit={setSelectedUnitId}
+          onMoveSelected={handleMoveSelected}
           onSelectPoint={() => undefined}
         />
 

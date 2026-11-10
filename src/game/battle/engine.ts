@@ -372,6 +372,8 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
     u.groupId = groupId;
     u.goalX = clamp(order.x, 1, 99);
     u.goalY = clamp(order.y, 1, 99);
+    // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
+    // holdAtArrival=false e a força volta a caçar o inimigo em vez de congelar.
     u.holdAtGoal = order.holdAtArrival ?? true;
     if (order.targetUnitId) u.targetId = order.targetUnitId;
     if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
@@ -512,6 +514,7 @@ export function reposition(
   side: Side,
   sel: { groupId?: string; unitId?: string },
   order: DeployOrder,
+  opts: { holdAtArrival?: boolean } = {},
 ): boolean {
   const targets = unitsForSelection(state, side, sel);
   if (targets.length === 0) return false;
@@ -525,7 +528,7 @@ export function reposition(
     if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
     if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
     u.order = "avancar";
-    u.holdAtGoal = true;
+    u.holdAtGoal = opts.holdAtArrival ?? true;
     if (u.builder) delete u.buildTerritoryId;
   }
   const cfg = side === "blue" ? state.blue : state.red;
@@ -1974,7 +1977,9 @@ export function applyAction(state: BattleState, action: BattleAction): ActionRes
     const sel: { groupId?: string; unitId?: string } = {};
     if (action.groupId) sel.groupId = action.groupId;
     if (action.unitId) sel.unitId = action.unitId;
-    const ok = reposition(state, action.side, sel, order);
+    const opts: { holdAtArrival?: boolean } = {};
+    if (action.holdAtArrival !== undefined) opts.holdAtArrival = action.holdAtArrival;
+    const ok = reposition(state, action.side, sel, order, opts);
     return ok ? { ok: true } : { ok: false, error: "Nenhuma força selecionada." };
   }
   const ok = issueOrder(state, action.side, action.order, action.unitId, action.objectiveId);

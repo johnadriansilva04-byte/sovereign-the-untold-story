@@ -1,8 +1,12 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { BattleArena } from "@/components/battle/BattleArena";
 import { BattlePrep } from "@/components/battle/BattlePrep";
 import { BattleScreen } from "@/components/battle/BattleScreen";
+import { commanders, startingDeck } from "@/game/battle/catalog";
+import { createBattle, deploy } from "@/game/battle/engine";
+import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
 import { ProfileProvider } from "@/game/progress/store";
 import { createProfile } from "@/game/progress/profile";
 
@@ -183,5 +187,63 @@ describe("interface da batalha", () => {
     expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/Brasil envia Fuzileiros/)).toBeInTheDocument();
+  });
+
+  it("clicar num inimigo manda a unidade selecionada atacá-lo", () => {
+    stubSvgRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+    const svg = document.querySelector('svg[viewBox="0 0 100 100"]')!;
+
+    // desdobra a força aliada (nasce na base azul, y≈92)
+    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 850, bubbles: true }));
+    // seleciona a unidade recém-desdobrada
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 500, clientY: 920, bubbles: true }));
+    expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
+
+    // clique no inimigo (longe da unidade aliada): o motor recebe a ordem de ataque
+    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 200, clientY: 200, bubbles: true }));
+    fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
+    expect(screen.getByText(/reposiciona/i)).toBeInTheDocument();
+  });
+
+  it("desenha o inimigo com o modelo real (não um ponto cinza) e ampliado", () => {
+    const config = buildBattleConfig({
+      nation: defaultNation,
+      mission: missionById("m-apagao"),
+      deck: startingDeck,
+      commander: commanders[0]!,
+      doctrine: commanders[0]!.doctrine,
+      seed: 3,
+    });
+    const state = createBattle(config);
+    state.red.command = 999;
+    state.red.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    deploy(state, "red", "inf-fuzileiros", 50, 40, { x: 50, y: 40 });
+    const { container } = render(
+      <BattleArena
+        state={state}
+        pendingCardId={null}
+        pendingIsGlobal={false}
+        selectedUnitId={null}
+        onPlace={vi.fn()}
+        onSelectUnit={vi.fn()}
+        onMoveSelected={vi.fn()}
+        onSelectPoint={vi.fn()}
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    // O glifo do inimigo tem um <g transform=...scale(...)> com escala > 1 (ampliado).
+    const scaled = [...svg.querySelectorAll("g[transform]")].some((g) =>
+      /scale\(1\.[0-9]+\)/.test(g.getAttribute("transform") ?? ""),
+    );
+    expect(scaled).toBe(true);
+    // E não é mais um ponto cinza: o texto do rótulo (short) do inimigo aparece.
+    expect(svg.textContent ?? "").toContain("FUZ");
   });
 });

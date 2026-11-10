@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { aiTick, aiTickSide, configureAi, defaultAiWeights } from "@/game/battle/ai";
 import { cardById, commanders, militaryById, startingDeck } from "@/game/battle/catalog";
-import { createBattle, deploy, dist, insideDeployZone, stepBattle } from "@/game/battle/engine";
+import { createBattle, deploy, dist, insideDeployZone, reposition, stepBattle } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
 import type {
   BattleConfig,
@@ -613,5 +613,77 @@ describe("motor de batalha — cartas com efeito real", () => {
     const trooper = local.blue.units[0]!;
     expect(trooper.y).toBeGreaterThan(50); // nasceu na base azul
     expect(trooper.goalY).toBeCloseTo(enemyBase.y - 6, 0); // recebeu o destino inimigo
+  });
+
+  // 8/9. O clique num inimigo manda a força atacá-lo (o alvo explícito é respeitado).
+  it("clique num inimigo manda a força marchar para atacá-lo", () => {
+    const state = createBattle(testConfig({ duration: 300 }));
+    const victim = place(state, "red", "inf-fuzileiros", 50, 40);
+    victim.order = "manter";
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    // Ordem com alvo explícito: como se o jogador tivesse clicado na unidade inimiga.
+    const ok = deploy(state, "blue", "inf-fuzileiros", 50, 40, {
+      x: 50,
+      y: 40,
+      holdAtArrival: false,
+      targetUnitId: victim.id,
+    });
+    expect(ok).toBe(true);
+    const squad = state.blue.units.filter((u) => u.alive);
+    expect(squad.every((u) => u.targetId === victim.id)).toBe(true);
+    // A força marcha até o alcance e abre fogo: a vida do inimigo cai.
+    const hpBefore = victim.hp;
+    for (let i = 0; i < 1200 && state.running && victim.hp >= hpBefore; i++) {
+      victim.order = "manter";
+      stepBattle(state, 0.1);
+    }
+    expect(victim.hp).toBeLessThan(hpBefore);
+  });
+
+  it("reposicionar manda a unidade selecionada para cima do alvo e ela o ataca", () => {
+    const state = createBattle(testConfig({ duration: 300 }));
+    const attacker = place(state, "blue", "inf-fuzileiros", 50, 80);
+    const victim = place(state, "red", "inf-fuzileiros", 50, 40);
+    victim.order = "manter";
+    const ok = reposition(
+      state,
+      "blue",
+      { unitId: attacker.id },
+      { x: victim.x, y: victim.y, targetUnitId: victim.id },
+      { holdAtArrival: false },
+    );
+    expect(ok).toBe(true);
+    expect(attacker.targetId).toBe(victim.id);
+    const hpBefore = victim.hp;
+    for (let i = 0; i < 1200 && state.running && victim.hp >= hpBefore; i++) {
+      victim.order = "manter";
+      keepAlive(state, "blue", attacker);
+      stepBattle(state, 0.1);
+    }
+    expect(victim.hp).toBeLessThan(hpBefore);
+  });
+
+  it("clique numa estrutura inimiga manda a força destruí-la", () => {
+    const state = createBattle(testConfig({ duration: 300 }));
+    const tower = state.structures.find((s) => s.side === "red" && s.kind === "torre")!;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "inf-antitanque", ready: true };
+    const ok = deploy(state, "blue", "inf-antitanque", tower.x, tower.y + tower.radius + 3, {
+      x: tower.x,
+      y: tower.y + tower.radius + 3,
+      holdAtArrival: false,
+      targetStructureId: tower.id,
+    });
+    expect(ok).toBe(true);
+    expect(state.blue.units.filter((u) => u.alive).every((u) => u.attackStructureId === tower.id)).toBe(
+      true,
+    );
+    const hpBefore = tower.hp;
+    for (let i = 0; i < 3000 && state.running && tower.hp >= hpBefore; i++) {
+      for (const u of state.blue.units) if (u.alive) u.hp = u.maxHp;
+      stepBattle(state, 0.1);
+    }
+    expect(tower.hp).toBeLessThan(hpBefore);
   });
 });
