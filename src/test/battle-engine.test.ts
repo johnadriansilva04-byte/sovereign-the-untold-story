@@ -50,14 +50,37 @@ function testConfig(overrides: Partial<BattleConfig> = {}): BattleConfig {
 }
 
 describe("motor de batalha", () => {
-  it("cria a partida com mão de 4 cartas e fila de 4", () => {
+  it("o deck do inimigo inclui engenheiro: a IA também expande território", () => {
+    // Regressão: sem engenheiro o vermelho nunca constrói bases avançadas e a IA
+    // fica passiva — o azul ganha de graça e a curva de dificuldade some.
+    const config = buildBattleConfig({
+      nation: defaultNation,
+      mission: missionById("m-apagao"),
+      deck: TEST_DECK,
+      commander: {
+        id: "cmd-varela",
+        name: "Cel. Varela",
+        personality: "Metódico",
+        doctrine: "Operações combinadas",
+        note: "",
+      },
+      doctrine: "Operações combinadas",
+      seed: 42,
+    });
+    const hasBuilder = config.red.deck.some((id) => militaryById(id).builder);
+    expect(hasBuilder).toBe(true);
+  });
+
+  it("cria a partida com o baralho EQUIPADO inteiro disponível (sem mão rotativa)", () => {
     const state = createBattle(testConfig());
-    expect(state.blue.deck.hand).toHaveLength(4);
-    expect(state.blue.deck.queue).toHaveLength(4);
+    // Baralho fixo: todas as cartas equipadas ficam na "mão", na ordem escolhida.
+    expect(state.blue.deck.hand).toHaveLength(TEST_DECK.length);
+    expect(state.blue.deck.queue).toHaveLength(0);
+    expect(state.blue.deck.hand.map((h) => h.cardId)).toEqual(TEST_DECK);
     expect(state.running).toBe(true);
   });
 
-  it("consome Energia ao desdobrar e recicla a carta para a fila", () => {
+  it("consome Sov ao desdobrar e MANTÉM a carta equipada (baralho fixo)", () => {
     const state = createBattle(testConfig());
     const cardId = state.blue.deck.hand[0]!.cardId;
     const cost = effectiveCost(cardById(cardId), state.blue.doctrine);
@@ -65,8 +88,9 @@ describe("motor de batalha", () => {
     const ok = deploy(state, "blue", cardId, 50, 85);
     expect(ok).toBe(true);
     expect(state.blue.command).toBeCloseTo(before - cost, 5);
-    expect(state.blue.deck.queue).toContain(cardId);
-    expect(state.blue.deck.hand).toHaveLength(4);
+    // A carta NÃO sai da mão nem vai para uma fila: continua disponível no mesmo slot.
+    expect(state.blue.deck.hand[0]!.cardId).toBe(cardId);
+    expect(state.blue.deck.queue).toHaveLength(0);
   });
 
   it("recusa desdobramento sem comando suficiente", () => {

@@ -1185,11 +1185,11 @@ export function sideFromMission(mission: MissionDef): SideConfig {
     deck: [
       "inf-fuzileiros",
       "inf-assalto",
+      "inf-engenheiro",
       "bld-vbld",
       "bld-tanque",
       "art-obus",
       "def-aa",
-      "def-fortificacao",
       "rec-drone",
     ],
     commandMax: 12,

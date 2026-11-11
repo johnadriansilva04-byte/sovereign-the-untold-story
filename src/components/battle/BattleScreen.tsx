@@ -9,9 +9,15 @@ import { AiCommanderPanel, BattleLogPanel } from "./BattlePanels";
 import { BattlePrep } from "./BattlePrep";
 import { BattleResultScreen } from "./BattleResult";
 import { BattleTopBar, ObjectiveStrip } from "./BattleTopBar";
-import { CommandBar, HandBar, OrderBar, SelectedUnitStrip } from "./BattleHud";
-import { cardById } from "@/game/battle/catalog";
-import { GLOBAL_SUPPORT } from "@/game/battle/engine";
+import {
+  CommandBar,
+  CARD_KEYS,
+  HandBar,
+  OperationBar,
+  OrderBar,
+  SelectedUnitStrip,
+} from "./BattleHud";
+import { launchBases } from "@/game/battle/engine";
 import {
   buildBattleConfig,
   chapterMission,
@@ -167,7 +173,15 @@ export function LiveBattle({
 }: LiveProps) {
   const battle = useBattle(config, { llmCommander });
   const { state, result } = battle;
-  const [pendingCardId, setPendingCardId] = useState<string | null>(null);
+  // Seleção da OPERAÇÃO: quantas unidades de cada carta (1 clique = +1). O envio é
+  // em lote, de uma base escolhida para um destino clicado. Nada de mão rotativa.
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [originId, setOriginId] = useState<string | null>(null);
+  const [destination, setDestination] = useState<{
+    x: number;
+    y: number;
+    target?: DeployTarget;
+  } | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [hovered, setHovered] = useState<Card | null>(null);
   const [showReport, setShowReport] = useState(false);
@@ -185,22 +199,123 @@ export function LiveBattle({
     }
   }, [result, onComplete]);
 
-  const pendingCard = pendingCardId ? cardById(pendingCardId) : null;
-  const pendingIsGlobal =
-    pendingCard?.kind === "apoio" && GLOBAL_SUPPORT.includes(pendingCard.ability);
+  // Bases de lançamento aliadas (base principal + bases avançadas operacionais), na
+  // ordem de conquista. A numeração 1-6 do HUD e das teclas segue esta lista.
+  const bases = useMemo(() => launchBases(state, "blue"), [state]);
+  const baseLabels = useMemo(() => {
+    const labels: Record<string, number> = {};
+    bases.forEach((b, i) => (labels[b.id] = i + 1));
+    return labels;
+  }, [bases]);
 
-  const handlePlace = useCallback(
-    (x: number, y: number, target?: DeployTarget) => {
-      if (!pendingCardId) return;
-      const res = battle.playCard(pendingCardId, x, y, target);
-      if (!res.ok) {
-        toast.error(res.error ?? "Ação recusada.");
+  const totalUnits = useMemo(() => Object.values(counts).reduce((a, n) => a + n, 0), [counts]);
+  const spent = useMemo(
+    () => Object.entries(counts).reduce((a, [id, n]) => a + battle.costOf(id) * n, 0),
+    [counts, battle],
+  );
+  const operationActive = totalUnits > 0;
+
+  const clearSelection = useCallback(() => {
+    setCounts({});
+    setDestination(null);
+  }, []);
+
+  const addCard = useCallback(
+    (cardId: string) => {
+      const cost = battle.costOf(cardId);
+      if (state.blue.command - spent < cost) {
+        toast.error("Sov insuficiente para mais uma unidade.");
         return;
       }
-      setPendingCardId(null);
+      // Primeira carta da operação: a origem padrão é a base principal (nº 1).
+      setOriginId((o) => o ?? bases[0]?.id ?? null);
+      setCounts((cur) => ({ ...cur, [cardId]: (cur[cardId] ?? 0) + 1 }));
     },
-    [battle, pendingCardId],
+    [battle, state.blue.command, spent, bases],
   );
+
+  const removeCard = useCallback((cardId: string) => {
+    setCounts((cur) => {
+      const n = cur[cardId] ?? 0;
+      if (n <= 1) {
+        const { [cardId]: _drop, ...rest } = cur;
+        return rest;
+      }
+      return { ...cur, [cardId]: n - 1 };
+    });
+  }, []);
+
+  const handleSend = useCallback(() => {
+    if (totalUnits === 0) return;
+    if (!destination) {
+      toast.error("Toque no mapa para definir o destino da tropa.");
+      return;
+    }
+    const requests = Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .map(([cardId, count]) => ({ cardId, count }));
+    const res = battle.sendBatch(
+      requests,
+      destination.x,
+      destination.y,
+      originId ?? undefined,
+      destination.target,
+    );
+    if (!res.ok) {
+      toast.error(res.error ?? "Envio recusado.");
+      return;
+    }
+    toast.success(`${res.deployed} unidade(s) em marcha.`);
+    clearSelection();
+  }, [battle, counts, destination, originId, totalUnits, clearSelection]);
+
+  // Atalhos de teclado (PC): Z X C V B N M somam uma unidade da carta; 1-6 escolhem a
+  // base de origem; ENTER envia; ESC limpa. Os handlers vivem em refs para o listener
+  // não ser re-registrado a cada frame da batalha.
+  const keyRef = useRef({ addCard, handleSend, clearSelection, bases, deck: state.blue.deck.hand });
+  keyRef.current = { addCard, handleSend, clearSelection, bases, deck: state.blue.deck.hand };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const {
+        addCard: add,
+        handleSend: send,
+        clearSelection: clear,
+        bases: bs,
+        deck,
+      } = keyRef.current;
+      const k = e.key.toUpperCase();
+      const cardIdx = (CARD_KEYS as readonly string[]).indexOf(k);
+      if (cardIdx >= 0) {
+        const h = deck[cardIdx];
+        if (h) {
+          e.preventDefault();
+          add(h.cardId);
+        }
+        return;
+      }
+      if (k >= "1" && k <= "6") {
+        const b = bs[Number(k) - 1];
+        if (b) {
+          e.preventDefault();
+          setOriginId(b.id);
+        }
+        return;
+      }
+      if (k === "ENTER") {
+        e.preventDefault();
+        send();
+        return;
+      }
+      if (k === "ESCAPE") {
+        clear();
+        setSelectedUnitId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleMoveSelected = useCallback(
     (unitId: string, x: number, y: number, target?: DeployTarget) => {
@@ -209,8 +324,8 @@ export function LiveBattle({
     [battle],
   );
 
-  const handlePick = useCallback((cardId: string) => {
-    setPendingCardId((cur) => (cur === cardId ? null : cardId));
+  const handlePickDestination = useCallback((x: number, y: number, target?: DeployTarget) => {
+    setDestination({ x, y, ...(target ? { target } : {}) });
   }, []);
 
   const handleOrder = useCallback(
@@ -276,13 +391,15 @@ export function LiveBattle({
       <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))]">
         <BattleArena
           state={state}
-          pendingCardId={pendingCardId}
-          pendingIsGlobal={Boolean(pendingIsGlobal)}
           selectedUnitId={selectedUnitId}
-          onPlace={handlePlace}
           onSelectUnit={setSelectedUnitId}
           onMoveSelected={handleMoveSelected}
-          onSelectPoint={() => undefined}
+          operationActive={operationActive}
+          baseLabels={baseLabels}
+          originId={originId}
+          destination={destination}
+          onPickOrigin={setOriginId}
+          onPickDestination={handlePickDestination}
         />
 
         {/* Aviso de comandante LLM, sobreposto no topo do campo */}
@@ -353,11 +470,26 @@ export function LiveBattle({
 
           <HandBar
             side={state.blue}
-            pendingCardId={pendingCardId}
+            counts={counts}
+            spent={spent}
             costOf={battle.costOf}
             cardMeta={battle.cardMeta}
-            onPick={handlePick}
+            onAdd={addCard}
+            onRemove={removeCard}
             onHover={setHovered}
+          />
+
+          <OperationBar
+            bases={bases}
+            baseLabels={baseLabels}
+            originId={originId}
+            onPickOrigin={setOriginId}
+            totalUnits={totalUnits}
+            spent={spent}
+            command={state.blue.command}
+            hasDestination={Boolean(destination)}
+            onSend={handleSend}
+            onClear={clearSelection}
           />
 
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">

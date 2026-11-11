@@ -8,9 +8,12 @@ import {
   computeResult,
   createBattle,
   deploy,
+  deployBatch,
   effectiveCost,
   pushCommanderLog,
   stepBattle,
+  type DeployBatchResult,
+  type DeployRequest,
 } from "@/game/battle/engine";
 import { requestCommanderDecision } from "@/game/battle/commanderFn";
 import type {
@@ -42,6 +45,14 @@ export interface UseBattle {
     y: number,
     target?: DeployTarget,
   ) => { ok: boolean; error?: string };
+  /** Envia uma OPERAÇÃO: lote de cartas a partir de uma base escolhida (mobile/teclado). */
+  sendBatch: (
+    requests: DeployRequest[],
+    x: number,
+    y: number,
+    originStructureId?: string,
+    target?: DeployTarget,
+  ) => DeployBatchResult;
   issueOrder: (order: Order, unitId?: string, objectiveId?: string) => void;
   /** Manda a unidade selecionada para um ponto do mapa, ou para cima de um alvo. */
   moveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => boolean;
@@ -164,6 +175,35 @@ export function useBattle(
     return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
   }, []);
 
+  const sendBatch = useCallback(
+    (
+      requests: DeployRequest[],
+      x: number,
+      y: number,
+      originStructureId?: string,
+      target?: DeployTarget,
+    ) => {
+      const st = stateRef.current;
+      const order: {
+        x: number;
+        y: number;
+        holdAtArrival: boolean;
+        originStructureId?: string;
+        targetUnitId?: string;
+        targetStructureId?: string;
+        targetTerritoryId?: string;
+      } = { x, y, holdAtArrival: false };
+      if (originStructureId) order.originStructureId = originStructureId;
+      if (target?.unitId) order.targetUnitId = target.unitId;
+      if (target?.structureId) order.targetStructureId = target.structureId;
+      if (target?.territoryId) order.targetTerritoryId = target.territoryId;
+      const res = deployBatch(st, "blue", requests, order);
+      forceRender();
+      return res;
+    },
+    [],
+  );
+
   const moveSelected = useCallback(
     (unitId: string, x: number, y: number, target?: DeployTarget) => {
       const action: {
@@ -229,6 +269,7 @@ export function useBattle(
     setPaused,
     setSpeed,
     playCard,
+    sendBatch,
     issueOrder,
     moveSelected,
     restart,

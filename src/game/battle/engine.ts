@@ -12,7 +12,7 @@
 //
 // O motor não conhece React nem rede — é testável de forma isolada.
 
-import { cardById, cardLevelMultiplier, doctrines, militaryById, startingDeck } from "./catalog";
+import { cardById, cardLevelMultiplier, doctrines, militaryById } from "./catalog";
 import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
@@ -39,7 +39,10 @@ import type {
   VisualEffect,
 } from "./types";
 
-const HAND_SIZE = 4;
+// Cartas EQUIPADAS do lado: fixas a partida inteira, na ordem do baralho escolhido
+// pelo jogador. Nada de mão/fila/rotação — a carta usada continua disponível (o freio
+// é o Sov finito), então as teclas/posições nunca mudam de dono no meio do combate.
+const MAX_DECK = 8;
 const MOBILIZACAO_SECONDS = 15;
 const PRESSAO_SECONDS = 60;
 const CAPTURE_RATE = 9; // progresso por segundo (0-100) de uma unidade padrão
@@ -61,6 +64,15 @@ const SOV_BASE_INTERVAL = 45; // ...a cada 45 segundos
 const SOV_KILL_BONUS = 0.5; // abate rende o custo da carta do alvo + 50%
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
 const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
+// ATRITO DE CAMPANHA: a vida da unidade cai continuamente em campo. Marchar cansa mais
+// que manter posição, e operar longe de uma base aliada (linha de suprimento longa)
+// acelera o desgaste. O campo é grande: mandar tropa sem plano custa caro, porque a
+// coluna chega debilitada — e quem fica espalhado definha. É a mecânica que faz a
+// EXPANSÃO territorial valer: uma base avançada encurta a linha de suprimento.
+const WEAR_IDLE = 0.001; // fração da vida máxima perdida por segundo parado
+const WEAR_MOVE = 0.006; // fração extra por segundo em deslocamento
+const WEAR_FIELD = 40; // distância (mundo) em que o fator de suprimento dobra o atrito
+const SUPPLY_RADIUS = 14; // dentro deste raio de uma base aliada não há desgaste
 // Teto de EXÉRCITO por lado: quantas unidades vivas um lado pode manter em campo ao
 // mesmo tempo. Sem isto a IA (e o jogador) empilha soldados sem limite — o campo vira
 // uma multidão ilegível. Uma carta só é aceita se a unidade couber no teto.
@@ -179,12 +191,12 @@ export function cloneArena(arena: Arena): Arena {
 }
 
 function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState {
-  const deck =
-    cfg.deck.length >= HAND_SIZE
-      ? cfg.deck.slice(0, 8)
-      : [...cfg.deck, ...startingDeck].slice(0, 8);
-  const hand = deck.slice(0, HAND_SIZE).map((cardId) => ({ cardId, ready: true }));
-  const queue = deck.slice(HAND_SIZE);
+  // Baralho EQUIPADO (1 a 8 cartas), na ordem exata escolhida pelo jogador. Sem mão
+  // rotativa: todas as cartas ficam disponíveis e a posição é fixa. O freio contra o
+  // spam é a RECARGA por carta (Sov finito é o limite de longo prazo).
+  const deck = cfg.deck.slice(0, MAX_DECK);
+  const hand = deck.map((cardId) => ({ cardId, ready: true, readyIn: 0 }));
+  const queue: string[] = [];
   // A dificuldade é uma alavanca ECONÔMICA além da velocidade de decisão: o lado
   // controlado pela IA (vermelho) começa com mais/menos Sov conforme o degrau. Com o
   // recurso finito, isto muda o quão rápido o inimigo pode escalar a ofensiva.
@@ -321,6 +333,32 @@ export interface DeployOrder {
    * de congelar no lugar (era o "as cartas não vão pra luta").
    */
   holdAtArrival?: boolean | undefined;
+  /** Origem explícita escolhida pelo jogador (id da estrutura). Sem isto, o motor
+   *  escolhe sozinho a base aliada mais próxima do destino (comportamento da IA). */
+  originStructureId?: string | undefined;
+}
+
+// Uma base do jogador é um ponto de lançamento válido: a base principal ou uma base
+// avançada OPERACIONAL (em obra não conta). A escolha é explícita — o jogador define
+// de onde a tropa sai, em vez do motor adivinhar pela proximidade do destino.
+export function launchBaseById(state: BattleState, side: Side, id: string): Structure | null {
+  const s = state.structures.find((x) => x.id === id && x.alive && x.side === side);
+  if (!s) return null;
+  if (s.kind === "base-principal") return s;
+  if (s.kind === "base-avancada" && !s.underConstruction) return s;
+  return null;
+}
+
+/** Bases de lançamento do lado, na ordem de conquista (base principal primeiro, depois
+ *  as bases avançadas por ordem de criação). A numeração do HUD segue esta lista. */
+export function launchBases(state: BattleState, side: Side): Structure[] {
+  const base = state.structures.find(
+    (s) => s.alive && s.side === side && s.kind === "base-principal",
+  );
+  const adv = state.structures.filter(
+    (s) => s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction,
+  );
+  return base ? [base, ...adv] : adv;
 }
 
 export function deploy(
@@ -331,12 +369,26 @@ export function deploy(
   y: number,
   order: DeployOrder = { x, y },
 ): boolean {
+  return deployOne(state, side, cardId, x, y, order);
+}
+
+// Lançamento de UMA unidade. `order.originStructureId`, quando presente, fixa a base de
+// origem (escolha do jogador); caso contrário a origem é automática (IA/ordens antigas).
+function deployOne(
+  state: BattleState,
+  side: Side,
+  cardId: string,
+  x: number,
+  y: number,
+  order: DeployOrder,
+): boolean {
   const cfg = side === "blue" ? state.blue : state.red;
   const card = cardById(cardId);
   const cost = effectiveCost(card, cfg.doctrine);
   if (cfg.command < cost) return false;
   const inHand = cfg.deck.hand.find((h) => h.cardId === cardId);
   if (!inHand) return false;
+  if (!inHand.ready) return false;
 
   if (card.kind === "militar") {
     // Teto de exército: recusa a carta se a unidade não couber em campo.
@@ -349,9 +401,7 @@ export function deploy(
       state,
       side,
       "deploy",
-      force > 1
-        ? `${cfg.countryName} envia ${card.name} (${force} unidades) para o setor ${Math.round(order.x)},${Math.round(order.y)}.`
-        : `${cfg.countryName} envia ${card.name} para o setor ${Math.round(order.x)},${Math.round(order.y)}.`,
+      `${cfg.countryName} envia ${card.name} para o setor ${Math.round(order.x)},${Math.round(order.y)}.`,
     );
     return true;
   }
@@ -360,6 +410,83 @@ export function deploy(
   advanceDeck(cfg, cardId);
   pushLog(state, side, "apoio", `${cfg.countryName} emprega ${card.name}.`);
   return true;
+}
+
+export interface DeployRequest {
+  cardId: string;
+  count: number;
+}
+
+export interface DeployBatchResult {
+  ok: boolean;
+  deployed: number;
+  spent: number;
+  error?: string;
+}
+
+/**
+ * Envio de uma OPERAÇÃO: várias unidades de várias cartas, todas partindo da MESMA
+ * base escolhida pelo jogador, com destino clicado no mapa. Cada unidade continua
+ * individual no motor — o lote é só uma facilidade de comando. A cobrança é atômica:
+ * o lote inteiro é recusado se faltar Sov, se estourar o teto de exército ou se a
+ * origem não for uma base válida do lado. Assim nunca há cobrança parcial nem unidades
+ * "fantasma".
+ */
+export function deployBatch(
+  state: BattleState,
+  side: Side,
+  requests: DeployRequest[],
+  order: DeployOrder,
+): DeployBatchResult {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const total = requests.reduce((a, r) => a + Math.max(0, Math.floor(r.count)), 0);
+  if (total === 0)
+    return { ok: false, deployed: 0, spent: 0, error: "Nenhuma unidade selecionada." };
+
+  const origin = order.originStructureId
+    ? launchBaseById(state, side, order.originStructureId)
+    : null;
+  if (order.originStructureId && !origin)
+    return { ok: false, deployed: 0, spent: 0, error: "Origem inválida." };
+
+  // Custo total: preço efetivo de cada carta × quantidade.
+  let cost = 0;
+  for (const r of requests) {
+    const n = Math.max(0, Math.floor(r.count));
+    if (n === 0) continue;
+    const card = cardById(r.cardId);
+    if (!cfg.deck.hand.some((h) => h.cardId === r.cardId))
+      return { ok: false, deployed: 0, spent: 0, error: `${card.name} não está equipada.` };
+    cost += effectiveCost(card, cfg.doctrine) * n;
+  }
+  if (cfg.command < cost)
+    return { ok: false, deployed: 0, spent: 0, error: "Sov insuficiente para o envio." };
+
+  const military = requests.reduce(
+    (a, r) =>
+      a + Math.max(0, Math.floor(r.count)) * (cardById(r.cardId).kind === "militar" ? 1 : 0),
+    0,
+  );
+  if (aliveUnits(state, side) + military > MAX_UNITS_PER_SIDE)
+    return { ok: false, deployed: 0, spent: 0, error: "Teto de exército atingido." };
+
+  const point = { x: order.x, y: order.y };
+  let deployed = 0;
+  let spent = 0;
+  for (const r of requests) {
+    const n = Math.max(0, Math.floor(r.count));
+    for (let i = 0; i < n; i++) {
+      const ok = deployOne(state, side, r.cardId, point.x, point.y, {
+        ...order,
+        x: point.x,
+        y: point.y,
+      });
+      if (!ok) break;
+      deployed += 1;
+      spent += effectiveCost(cardById(r.cardId), cfg.doctrine);
+    }
+  }
+  return { ok: deployed > 0, deployed, spent };
 }
 
 // Ponto de origem da força: a base principal do lado (ou a base avançada aliada
@@ -393,7 +520,12 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
   // UM ACIONAMENTO = UMA UNIDADE. Nada de pelotão/formação: a carta representa uma
   // entidade militar individual (um soldado, um tanque, uma peça). O estoque da carta
   // é o recurso (Sov) e cada clique lança exatamente uma unidade.
-  const origin = originFor(state, side, order.x, order.y);
+  // Origem: a base escolhida pelo jogador quando informada; senão, a aliada mais
+  // próxima do destino (comportamento automático da IA).
+  const chosen = order.originStructureId
+    ? launchBaseById(state, side, order.originStructureId)
+    : null;
+  const origin = chosen ?? originFor(state, side, order.x, order.y);
   const u = spawnUnit(
     state,
     side,
@@ -425,16 +557,32 @@ export const GLOBAL_SUPPORT: SupportCard["ability"][] = [
   "bombardeiro",
 ];
 
-// Rotação determinística do baralho: a carta usada vai para o fim da fila e a
-// próxima da fila entra na mão, sempre na mesma posição. Nada é sorteado.
+// Baralho FIXO: a carta usada NÃO sai da mão nem é substituída. Nada de fila/rotação
+// — o jogador escolheu o baralho e a posição de cada carta é estável na partida toda.
+// O que muda ao usar é a RECARGA: a carta entra em espera por alguns segundos.
 function advanceDeck(cfg: SideState, cardId: string): void {
-  const idx = cfg.deck.hand.findIndex((h) => h.cardId === cardId);
-  if (idx < 0) return;
-  const next = cfg.deck.queue.shift();
-  if (next) cfg.deck.hand[idx] = { cardId: next, ready: true };
-  else cfg.deck.hand.splice(idx, 1);
-  cfg.deck.queue.push(cardId);
-  cfg.deck.cycle += 1;
+  const h = cfg.deck.hand.find((x) => x.cardId === cardId);
+  if (!h) return;
+  const card = cardById(cardId);
+  h.readyIn = rechargeFor(card);
+  h.ready = false;
+}
+
+// Recarga da carta: cresce com o custo, então a carta barata volta rápido e a cara
+// (tanque, artilharia pesada) exige planejamento. É o freio de CURTO prazo contra o
+// spam; o Sov finito é o freio de longo prazo da partida.
+export function rechargeFor(card: Card): number {
+  return 3 + card.cost * 0.22;
+}
+
+// Avança a recarga das cartas de um lado e devolve as que ficaram prontas.
+function tickRecharge(cfg: SideState, dt: number): void {
+  for (const h of cfg.deck.hand) {
+    if ((h.readyIn ?? 0) > 0) {
+      h.readyIn = Math.max(0, (h.readyIn ?? 0) - dt);
+      if (h.readyIn === 0) h.ready = true;
+    }
+  }
 }
 
 // Variação natural de velocidade por unidade (±7%): duas tropas da mesma carta não
@@ -509,6 +657,7 @@ function spawnUnit(
     heal: cardId === "apo-posto" ? Math.round(HEAL_PER_PULSE * levelMult) : 0,
     level,
     hitFlash: 0,
+    wear: 0,
   };
 }
 
@@ -875,13 +1024,18 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   state.phase = state.t < MOBILIZACAO_SECONDS ? "mobilizacao" : pressao ? "pressao" : "combate";
 
   updateEconomy(state, dt);
+  tickRecharge(state.blue, dt);
+  tickRecharge(state.red, dt);
 
   updateZones(state, dt);
   for (const side of ["blue", "red"] as Side[]) {
     const cfg = side === "blue" ? state.blue : state.red;
     for (const u of cfg.units) {
       if (!u.alive) continue;
+      const px = u.x;
+      const py = u.y;
       updateUnit(state, u, dt);
+      applyWear(state, u, Math.hypot(u.x - px, u.y - py), dt);
     }
   }
   applySeparation(state);
@@ -1017,6 +1171,60 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
       if (u.holdAtGoal) u.order = "manter";
     }
   }
+}
+
+// ATRITO DE CAMPANHA: aplica o desgaste por tempo de campo e por deslocamento. A
+// unidade perde uma fração da vida máxima; a distância até a base aliada mais próxima
+// (linha de suprimento) multiplica o atrito. Longe de qualquer base, a coluna definha
+// rápido — é isso que dá valor estratégico às bases avançadas.
+function applyWear(state: BattleState, u: BattleUnit, moved: number, dt: number): void {
+  const base = nearestFriendlyBase(state, u.side, u.x, u.y);
+  const supplyDist = base ? dist(u.x, u.y, base.x, base.y) : WEAR_FIELD * 2;
+  if (supplyDist <= SUPPLY_RADIUS) {
+    // Na zona de suprimento de uma base aliada a tropa se reabastece: sem desgaste.
+    u.wear = 0;
+    return;
+  }
+  const supplyFactor = 1 + Math.min(2, (supplyDist - SUPPLY_RADIUS) / WEAR_FIELD);
+  const moveFactor = moved > 0.02 ? WEAR_MOVE : WEAR_IDLE;
+  const loss = u.maxHp * moveFactor * supplyFactor * dt;
+  u.wear += loss;
+  if (loss <= 0) return;
+  u.hp -= loss;
+  if (u.hp <= 0 && u.alive) killByAttrition(state, u);
+}
+
+// Base aliada (principal ou avançada operacional) mais próxima — a âncora logística.
+function nearestFriendlyBase(
+  state: BattleState,
+  side: Side,
+  x: number,
+  y: number,
+): Structure | null {
+  let best: Structure | null = null;
+  let bestD = Infinity;
+  for (const s of state.structures) {
+    if (!s.alive || s.side !== side) continue;
+    if (s.kind !== "base-principal" && (s.kind !== "base-avancada" || s.underConstruction)) {
+      continue;
+    }
+    const d = dist(x, y, s.x, s.y);
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
+// Baixa por desgaste: não paga recompensa a ninguém (ninguém "matou"), mas conta como
+// perda do dono — a unidade que definhou sai de campo como qualquer outra.
+function killByAttrition(state: BattleState, u: BattleUnit): void {
+  u.alive = false;
+  addEffect(state, u.domain === "aereo" ? "explosion" : "impact", u.x, u.y, u.radius * 1.4);
+  const cfg = u.side === "blue" ? state.blue : state.red;
+  cfg.losses += 1;
+  pushLog(state, u.side, "baixa", `${cfg.countryName} perde ${u.name} por desgaste.`);
 }
 
 // Remove ordens cujo alvo explícito já foi destruído, para a força voltar ao

@@ -48,7 +48,7 @@ describe("interface da batalha", () => {
     expect(screen.getByText("Registro tático")).toBeInTheDocument();
   });
 
-  it("permite selecionar uma carta da mão", () => {
+  it("seleciona uma carta e prepara a operação (origem automática na base 1)", () => {
     render(
       <ProfileProvider>
         <BattleScreen />
@@ -57,11 +57,13 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
     const card = screen.getByRole("button", { name: /Fuzileiros/ });
     fireEvent.click(card);
-    // ao selecionar, aparece a instrução de posicionamento (ordem) no teatro
-    expect(screen.getByText(/Clique no objetivo/)).toBeInTheDocument();
+    // 1 clique = +1 unidade; a origem já vem na base principal e o próximo passo é
+    // apontar o destino no mapa.
+    expect(screen.getByText(/Toque no mapa: destino/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Enviar tropa/ })).toBeInTheDocument();
   });
 
-  it("desdobra uma unidade ao clicar na zona aliada do teatro", () => {
+  it("envia a tropa: carta → destino no mapa → Enviar tropa", () => {
     // jsdom não calcula layout; o stub do palco (contêiner em perspectiva) dá um
     // retângulo estável para o mapeamento de coordenadas.
     stubStageRect();
@@ -75,12 +77,12 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    // ponto no teatro: a força parte da base e avança até o objetivo
-    // jsdom não tem PointerEvent; um MouseEvent com o tipo "pointerdown" carrega clientX/Y.
+    // destino no teatro: a força parte da base escolhida e avança até lá
     fireEvent(svg, new MouseEvent("pointerdown", { clientX: 100, clientY: 230, bubbles: true }));
+    fireEvent.click(screen.getByRole("button", { name: /Enviar tropa/ }));
 
-    // a instrução de posicionamento some após o desdobramento
-    expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
+    // a operação é limpa após o envio
+    expect(screen.queryByText(/destino da tropa/)).not.toBeInTheDocument();
     // o registro tático confirma o desdobramento (fica no relatório, aberto sob demanda)
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/Brasil envia Fuzileiros/)).toBeInTheDocument();
@@ -120,7 +122,7 @@ describe("interface da batalha", () => {
     return { clientX: s.x, clientY: s.y };
   };
 
-  it("pré-visualiza o posicionamento válido ao mover o ponteiro sobre o território aliado", () => {
+  it("pré-visualiza a rota da operação: base de origem → destino no mapa", () => {
     stubStageRect();
     render(
       <ProfileProvider>
@@ -131,10 +133,10 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
 
     const svg = document.querySelector("svg[viewBox]")!;
-    // x = 10 → dentro da zona de desdobramento azul (oeste)
+    // A origem já é a base principal (nº 1); o clique longe dela define o destino.
     fireEvent(
       svg,
-      new MouseEvent("pointermove", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", { ...worldToClient(40, WORLD_H / 2), bubbles: true }),
     );
 
     const ghost = screen.getByTestId("deploy-ghost");
@@ -142,7 +144,7 @@ describe("interface da batalha", () => {
     expect(ghost.getAttribute("data-valid")).toBe("true");
   });
 
-  it("marca o posicionamento como válido em qualquer ponto do teatro (a força marcha até lá)", () => {
+  it("aceita destino em qualquer ponto do teatro (a força marcha até lá)", () => {
     stubStageRect();
     render(
       <ProfileProvider>
@@ -156,7 +158,7 @@ describe("interface da batalha", () => {
     // x = 90 → território inimigo: o motor aceita a ordem (a força parte da base e avança)
     fireEvent(
       svg,
-      new MouseEvent("pointermove", { ...worldToClient(90, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", { ...worldToClient(90, WORLD_H / 2), bubbles: true }),
     );
 
     expect(screen.getByTestId("deploy-ghost").getAttribute("data-valid")).toBe("true");
@@ -172,12 +174,13 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
     const svg = document.querySelector("svg[viewBox]")!;
+    // envia uma unidade (nasce na base azul, x≈17.3)
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    // desdobra na própria metade; a unidade nasce na base azul (x≈17.3)
     fireEvent(
       svg,
       new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
     );
+    fireEvent.click(screen.getByRole("button", { name: /Enviar tropa/ }));
 
     // toca a ~10px da unidade (tolerância do teatro pequeno): antes o alvo era o
     // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
@@ -187,7 +190,7 @@ describe("interface da batalha", () => {
     );
 
     // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
-    expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
+    expect(screen.getByTestId("selected-unit")).toBeInTheDocument();
     // e o teatro continua visível: a faixa NÃO é um painel sobreposto à arena
     expect(document.querySelector("svg[viewBox]")).toBeInTheDocument();
   });
@@ -202,17 +205,12 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
     const svg = document.querySelector("svg[viewBox]")!;
-    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    fireEvent(svg, new MouseEvent("pointerdown", { clientX: 100, clientY: 230, bubbles: true }));
-    // tira a seleção (a carta não está mais na mão)
-    expect(screen.queryByText("Fuzileiros")).not.toBeInTheDocument();
-
-    // toque no canto oposto do teatro: longe demais de qualquer unidade aliada
+    // toque no canto oposto do teatro, sem operação nem unidade selecionada
     fireEvent(svg, new MouseEvent("pointerdown", { clientX: 950, clientY: 440, bubbles: true }));
-    expect(screen.queryByText("Fuzileiros")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("selected-unit")).not.toBeInTheDocument();
   });
 
-  it("desdobra a força soltando a carta sobre o teatro (arrastar e soltar)", () => {
+  it("teclado: Z soma uma unidade, 1 escolhe a base e ENTER envia a tropa", () => {
     stubStageRect();
     render(
       <ProfileProvider>
@@ -221,14 +219,18 @@ describe("interface da batalha", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
-    const card = screen.getByRole("button", { name: /Fuzileiros/ });
-    fireEvent.dragStart(card, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
-    expect(screen.getByText(/Clique no objetivo/)).toBeInTheDocument();
-
     const svg = document.querySelector("svg[viewBox]")!;
-    fireEvent.drop(svg, { clientX: 100, clientY: 230 });
+    // Z = primeira carta equipada (Fuzileiros); 1 = base principal
+    fireEvent.keyDown(window, { key: "z" });
+    fireEvent.keyDown(window, { key: "1" });
+    expect(screen.getByText(/Toque no mapa: destino/)).toBeInTheDocument();
 
-    expect(screen.queryByText(/Clique no objetivo/)).not.toBeInTheDocument();
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(20, WORLD_H / 2), bubbles: true }),
+    );
+    fireEvent.keyDown(window, { key: "Enter" });
+
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/Brasil envia Fuzileiros/)).toBeInTheDocument();
   });
@@ -243,20 +245,21 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
     const svg = document.querySelector("svg[viewBox]")!;
 
-    // desdobra a força aliada (nasce na base azul, x≈8)
+    // envia a força aliada (nasce na base azul)
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
     fireEvent(
       svg,
       new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
     );
-    // seleciona a unidade recém-desdobrada (nasce na base azul, x≈17.3)
+    fireEvent.click(screen.getByRole("button", { name: /Enviar tropa/ }));
+    // seleciona a unidade recém-enviada (nasce na base azul, x≈17.3)
     fireEvent(
       svg,
       new MouseEvent("pointerdown", { ...worldToClient(17.3, WORLD_H / 2), bubbles: true }),
     );
-    expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
+    expect(screen.getByTestId("selected-unit")).toBeInTheDocument();
 
-    // clique no inimigo (longe da unidade aliada): o motor recebe a ordem de ataque
+    // clique no teatro distante: o motor recebe a ordem de movimento/ataque
     fireEvent(
       svg,
       new MouseEvent("pointerdown", { ...worldToClient(90, WORLD_H / 2), bubbles: true }),
@@ -281,13 +284,15 @@ describe("interface da batalha", () => {
     const { container } = render(
       <BattleArena
         state={state}
-        pendingCardId={null}
-        pendingIsGlobal={false}
         selectedUnitId={null}
-        onPlace={vi.fn()}
         onSelectUnit={vi.fn()}
         onMoveSelected={vi.fn()}
-        onSelectPoint={vi.fn()}
+        operationActive={false}
+        baseLabels={{}}
+        originId={null}
+        destination={null}
+        onPickOrigin={vi.fn()}
+        onPickDestination={vi.fn()}
       />,
     );
     const svg = container.querySelector("svg")!;
@@ -315,13 +320,15 @@ describe("interface da batalha", () => {
     const { container } = render(
       <BattleArena
         state={state}
-        pendingCardId={null}
-        pendingIsGlobal={false}
         selectedUnitId={null}
-        onPlace={vi.fn()}
         onSelectUnit={vi.fn()}
         onMoveSelected={vi.fn()}
-        onSelectPoint={vi.fn()}
+        operationActive={false}
+        baseLabels={{}}
+        originId={null}
+        destination={null}
+        onPickOrigin={vi.fn()}
+        onPickDestination={vi.fn()}
       />,
     );
     const stage = container.querySelector('[data-testid="battle-stage"]') as HTMLElement;

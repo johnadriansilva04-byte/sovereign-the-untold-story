@@ -226,7 +226,7 @@ function sideState(state: BattleState, side: Side) {
 
 function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
   const cfg = sideState(state, side);
-  const hand = cfg.deck.hand.map((h) => h.cardId);
+  const hand = cfg.deck.hand.filter((h) => h.ready).map((h) => h.cardId);
   const read = readBattle(state, side);
   const personality = cfg.commander.personality;
 

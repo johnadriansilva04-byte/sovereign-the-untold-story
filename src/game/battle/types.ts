@@ -338,6 +338,11 @@ export interface BattleUnit {
   // segundos restantes de "levou dano": a barra de vida só aparece nesse instante (ou
   // quando a unidade está selecionada). O campo limpa a poluição visual permanente.
   hitFlash: number;
+  // Desgaste (atrito de campanha): a unidade perde vida continuamente em campo e um
+  // pouco mais enquanto se desloca. O campo é grande; mandar tropa sem plano custa
+  // caro — quem cruza o mapa inteiro chega debilitado, e quem fica parado também
+  // definha. `wear` acumula os segundos de atrito para o motor escalar o dano.
+  wear: number;
 }
 
 export type ProjectileKind = "tracer" | "shell" | "rocket" | "missile";
@@ -397,6 +402,8 @@ export interface EffectZone {
 export interface HandCard {
   cardId: string;
   ready: boolean;
+  /** Segundos até a carta voltar a ficar disponível (recarga pós-uso). */
+  readyIn?: number;
 }
 
 export interface DeckState {

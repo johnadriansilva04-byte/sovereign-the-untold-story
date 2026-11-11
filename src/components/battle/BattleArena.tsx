@@ -7,7 +7,7 @@ import {
 } from "react";
 
 import { cn } from "@/lib/utils";
-import { canDeploy, originFor } from "@/game/battle/engine";
+import { originFor } from "@/game/battle/engine";
 
 import {
   cameraFor,
@@ -37,13 +37,20 @@ import type {
 
 interface Props {
   state: BattleState;
-  pendingCardId: string | null;
-  pendingIsGlobal: boolean;
   selectedUnitId: string | null;
-  onPlace: (x: number, y: number, target?: DeployTarget) => void;
   onSelectUnit: (id: string | null) => void;
   onMoveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => void;
-  onSelectPoint: (pointId: string) => void;
+  /** Há uma operação de envio em curso (cartas selecionadas): o toque escolhe
+   *  a base de origem ou o destino, em vez de selecionar/mover unidades. */
+  operationActive: boolean;
+  /** Número da base de lançamento por id (1..6, ordem de conquista). */
+  baseLabels: Record<string, number>;
+  /** Base de origem já escolhida (destacada no mapa). */
+  originId: string | null;
+  /** Destino escolhido para a operação (linha de ataque). */
+  destination: { x: number; y: number } | null;
+  onPickOrigin: (structureId: string) => void;
+  onPickDestination: (x: number, y: number, target?: DeployTarget) => void;
 }
 
 const ALLY = "var(--ally)";
@@ -213,12 +220,15 @@ function TerrainDetailGlyph({
 
 export function BattleArena({
   state,
-  pendingCardId,
-  pendingIsGlobal,
   selectedUnitId,
-  onPlace,
   onSelectUnit,
   onMoveSelected,
+  operationActive,
+  baseLabels,
+  originId,
+  destination,
+  onPickOrigin,
+  onPickDestination,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -260,13 +270,21 @@ export function BattleArena({
   const handlePointer = (e: ReactPointerEvent<SVGSVGElement>) => {
     const coords = toArenaCoords(e.clientX, e.clientY);
     if (!coords) return;
-    // Com carta na mão, o clique no teatro é uma ORDEM (desdobrar). Se o clique
-    // acertou um inimigo/estrutura/território, a força já marcha para atacá-lo.
-    if (pendingCardId) {
-      onPlace(coords.x, coords.y, pickTarget(coords.x, coords.y));
+    // OPERAÇÃO DE ENVIO em curso: enquanto não há origem, o toque numa base aliada a
+    // define; depois disso todo toque no mapa é o DESTINO da tropa. Trocar de origem é
+    // pelo painel numerado (ou teclas 1-6), não por um toque acidental no mapa.
+    if (operationActive) {
+      if (!originId) {
+        const base = pickLaunchBase(coords.x, coords.y);
+        if (base) {
+          onPickOrigin(base.id);
+          return;
+        }
+      }
+      onPickDestination(coords.x, coords.y, pickTarget(coords.x, coords.y));
       return;
     }
-    // Sem carta: o clique sobre um inimigo manda a unidade SELECIONADA atacá-lo.
+    // Sem operação: o clique sobre um inimigo manda a unidade SELECIONADA atacá-lo.
     const enemyId = pickEnemyUnit(coords.x, coords.y);
     if (selectedUnitId && enemyId) {
       const enemy = units.find((u) => u.id === enemyId);
@@ -286,6 +304,20 @@ export function BattleArena({
       return;
     }
     onSelectUnit(null);
+  };
+
+  // Base de lançamento aliada sob o toque (base principal ou base avançada operacional).
+  const pickLaunchBase = (ax: number, ay: number): Structure | null => {
+    let best: { s: Structure; d: number } | null = null;
+    for (const s of state.structures) {
+      if (!s.alive || s.side !== "blue") continue;
+      const launchable =
+        s.kind === "base-principal" || (s.kind === "base-avancada" && !s.underConstruction);
+      if (!launchable) continue;
+      const d = Math.hypot(ax - s.x, ay - s.y);
+      if (d <= s.radius + 3 && (!best || d < best.d)) best = { s, d };
+    }
+    return best?.s ?? null;
   };
 
   // Unidade aliada mais próxima do ponto, dentro de uma tolerância em pixels.
@@ -348,7 +380,7 @@ export function BattleArena({
   };
 
   const handleMove = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (!pendingCardId) return;
+    if (!operationActive) return;
     const coords = toArenaCoords(e.clientX, e.clientY);
     if (coords) setGhost({ x: coords.x, y: coords.y });
   };
@@ -357,21 +389,16 @@ export function BattleArena({
 
   const units = [...state.blue.units, ...state.red.units];
   const selected = units.find((u) => u.id === selectedUnitId) ?? null;
-  const pendingCard = pendingCardId
-    ? state.blue.deck.hand.find((h) => h.cardId === pendingCardId)
-    : null;
-  void pendingCard;
 
-  // Validade do posicionamento e rota da força — calculadas do MESMO motor que o
-  // desdobramento usa, para o preview nunca mentir. O motor aceita ordem em qualquer
-  // ponto do teatro (a força marcha até lá); a única recusa real é energia insuficiente
-  // ou carta ausente da mão. Cartas globais (área) não têm rota de força.
-  const ghostValid = ghost
-    ? pendingCardId
-      ? canDeploy(state, "blue", pendingCardId, ghost.x, ghost.y)
-      : false
-    : false;
-  const ghostOrigin = ghost && !pendingIsGlobal ? originFor(state, "blue", ghost.x, ghost.y) : null;
+  // Rota da força até o destino da operação — calculada do MESMO motor que o envio
+  // usa, para o preview nunca mentir (a tropa sai da base escolhida).
+  const destPoint = destination ?? (originId ? null : ghost);
+  const ghostOrigin = destPoint
+    ? originId
+      ? (state.structures.find((s) => s.id === originId) ?? null)
+      : originFor(state, "blue", destPoint.x, destPoint.y)
+    : null;
+  const ghostValid = Boolean(originId);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -395,25 +422,11 @@ export function BattleArena({
           preserveAspectRatio="xMidYMid meet"
           className={cn(
             "h-full w-full touch-none select-none",
-            pendingCardId ? "cursor-crosshair" : "cursor-default",
+            operationActive ? "cursor-crosshair" : "cursor-default",
           )}
           onPointerDown={handlePointer}
           onPointerMove={handleMove}
           onPointerLeave={clearGhost}
-          onDragOver={(e) => {
-            if (!pendingCardId) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-            const coords = toArenaCoords(e.clientX, e.clientY);
-            if (coords) setGhost(coords);
-          }}
-          onDrop={(e) => {
-            if (!pendingCardId) return;
-            e.preventDefault();
-            const coords = toArenaCoords(e.clientX, e.clientY);
-            if (coords) onPlace(coords.x, coords.y, pickTarget(coords.x, coords.y));
-            setGhost(null);
-          }}
         >
           <defs>
             <linearGradient id="allyZone" x1="0" y1="0" x2="1" y2="0">
@@ -560,7 +573,7 @@ export function BattleArena({
             {/* Zonas de desdobramento */}
             {(["red", "blue"] as Side[]).map((s) => {
               const z = arena.deployZone[s];
-              const active = pendingCardId && s === "blue";
+              const active = operationActive && s === "blue";
               return (
                 <rect
                   key={s}
@@ -650,16 +663,17 @@ export function BattleArena({
               />
             )}
 
-            {/* Pré-visualização do posicionamento: validação ao vivo + rota da força */}
-            {ghost && (
+            {/* Pré-visualização da OPERAÇÃO: rota da base escolhida até o destino.
+                Só aparece com a base definida — antes disso o toque escolhe a origem. */}
+            {originId && destination && (
               <g pointerEvents="none" data-testid="deploy-ghost" data-valid={ghostValid}>
                 {ghostOrigin && (
                   <>
                     <line
                       x1={ghostOrigin.x}
                       y1={ghostOrigin.y}
-                      x2={ghost.x}
-                      y2={ghost.y}
+                      x2={destination.x}
+                      y2={destination.y}
                       stroke={ALLY}
                       strokeWidth="0.4"
                       strokeDasharray="2 1.5"
@@ -678,8 +692,8 @@ export function BattleArena({
                   </>
                 )}
                 <circle
-                  cx={ghost.x}
-                  cy={ghost.y}
+                  cx={destination.x}
+                  cy={destination.y}
                   r="3.2"
                   fill="none"
                   stroke={ghostValid ? "var(--ally)" : "var(--destructive)"}
@@ -687,8 +701,8 @@ export function BattleArena({
                   strokeDasharray={ghostValid ? undefined : "1.2 1"}
                 />
                 <circle
-                  cx={ghost.x}
-                  cy={ghost.y}
+                  cx={destination.x}
+                  cy={destination.y}
                   r="1"
                   fill={ghostValid ? "var(--ally)" : "var(--destructive)"}
                   opacity={0.9}
@@ -699,11 +713,75 @@ export function BattleArena({
         </svg>
       </div>
 
-      {pendingCardId && (
+      {/* Bases de lançamento numeradas (teclas 1-6): só durante uma operação, para o
+          jogador saber onde tocar ou qual número apertar. A numeração é estável na
+          partida (ordem de conquista). */}
+      {operationActive && (
+        <div className="pointer-events-none absolute inset-0">
+          <svg
+            className="h-full w-full"
+            viewBox={`0 0 ${stageW} ${stageH}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <g transform={`matrix(${cam.a} ${cam.b} ${cam.c} ${cam.d} ${cam.e} ${cam.f})`}>
+              {state.structures
+                .filter(
+                  (s) =>
+                    s.alive &&
+                    s.side === "blue" &&
+                    (s.kind === "base-principal" ||
+                      (s.kind === "base-avancada" && !s.underConstruction)),
+                )
+                .map((s) => {
+                  const n = baseLabels[s.id];
+                  const chosen = s.id === originId;
+                  return (
+                    <g key={s.id}>
+                      <circle
+                        cx={s.x}
+                        cy={s.y}
+                        r={s.radius + (chosen ? 1.4 : 0.8)}
+                        fill="none"
+                        stroke={chosen ? "var(--primary)" : ALLY}
+                        strokeWidth={chosen ? 0.7 : 0.45}
+                        opacity={chosen ? 1 : 0.8}
+                      />
+                      <circle
+                        cx={s.x}
+                        cy={s.y - s.radius - 2}
+                        r="2.1"
+                        fill={chosen ? "var(--primary)" : "oklch(0.14 0.01 120 / 0.9)"}
+                        stroke={chosen ? "var(--primary)" : ALLY}
+                        strokeWidth="0.35"
+                      />
+                      <text
+                        x={s.x}
+                        y={s.y - s.radius - 2}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize="2.6"
+                        fontFamily="var(--font-mono)"
+                        fontWeight="700"
+                        fill={chosen ? "var(--primary-foreground)" : ALLY}
+                        transform={uprightText(portrait, s.x, s.y - s.radius - 2)}
+                      >
+                        {n ?? "?"}
+                      </text>
+                    </g>
+                  );
+                })}
+            </g>
+          </svg>
+        </div>
+      )}
+
+      {operationActive && (
         <div className="pointer-events-none absolute left-2 top-2 border border-primary bg-background/90 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary">
-          {pendingIsGlobal
-            ? "Clique em qualquer ponto do teatro"
-            : "Clique no objetivo: a força parte da base e avança"}
+          {!originId
+            ? "Escolha a base de origem (1-6)"
+            : !destination
+              ? "Toque no mapa: destino da tropa"
+              : "Pronto — envie a tropa"}
         </div>
       )}
     </div>
@@ -1330,7 +1408,7 @@ function UnitGlyph({
       {unit.jammed > 0 && (
         <circle cx={unit.x} cy={y} r={r * 1.2} fill="none" stroke="var(--ai)" strokeWidth="0.25" />
       )}
-      {(selected || unit.hitFlash > 0) && (
+      {(selected || unit.hitFlash > 0 || unit.hp < unit.maxHp * 0.85) && (
         <>
           <rect
             x={unit.x - r}

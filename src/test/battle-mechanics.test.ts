@@ -427,33 +427,31 @@ describe("motor de batalha — armas e projéteis reais", () => {
 });
 
 describe("motor de batalha — cartas, energia e ritmo", () => {
-  // 15. As cartas permanecem em ordem fixa e determinística.
-  it("15. a rotação do baralho é determinística e mantém a mão com 4 cartas", () => {
-    const run = () => {
-      const state = createBattle(testConfig());
-      const order: string[] = [];
-      for (let i = 0; i < 8; i++) {
-        state.blue.command = 100;
-        const cardId = state.blue.deck.hand[0]!.cardId;
-        order.push(cardId);
-        deploy(state, "blue", cardId, 50, 90);
-      }
-      return order;
-    };
-    expect(run()).toEqual(run());
+  // 15. As cartas permanecem FIXAS na mão (baralho equipado, sem rotação).
+  it("15. as cartas equipadas permanecem fixas na mão durante a partida", () => {
     const state = createBattle(testConfig());
-    expect(state.blue.deck.hand).toHaveLength(4);
-    expect(state.blue.deck.queue).toHaveLength(4);
+    const initial = state.blue.deck.hand.map((h) => h.cardId);
+    expect(state.blue.deck.hand).toHaveLength(initial.length);
+    expect(state.blue.deck.queue).toHaveLength(0);
+    for (let i = 0; i < initial.length; i++) {
+      state.blue.command = 1000;
+      const cardId = state.blue.deck.hand[i]!.cardId;
+      expect(cardId).toBe(initial[i]);
+      deploy(state, "blue", cardId, 50, 90);
+      // A carta usada continua exatamente no mesmo slot — nada rotaciona.
+      expect(state.blue.deck.hand[i]!.cardId).toBe(initial[i]);
+    }
+    expect(state.blue.deck.hand.map((h) => h.cardId)).toEqual(initial);
   });
 
-  it("15b. nenhuma carta nova é sorteada: a fila é sempre a mesma do baralho", () => {
+  it("15b. nenhuma carta nova é sorteada: o baralho nunca muda de composição", () => {
     const state = createBattle(testConfig());
-    const initial = [...state.blue.deck.hand.map((h) => h.cardId), ...state.blue.deck.queue];
-    state.blue.command = 100;
+    const initial = state.blue.deck.hand.map((h) => h.cardId);
+    state.blue.command = 1000;
     const first = state.blue.deck.hand[0]!.cardId;
     deploy(state, "blue", first, 50, 90);
-    const after = [...state.blue.deck.hand.map((h) => h.cardId), ...state.blue.deck.queue];
-    expect(new Set(after)).toEqual(new Set(initial));
+    const after = state.blue.deck.hand.map((h) => h.cardId);
+    expect(after).toEqual(initial);
   });
 
   // 16. Sov é consumido ao desdobrar e NÃO regenera passivamente (recurso finito).
@@ -726,5 +724,58 @@ describe("motor de batalha — cartas com efeito real", () => {
       stepBattle(state, 0.1);
     }
     expect(tower.hp).toBeLessThan(hpBefore);
+  });
+});
+
+describe("motor de batalha — desgaste (atrito de campanha)", () => {
+  it("na zona de suprimento da base própria a unidade não desgasta", () => {
+    const state = createBattle(testConfig({ duration: 300 }));
+    const home = baseOf(state, "blue");
+    const u = place(state, "blue", "inf-fuzileiros", home.x + 2, home.y + 2);
+    const hp = u.hp;
+    for (let i = 0; i < 60; i++) {
+      u.hp = hp; // isola o desgaste do combate
+      stepBattle(state, 0.1);
+    }
+    expect(u.hp).toBe(hp);
+  });
+
+  it("longe de bases aliadas a unidade perde vida com o tempo", () => {
+    const state = createBattle(testConfig({ duration: 300 }));
+    const enemyBase = baseOf(state, "red");
+    const u = place(state, "blue", "inf-fuzileiros", enemyBase.x - 6, enemyBase.y);
+    const hp = u.hp;
+    for (let i = 0; i < 100; i++) {
+      u.hp = hp; // mede só o atrito, anulando dano de combate
+      stepBattle(state, 0.1);
+    }
+    expect(u.hp).toBeLessThan(hp);
+  });
+
+  it("uma base avançada operacional abastece a tropa por perto (corta o desgaste)", () => {
+    const state = createBattle(testConfig({ duration: 300 }));
+    const enemyBase = baseOf(state, "red");
+    const x = enemyBase.x - 6;
+    const y = enemyBase.y;
+    // Cria uma base avançada azul no local para servir de âncora logística.
+    state.structures.push({
+      ...state.structures[0]!,
+      id: "adv-test",
+      kind: "base-avancada",
+      side: "blue",
+      x,
+      y,
+      underConstruction: false,
+      alive: true,
+      hp: 500,
+      maxHp: 500,
+    } as Structure);
+    const u = place(state, "blue", "inf-fuzileiros", x, y);
+    const hp = u.hp;
+    for (let i = 0; i < 60; i++) {
+      u.hp = hp;
+      stepBattle(state, 0.1);
+    }
+    expect(u.hp).toBe(hp);
   });
 });
