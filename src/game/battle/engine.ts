@@ -67,11 +67,16 @@ const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da or
 // uma multidão ilegível. Uma carta só é aceita se o esquadrão couber inteiro no teto.
 export const MAX_UNITS_PER_SIDE = 34;
 // Separação entre unidades: quantas vezes a soma dos raios elas mantêm de distância
-// e quanto do excesso é corrigido por passo. O fator é calibrado para a PEGADA VISUAL
-// (o desenho usa `MODEL_SCALE` × raio): dois corpos nunca ficam um por dentro do outro,
-// mas ainda há um respiro — não é um "empurra-empurra" exagerado.
-const SEPARATION_FACTOR = 1.25;
-const SEPARATION_PUSH = 0.55;
+// e quanto do excesso é corrigido por passo. O empurrão é TOTAL (1.0): com o
+// relaxamento em passadas, cada par resolve a sobreposição no mesmo tick em vez de
+// ficar "vazando" por vários quadros. O fator fica perto de 1 para não abrir a
+// formação além do alcance de tiro (fuzil = 6) e travar o combate.
+const SEPARATION_FACTOR = 1.05;
+const SEPARATION_PUSH = 1.0;
+// Lado da célula da grade espacial usada na separação. Precisa ser ≥ a MAIOR distância
+// mínima possível entre dois corpos (raio máx. 3,6 × 2 × fator ≈ 8), senão um par
+// separado por duas células ainda poderia se sobrepor sem ser detectado.
+const SEPARATION_CELL = 10;
 
 export const other = (s: Side): Side => (s === "blue" ? "red" : "blue");
 
@@ -1533,47 +1538,85 @@ function applySeparation(state: BattleState): void {
     const cfg = side === "blue" ? state.blue : state.red;
     for (const u of cfg.units) if (u.alive) list.push(u);
   }
+  if (list.length < 2) return;
   const immovable = (u: BattleUnit) => u.order === "manter" && !u.engaged;
-  // Três passadas por tick: uma única correção deixa pares muito sobrepostos ainda
-  // colados por vários quadros; iterar resolve o empilhamento visível de imediato.
-  for (let pass = 0; pass < 3; pass++) {
-    for (let i = 0; i < list.length; i++) {
-      const a = list[i]!;
-      for (let j = i + 1; j < list.length; j++) {
-        const b = list[j]!;
-        // Só separa unidades do mesmo domínio (aéreas sobrevoam as terrestres).
-        if (a.domain !== b.domain) continue;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const d = Math.hypot(dx, dy);
-        const minDist = (a.radius + b.radius) * SEPARATION_FACTOR;
-        if (d >= minDist) continue;
-        // Direção de empurrão: quando as duas estão no MESMO ponto (d≈0), sorteia um
-        // ângulo determinístico do par para elas se abrirem em vez de ficar coladas.
-        let ux: number;
-        let uy: number;
-        if (d < 1e-4) {
-          const ang = ((i * 31 + j * 17) % 360) * (Math.PI / 180);
-          ux = Math.cos(ang);
-          uy = Math.sin(ang);
-        } else {
-          ux = dx / d;
-          uy = dy / d;
+  // Passadas de relaxamento: uma única correção deixa pares muito sobrepostos ainda
+  // colados por vários quadros. A grade espacial abaixo mantém cada passada quase
+  // linear, então iterar é barato mesmo com o exército cheio.
+  const passes = 8;
+  const cell = SEPARATION_CELL;
+  for (let pass = 0; pass < passes; pass++) {
+    // Grade espacial: só pares na mesma célula (ou vizinhas) podem estar perto o
+    // bastante para colidir. Sem isso, a separação é O(n²) e trava a simulação.
+    const grid = new Map<number, BattleUnit[]>();
+    for (const u of list) {
+      const key = gridKey(Math.floor(u.x / cell), Math.floor(u.y / cell));
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(u);
+      else grid.set(key, [u]);
+    }
+    for (const [key, bucket] of grid) {
+      const gx = (key >> 16) - GRID_OFFSET;
+      const gy = (key & 0xffff) - GRID_OFFSET;
+      // Mesma célula + metade das vizinhas: cada par é processado exatamente uma vez.
+      const neighbors: Array<[number, number]> = [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [1, -1],
+        [0, 1],
+      ];
+      for (const [ox, oy] of neighbors) {
+        const otherBucket = grid.get(gridKey(gx + ox, gy + oy));
+        if (!otherBucket) continue;
+        const same = ox === 0 && oy === 0;
+        for (let i = 0; i < bucket.length; i++) {
+          const a = bucket[i]!;
+          for (let j = same ? i + 1 : 0; j < otherBucket.length; j++) {
+            separatePair(a, otherBucket[j]!, immovable);
+          }
         }
-        const overlap = (minDist - d) * SEPARATION_PUSH;
-        // Unidade "manter" não é arrastada, mas também não pode ficar empilhada: se as
-        // duas são imóveis, cada uma cede metade (nunca `continue`, senão ficam coladas).
-        const aFixed = immovable(a);
-        const bFixed = immovable(b);
-        const aShare = aFixed && !bFixed ? 0 : bFixed && !aFixed ? overlap : overlap / 2;
-        const bShare = bFixed && !aFixed ? 0 : aFixed && !bFixed ? overlap : overlap / 2;
-        a.x = clamp(a.x - ux * aShare, WORLD_X_MIN, WORLD_X_MAX);
-        a.y = clamp(a.y - uy * aShare, WORLD_Y_MIN, WORLD_Y_MAX);
-        b.x = clamp(b.x + ux * bShare, WORLD_X_MIN, WORLD_X_MAX);
-        b.y = clamp(b.y + uy * bShare, WORLD_Y_MIN, WORLD_Y_MAX);
       }
     }
   }
+}
+
+// Chave da grade espacial. As coordenadas do mundo são pequenas e positivas, então
+// deslocar por um offset fixo evita chaves negativas.
+const GRID_OFFSET = 4096;
+function gridKey(cx: number, cy: number): number {
+  return ((cx + GRID_OFFSET) << 16) | ((cy + GRID_OFFSET) & 0xffff);
+}
+
+// Empurra um par de unidades sobrepostas para lados opostos.
+function separatePair(a: BattleUnit, b: BattleUnit, immovable: (u: BattleUnit) => boolean): void {
+  if (a.domain !== b.domain) return;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const d = Math.hypot(dx, dy);
+  const minDist = (a.radius + b.radius) * SEPARATION_FACTOR;
+  if (d >= minDist) return;
+  // Direção de empurrão: quando as duas estão no MESMO ponto (d≈0), usa um ângulo
+  // determinístico derivado das posições para elas se abrirem em vez de ficar coladas.
+  let ux: number;
+  let uy: number;
+  if (d < 1e-4) {
+    const ang = (Math.abs(Math.floor(a.x * 7 + a.y * 13)) % 360) * (Math.PI / 180);
+    ux = Math.cos(ang);
+    uy = Math.sin(ang);
+  } else {
+    ux = dx / d;
+    uy = dy / d;
+  }
+  const overlap = (minDist - d) * SEPARATION_PUSH;
+  const aFixed = immovable(a);
+  const bFixed = immovable(b);
+  const aShare = aFixed && !bFixed ? 0 : bFixed && !aFixed ? overlap : overlap / 2;
+  const bShare = bFixed && !aFixed ? 0 : aFixed && !bFixed ? overlap : overlap / 2;
+  a.x = clamp(a.x - ux * aShare, WORLD_X_MIN, WORLD_X_MAX);
+  a.y = clamp(a.y - uy * aShare, WORLD_Y_MIN, WORLD_Y_MAX);
+  b.x = clamp(b.x + ux * bShare, WORLD_X_MIN, WORLD_X_MAX);
+  b.y = clamp(b.y + uy * bShare, WORLD_Y_MIN, WORLD_Y_MAX);
 }
 
 function updateStructures(state: BattleState, dt: number): void {

@@ -8,6 +8,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { canDeploy, originFor } from "@/game/battle/engine";
+
 import {
   cameraFor,
   cameraScale,
@@ -1279,7 +1280,7 @@ function UnitGlyph({
           fill="oklch(0 0 0 / 0.35)"
         />
       )}
-      <circle cx={unit.x} cy={y} r={r + 0.8} fill={color} opacity={0.16} />
+      <circle cx={unit.x} cy={y} r={unit.radius * 0.7} fill={color} opacity={0.22} />
       {unit.level > 1 && (
         <circle
           cx={unit.x}
