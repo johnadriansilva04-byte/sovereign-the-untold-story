@@ -233,15 +233,12 @@ interface OperationBarProps {
   totalUnits: number;
   spent: number;
   command: number;
-  hasDestination: boolean;
-  onSend: () => void;
   onClear: () => void;
 }
 
 // Barra de comando da OPERAÇÃO (mobile e PC): mostra a base de origem (toque ou tecla
-// 1-6), o total de unidades selecionadas, o Sov comprometido e o botão ENVIAR TROPA.
-// É a peça que substitui o antigo "clique na carta e clique no mapa": agora o jogador
-// monta o lote e confirma de uma vez.
+// 1-6), o total de unidades selecionadas e o Sov comprometido. O ENVIO é automático:
+// basta tocar no mapa, que a força marcha na hora — sem botão de confirmação.
 export function OperationBar({
   bases,
   baseLabels,
@@ -250,12 +247,9 @@ export function OperationBar({
   totalUnits,
   spent,
   command,
-  hasDestination,
-  onSend,
   onClear,
 }: OperationBarProps) {
   const active = totalUnits > 0;
-  const canSend = active && hasDestination;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="label-mono shrink-0">Origem</span>
@@ -283,32 +277,21 @@ export function OperationBar({
       </div>
 
       <span className="ml-auto flex items-center gap-2">
-        <span
-          className={cn(
-            "border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
-            active ? "border-primary text-primary" : "border-border text-muted-foreground",
-          )}
-        >
-          {totalUnits} un · {spent}/{Math.round(command)} sov
-        </span>
+        {active ? (
+          <span className="animate-pulse border border-primary bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-primary">
+            Toque no mapa para enviar · {totalUnits} un · {spent}/{Math.round(command)} sov
+          </span>
+        ) : (
+          <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Escolha uma carta para montar a força
+          </span>
+        )}
         <button
           disabled={!active}
           onClick={onClear}
           className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:text-foreground disabled:opacity-40"
         >
           Limpar
-        </button>
-        <button
-          disabled={!canSend}
-          onClick={onSend}
-          className={cn(
-            "border px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.15em] transition",
-            canSend
-              ? "border-primary bg-primary text-primary-foreground hover:brightness-110"
-              : "cursor-not-allowed border-border text-muted-foreground opacity-50",
-          )}
-        >
-          Enviar tropa
         </button>
       </span>
     </div>

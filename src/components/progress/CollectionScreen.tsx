@@ -5,10 +5,13 @@ import { GameShell } from "@/components/game/shell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   allCards,
+  cardArmorFraction,
   cardById,
   cardLevelMultiplier,
+  cardSpeedMultiplier,
   copiesToLevel,
   MAX_CARD_LEVEL,
+  unitsPerDeploy,
 } from "@/game/battle/catalog";
 import {
   accessories,
@@ -30,8 +33,8 @@ const CATEGORY_TONE: Record<string, string> = {
   apoio: "border-fiction text-fiction",
 };
 
-export function CollectionScreen() {
-  const { profile, saveDeck, setActiveDeck, levelUpCard } = useProfile();
+export function CollectionScreen({ onExit }: { onExit?: (() => void) | undefined } = {}) {
+  const { profile, saveDeck, setActiveDeck } = useProfile();
   const [tab, setTab] = useState<Tab>("cartas");
   const [detailCard, setDetailCard] = useState<string | null>(null);
   const [detailAcc, setDetailAcc] = useState<string | null>(null);
@@ -92,6 +95,14 @@ export function CollectionScreen() {
             ))}
           </div>
           <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+            {onExit && (
+              <button
+                onClick={onExit}
+                className="border border-border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary"
+              >
+                ‹ Voltar à guerra
+              </button>
+            )}
             <span>
               CARTAS <b className="text-foreground">{ownedCards.length}</b>/{allCards.length}
             </span>
@@ -114,7 +125,6 @@ export function CollectionScreen() {
                 profile={profile}
                 tierOf={tierOf}
                 onOpen={setDetailCard}
-                onLevelUp={levelUpCard}
               />
               <CardColumn
                 title={`Em desbloqueio (${lockedCards.length})`}
@@ -122,7 +132,6 @@ export function CollectionScreen() {
                 profile={profile}
                 tierOf={tierOf}
                 onOpen={setDetailCard}
-                onLevelUp={levelUpCard}
                 locked
               />
               <div className="hud-panel hud-corners flex min-h-0 flex-col p-3">
@@ -257,13 +266,7 @@ export function CollectionScreen() {
         </div>
       </div>
 
-      {detailCard && (
-        <CardDetailDialog
-          cardId={detailCard}
-          onClose={() => setDetailCard(null)}
-          onLevelUp={levelUpCard}
-        />
-      )}
+      {detailCard && <CardDetailDialog cardId={detailCard} onClose={() => setDetailCard(null)} />}
       {detailAcc && <AccessoryDialog accId={detailAcc} onClose={() => setDetailAcc(null)} />}
     </GameShell>
   );
@@ -277,7 +280,6 @@ function CardColumn({
   profile,
   tierOf,
   onOpen,
-  onLevelUp,
   locked,
 }: {
   title: string;
@@ -285,7 +287,6 @@ function CardColumn({
   profile: Profile;
   tierOf: Map<string, string>;
   onOpen: (id: string) => void;
-  onLevelUp: (id: string) => boolean;
   locked?: boolean;
 }) {
   return (
@@ -301,8 +302,8 @@ function CardColumn({
           const qty = profile.inventory.cards[c.id] ?? 0;
           const level = profile.cardLevels[c.id] ?? 1;
           const need = copiesToLevel(level);
-          const canLevel = qty >= need && level < MAX_CARD_LEVEL;
           const unlocked = isCardUnlocked(profile, c.id);
+          const maxed = level >= MAX_CARD_LEVEL;
           return (
             <div
               key={c.id}
@@ -332,20 +333,21 @@ function CardColumn({
                   {!unlocked && !locked ? ` · ${tierOf.get(c.id) ?? "tecnologia"}` : ""}
                 </p>
               </button>
-              {!locked && (
-                <button
-                  disabled={!canLevel}
-                  onClick={() => onLevelUp(c.id)}
-                  className={cn(
-                    "mt-1 w-full border px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider transition",
-                    canLevel
-                      ? "border-primary text-primary hover:bg-accent"
-                      : "border-border text-muted-foreground/60",
-                  )}
-                >
-                  {level >= MAX_CARD_LEVEL ? "máx" : `evoluir · ${need} cópias`}
-                </button>
-              )}
+              {/* Progressão automática: ganhar cópias sobe o nível sozinho. A barra mostra
+                  quanto falta para o próximo nível (não há mais botão de evoluir). */}
+              <div className="mt-1 h-1 w-full overflow-hidden bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: maxed ? "100%" : `${Math.min(100, (qty / Math.max(1, need)) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-0.5 font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
+                {maxed
+                  ? "nível máximo"
+                  : `${need - qty > 0 ? need - qty : 0} cópias p/ nv ${level + 1}`}
+              </p>
             </div>
           );
         })}
@@ -363,15 +365,7 @@ function PanelList({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function CardDetailDialog({
-  cardId,
-  onClose,
-  onLevelUp,
-}: {
-  cardId: string;
-  onClose: () => void;
-  onLevelUp: (id: string) => boolean;
-}) {
+function CardDetailDialog({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const { profile } = useProfile();
   const card = cardById(cardId);
   if (!card) return null;
@@ -404,7 +398,7 @@ function CardDetailDialog({
             <Info label="Possuídas" value={`×${qty}`} />
             <Info label="Multiplicador" value={`×${mult.toFixed(2)}`} />
             <Info
-              label="Evoluir"
+              label="Próximo nível"
               value={level >= MAX_CARD_LEVEL ? "nível máximo" : `${need} cópias`}
             />
             {military && (
@@ -413,10 +407,18 @@ function CardDetailDialog({
                 <Info label="Dano" value={`${Math.round(military.dmg * mult)}`} />
                 <Info label="Alcance" value={`${military.range}`} />
                 <Info label="Cadência" value={`${military.cooldown.toFixed(1)}s`} />
-                <Info label="Velocidade" value={`${military.speed}`} />
+                <Info
+                  label="Velocidade"
+                  value={`${(military.speed * cardSpeedMultiplier(level)).toFixed(1)}`}
+                />
+                <Info
+                  label="Resistência"
+                  value={`${Math.round(cardArmorFraction(level) * 100)}%`}
+                />
                 <Info label="Alvos" value={military.targets} />
                 <Info label="Domínio" value={military.domain} />
                 <Info label="Modelo" value={military.model} />
+                <Info label="Unidades/envio" value={`${unitsPerDeploy(level)}`} />
               </>
             )}
             {support && (
@@ -445,17 +447,15 @@ function CardDetailDialog({
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3 border-t border-border pt-3">
-          <button
-            disabled={qty < need || level >= MAX_CARD_LEVEL}
-            onClick={() => onLevelUp(cardId)}
-            className="bg-primary px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-primary-foreground transition hover:brightness-110 disabled:opacity-40"
-          >
-            {level >= MAX_CARD_LEVEL ? "Nível máximo" : `Evoluir (${need} cópias)`}
-          </button>
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            {level >= MAX_CARD_LEVEL
+              ? "Nível máximo alcançado"
+              : `Progressão automática · faltam ${Math.max(0, need - qty)} cópias para o nível ${level + 1}`}
+          </p>
           <button
             onClick={onClose}
-            className="border border-border px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+            className="ml-auto border border-border px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
           >
             Fechar
           </button>

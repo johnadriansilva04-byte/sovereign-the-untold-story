@@ -40,6 +40,7 @@ import {
   resetProfile,
   syncUnlocks,
   type BattleRecord,
+  type LevelUpInfo,
   type ProfileState,
   type SavedDeck,
 } from "./profile";
@@ -79,7 +80,7 @@ export interface ProfileContextValue {
     result: BattleResult;
     difficulty: Difficulty;
     rewards?: Reward;
-  }) => Reward;
+  }) => { reward: Reward; levelUps: LevelUpInfo[] };
   /** Registra um resultado fora da campanha (treino/PvP). */
   recordBattle: (rec: Omit<BattleRecord, "id" | "createdAt">) => void;
   setNation: (nation: NationState) => void;
@@ -151,7 +152,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     ({ chapterId, result, difficulty, rewards }) => {
       const current = profileRef.current;
       const now = new Date().toISOString();
-      const { profile: applied, reward } = applyChapterResult(current, {
+      const {
+        profile: applied,
+        reward,
+        levelUps,
+      } = applyChapterResult(current, {
         chapterId,
         result,
         difficulty,
@@ -177,7 +182,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         territorialScore: Math.round(result.territorialScore.blue),
         rewards: (result.outcome === "vitoria" ? reward : {}) as Record<string, unknown>,
       });
-      return reward;
+      return { reward, levelUps };
     },
     [persist],
   );

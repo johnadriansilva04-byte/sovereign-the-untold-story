@@ -772,18 +772,50 @@ export const isUnlocked = (card: Card, techs: string[]): boolean =>
 // Nível de carta — escalonamento de vida/dano/cura
 // ---------------------------------------------------------------------------
 
-export const CARD_MAX_LEVEL = 15;
+export const CARD_MAX_LEVEL = 50;
 export const MAX_CARD_LEVEL = CARD_MAX_LEVEL;
 
-/** Multiplicador de atributos evolutivos: 1 + 0,05 × (nível − 1). */
+// Cada nível melhora TUDO um pouco: vida, dano, velocidade e resistência. A curva é
+// geométrica (~2%/nível) para que 50 níveis signifiquem um exército visivelmente mais
+// forte, sem virar um salto absurdo de uma vez. O nível 50 é o teto "veterano".
+const LEVEL_GROWTH = 0.02;
+
+/** Multiplicador geral de vida/dano/cura: ~1 + 2% por nível. */
 export function cardLevelMultiplier(level: number): number {
   const lvl = Math.max(1, Math.min(CARD_MAX_LEVEL, Math.round(level)));
-  return 1 + 0.05 * (lvl - 1);
+  return 1 + LEVEL_GROWTH * (lvl - 1);
+}
+
+/** Velocidade: cresce mais devagar que a vida/dano (marchar 2× mais rápido seria bizarro). */
+export function cardSpeedMultiplier(level: number): number {
+  const lvl = Math.max(1, Math.min(CARD_MAX_LEVEL, Math.round(level)));
+  return 1 + LEVEL_GROWTH * 0.5 * (lvl - 1);
+}
+
+/**
+ * Resistência: fração do dano recebido que a unidade ignora, por nível. Sobe até ~30%
+ * no nível 50 — um veterano aguenta mais porrada. É APLICADA no motor (damageUnit),
+ * não só exibida.
+ */
+export function cardArmorFraction(level: number): number {
+  const lvl = Math.max(1, Math.min(CARD_MAX_LEVEL, Math.round(level)));
+  return Math.min(0.3, LEVEL_GROWTH * 0.3 * (lvl - 1));
 }
 
 // Teto rígido de unidades por esquadrão. Mesmo que uma carta defina um valor maior,
 // o motor nunca passa deste limite — protege o desempenho e o equilíbrio.
 export const SQUAD_HARD_CAP = 20;
+
+/**
+ * Quantas unidades UMA carta militar lança, conforme o nível. É o marco de evolução:
+ * a carta comum lança 1 unidade; ao chegar ao nível máximo (50), lança 2. Vale para
+ * TODAS as cartas militares (um pelotão de elite no topo da progressão). O motor usa
+ * esta função como fonte única — nenhum outro lugar decide "quantas unidades".
+ */
+export function unitsPerDeploy(level: number): number {
+  const lvl = Math.max(1, Math.min(CARD_MAX_LEVEL, Math.round(level)));
+  return lvl >= CARD_MAX_LEVEL ? 2 : 1;
+}
 
 /**
  * Tamanho da força (esquadrão) que uma carta militar gera em um dado nível.
@@ -810,11 +842,29 @@ export function squadPowerScale(count: number): number {
   return 1 / Math.pow(count, 0.75);
 }
 
-/** Cópias necessárias para ir do nível n ao n+1 (índice 0 = 1→2). */
-export const LEVEL_UP_COPIES = [2, 4, 6, 10, 15, 20, 30, 40, 55, 70, 90, 110, 140, 175] as const;
+/** Cópias necessárias para ir do nível n ao n+1. Curva crescente até o nível 50. */
+export const LEVEL_UP_COPIES = (() => {
+  const table: number[] = [];
+  for (let lvl = 1; lvl < CARD_MAX_LEVEL; lvl++) {
+    // crescimento suave e determinístico: ~1 + lvl/2 cópias por degrau
+    table.push(Math.max(1, Math.round(1 + lvl * 0.6)));
+  }
+  return table;
+})();
 
 export function copiesToLevel(level: number): number {
   return LEVEL_UP_COPIES[Math.max(0, Math.min(LEVEL_UP_COPIES.length - 1, level - 1))] ?? 0;
+}
+
+/** Nível alcançado a partir de um total de cópias, do nível 1 ao teto. */
+export function levelFromCopies(copies: number): number {
+  let level = 1;
+  let remaining = Math.max(0, Math.floor(copies));
+  while (level < CARD_MAX_LEVEL && remaining >= copiesToLevel(level)) {
+    remaining -= copiesToLevel(level);
+    level += 1;
+  }
+  return level;
 }
 
 // ---------------------------------------------------------------------------

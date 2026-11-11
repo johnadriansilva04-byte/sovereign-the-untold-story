@@ -10,6 +10,8 @@ import { chapterOutro } from "@/game/progress/campaign";
 import type { Reward } from "@/game/progress/catalog";
 import { accessoryById, techById } from "@/game/progress/catalog";
 import { allCards } from "@/game/battle/catalog";
+import { LevelUpPanel } from "@/components/campaign/LevelUpPanel";
+import type { LevelUpInfo } from "@/game/progress/profile";
 import { EvidenceBadge } from "@/components/game/shell";
 
 // Nome de carta tolerante a id desconhecido (recompensas vêm de dados que podem evoluir).
@@ -60,6 +62,7 @@ export function CampaignComic({
   terrain,
   result,
   reward,
+  levelUps,
   nextTitle,
   onNext,
   onMap,
@@ -69,6 +72,7 @@ export function CampaignComic({
   terrain: TerrainKind;
   result: BattleResult;
   reward: Reward;
+  levelUps?: LevelUpInfo[] | undefined;
   nextTitle: string | null;
   onNext: () => void;
   onMap: () => void;
@@ -123,6 +127,11 @@ export function CampaignComic({
 
         <Panel className="col-span-2">
           <Caption>{story}</Caption>
+          {levelUps && levelUps.length > 0 && (
+            <div className="mt-2">
+              <LevelUpPanel levelUps={levelUps} />
+            </div>
+          )}
           {loot.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
               {loot.map((l) => (

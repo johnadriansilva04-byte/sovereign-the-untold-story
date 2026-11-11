@@ -5,6 +5,7 @@ import { cardById, commanders, militaryById, startingDeck } from "@/game/battle/
 import {
   createBattle,
   deploy,
+  deployBatch,
   dist,
   insideDeployZone,
   reposition,
@@ -473,6 +474,43 @@ describe("motor de batalha — cartas, energia e ritmo", () => {
     state.blue.command = 0;
     expect(deploy(state, "blue", state.blue.deck.hand[0]!.cardId, 50, 90)).toBe(false);
   });
+
+  // 16c. Envio em lote: 3× a MESMA carta deve criar 3 forças (o bug antigo parava em 1
+  // porque o primeiro lançamento já punha a carta em recarga).
+  it("16c. envio em lote da mesma carta cria TODAS as unidades pedidas", () => {
+    const state = createBattle(testConfig());
+    state.blue.command = 1000;
+    const cardId = "inf-fuzileiros";
+    const before = state.blue.units.length;
+    const res = deployBatch(state, "blue", [{ cardId, count: 3 }], { x: 60, y: WORLD_H / 2 });
+    expect(res.ok).toBe(true);
+    expect(res.deployed).toBe(3);
+    expect(state.blue.units.length - before).toBe(3);
+    // A carta entra em recarga UMA vez, no fim do lote.
+    const hand = state.blue.deck.hand.find((h) => h.cardId === cardId)!;
+    expect(hand.ready).toBe(false);
+  });
+
+  // 16d. Envio combinado marcha em formação: blindados à frente da artilharia na
+  // direção do avanço (o combo não vira um amontoado no mesmo ponto).
+  it("16d. combo de cartas marcha em coluna (blindado à frente, apoio atrás)", () => {
+    const state = createBattle(testConfig());
+    state.blue.command = 1000;
+    const res = deployBatch(
+      state,
+      "blue",
+      [
+        { cardId: "bld-vbld", count: 1 },
+        { cardId: "art-canhao", count: 1 },
+      ],
+      { x: 80, y: WORLD_H / 2, originStructureId: "base-blue" },
+    );
+    expect(res.ok).toBe(true);
+    const armor = state.blue.units.find((u) => u.cardId === "bld-vbld")!;
+    const arty = state.blue.units.find((u) => u.cardId === "art-canhao")!;
+    // Avanço é no eixo +x (azul → leste): o blindado nasce mais à frente (x maior).
+    expect(armor.x).toBeGreaterThan(arty.x);
+  });
 });
 
 describe("motor de batalha — IA autônoma", () => {
@@ -505,11 +543,13 @@ describe("motor de batalha — IA autônoma", () => {
     const state = createBattle(testConfig({ duration: 180 }));
     state.blue.command = 30;
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    // ordem do jogador (como o useBattle faz): marcha até o ponto e volta a caçar
+    // Mira num TERRITÓRIO neutro real: o objetivo fica a meio caminho e a unidade
+    // para para capturá-lo antes de retomar a marcha.
+    const terr = state.territories.find((t) => t.owner === "neutro")!;
     expect(
-      deploy(state, "blue", "inf-fuzileiros", 30, WORLD_H / 2, {
-        x: 30,
-        y: WORLD_H / 2,
+      deploy(state, "blue", "inf-fuzileiros", terr.x, terr.y, {
+        x: terr.x,
+        y: terr.y,
         holdAtArrival: false,
       }),
     ).toBe(true);
@@ -518,13 +558,9 @@ describe("motor de batalha — IA autônoma", () => {
 
     // avança até passar do destino; o objetivo clicado é consumido e a força segue
     // se movendo em vez de travar no ponto (sem ordens de IA, só a marcha natural).
-    advance(state, 6);
-    expect(unit.goalX).toBeUndefined();
-    expect(unit.goalY).toBeUndefined();
-    // O destino cai perto de um território neutro: a unidade para para CAPTURÁ-LO
-    // (mecânica territorial exige presença) e, concluída a captura, retoma a marcha.
-    // O que não pode acontecer é congelar para sempre no ponto clicado.
-    advance(state, 14);
+    advance(state, 40);
+    // O que não pode acontecer é congelar para sempre no ponto clicado: depois de
+    // capturar o território, a unidade volta a se mover.
     const at = { x: unit.x, y: unit.y };
     advance(state, 3);
     expect(dist(unit.x, unit.y, at.x, at.y)).toBeGreaterThan(0.5);

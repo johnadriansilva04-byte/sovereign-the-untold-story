@@ -12,7 +12,15 @@
 //
 // O motor não conhece React nem rede — é testável de forma isolada.
 
-import { cardById, cardLevelMultiplier, doctrines, militaryById } from "./catalog";
+import {
+  cardArmorFraction,
+  cardById,
+  cardLevelMultiplier,
+  cardSpeedMultiplier,
+  doctrines,
+  militaryById,
+  unitsPerDeploy,
+} from "./catalog";
 import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
@@ -336,6 +344,14 @@ export interface DeployOrder {
   /** Origem explícita escolhida pelo jogador (id da estrutura). Sem isto, o motor
    *  escolhe sozinho a base aliada mais próxima do destino (comportamento da IA). */
   originStructureId?: string | undefined;
+  /** Lançamento em lote: não inicia a recarga da carta a cada unidade — a recarga é
+   *  aplicada uma única vez, no fim do lote (ver `deployRepeat`). */
+  skipRecharge?: boolean | undefined;
+  /** Grupo compartilhado por todas as unidades do lote (permite reposicioná-las juntas). */
+  groupId?: string | undefined;
+  /** Deslocamento de FORMAÇÃO aplicado ao nascimento e ao destino (coluna de marcha). */
+  offsetX?: number | undefined;
+  offsetY?: number | undefined;
 }
 
 // Uma base do jogador é um ponto de lançamento válido: a base principal ou uma base
@@ -391,12 +407,14 @@ function deployOne(
   if (!inHand.ready) return false;
 
   if (card.kind === "militar") {
-    // Teto de exército: recusa a carta se a unidade não couber em campo.
-    if (aliveUnits(state, side) + 1 > MAX_UNITS_PER_SIDE) return false;
+    // Teto de exército: recusa a carta se as unidades não couberem em campo (uma carta
+    // de nível máximo lança 2, então o teto é checado pelo tamanho real da força).
+    const forceCount = unitsPerDeploy(cfg.cardLevels?.[cardId] ?? 1);
+    if (aliveUnits(state, side) + forceCount > MAX_UNITS_PER_SIDE) return false;
     const force = deployForce(state, side, card.id, order);
     if (force === 0) return false;
     cfg.command -= cost;
-    advanceDeck(cfg, cardId);
+    if (!order.skipRecharge) advanceDeck(cfg, cardId);
     pushLog(
       state,
       side,
@@ -407,9 +425,37 @@ function deployOne(
   }
   if (!applySupport(state, side, card as SupportCard, x, y)) return false;
   cfg.command -= cost;
-  advanceDeck(cfg, cardId);
+  if (!order.skipRecharge) advanceDeck(cfg, cardId);
   pushLog(state, side, "apoio", `${cfg.countryName} emprega ${card.name}.`);
   return true;
+}
+
+/**
+ * Lança `count` unidades da MESMA carta. A recarga é aplicada UMA única vez, no fim:
+ * `deployOne` marca a carta como recarregando logo no primeiro lançamento, então um
+ * loop ingênuo pararia em 1 unidade (era o bug do "cliquei 3× e veio 1 soldado").
+ * Devolve quantas foram efetivamente criadas.
+ */
+function deployRepeat(
+  state: BattleState,
+  side: Side,
+  cardId: string,
+  x: number,
+  y: number,
+  count: number,
+  order: DeployOrder,
+): number {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const card = cardById(cardId);
+  const cost = effectiveCost(card, cfg.doctrine);
+  let created = 0;
+  for (let i = 0; i < count; i++) {
+    if (cfg.command < cost) break;
+    if (!deployOne(state, side, cardId, x, y, { ...order, skipRecharge: true })) break;
+    created += 1;
+  }
+  if (created > 0) advanceDeck(cfg, cardId);
+  return created;
 }
 
 export interface DeployRequest {
@@ -431,6 +477,10 @@ export interface DeployBatchResult {
  * o lote inteiro é recusado se faltar Sov, se estourar o teto de exército ou se a
  * origem não for uma base válida do lado. Assim nunca há cobrança parcial nem unidades
  * "fantasma".
+ *
+ * As forças marcham em COLUNA: cada carta recebe um deslocamento perpendicular à
+ * linha de avanço (blindados à frente no centro, infantaria nos flancos, apoio na
+ * retaguarda), então o combo chega junto e escalonado, não amontoado no mesmo pixel.
  */
 export function deployBatch(
   state: BattleState,
@@ -470,23 +520,89 @@ export function deployBatch(
   if (aliveUnits(state, side) + military > MAX_UNITS_PER_SIDE)
     return { ok: false, deployed: 0, spent: 0, error: "Teto de exército atingido." };
 
-  const point = { x: order.x, y: order.y };
+  const groupId = `g${state.nextId}`;
+  // Formação em coluna só faz sentido com uma força COMPOSTA (2+ cartas): aí os
+  // blindados vão à frente e a artilharia/apoio atrás. Uma carta sozinha vai reta ao
+  // destino, sem deslocamento — nada de "o soldado nasce torto".
+  const distinct = new Set(requests.filter((r) => r.count > 0).map((r) => r.cardId));
+  const formed = distinct.size > 1;
   let deployed = 0;
   let spent = 0;
   for (const r of requests) {
     const n = Math.max(0, Math.floor(r.count));
-    for (let i = 0; i < n; i++) {
-      const ok = deployOne(state, side, r.cardId, point.x, point.y, {
-        ...order,
-        x: point.x,
-        y: point.y,
-      });
-      if (!ok) break;
-      deployed += 1;
-      spent += effectiveCost(cardById(r.cardId), cfg.doctrine);
-    }
+    const offset = formed ? formationOffset(state, side, r.cardId, order, groupId) : { x: 0, y: 0 };
+    const before = deployed;
+    const made = deployRepeat(state, side, r.cardId, order.x, order.y, n, {
+      ...order,
+      groupId,
+      offsetX: offset.x,
+      offsetY: offset.y,
+    });
+    deployed += made;
+    spent += (deployed - before) * effectiveCost(cardById(r.cardId), cfg.doctrine);
   }
   return { ok: deployed > 0, deployed, spent };
+}
+
+/**
+ * Deslocamento de formação por carta: distribui as forças do lote pela LARGURA do
+ * front (perpendicular à linha base→destino) e escalona em PROFUNDIDADE conforme a
+ * doutrina de marcha — blindados à frente, infantaria no meio, artilharia/apoio na
+ * retaguarda. Assim o combo marcha como uma coluna de batalha escalonada, com quem
+ * atira de longe protegido atrás de quem aguenta o tranco. Determinístico.
+ */
+function formationOffset(
+  state: BattleState,
+  side: Side,
+  cardId: string,
+  order: DeployOrder,
+  groupId: string,
+): { x: number; y: number } {
+  const card = cardById(cardId);
+  // Eixo de avanço = da origem (base) ao destino; perpendicular = largura do front.
+  const origin = order.originStructureId
+    ? launchBaseById(state, side, order.originStructureId)
+    : null;
+  const from = origin ?? originFor(state, side, order.x, order.y);
+  let ax = order.x - from.x;
+  let ay = order.y - from.y;
+  const len = Math.hypot(ax, ay) || 1;
+  ax /= len;
+  ay /= len;
+  const px = -ay; // perpendicular
+  const py = ax;
+  // Fila da categoria no lote (0-based): define a posição na largura do front.
+  const laneByCategory: Record<string, number> = {
+    blindado: 0,
+    infantaria: 1,
+    artilharia: 2,
+    reconhecimento: 3,
+    defesa: 4,
+    apoio: 5,
+  };
+  const lane = laneByCategory[card.category] ?? 3;
+  const width = (lane - 2) * 6.5; // −13..+13 unidades pela largura do front
+  // Profundidade por categoria: positivo = mais à frente (perto do inimigo).
+  const depthByCategory: Record<string, number> = {
+    blindado: 7,
+    reconhecimento: 5,
+    infantaria: 2,
+    defesa: 0,
+    artilharia: -4,
+    apoio: -7,
+  };
+  const base = depthByCategory[card.category] ?? 0;
+  // Cartas repetidas no mesmo lote empilham um pouco mais atrás.
+  const rank = rankInGroup(state, groupId);
+  const depth = base - rank * 2.5;
+  return { x: px * width + ax * depth, y: py * width + ay * depth };
+}
+
+/** Quantas cartas já entraram neste grupo (posição de profundidade na coluna). */
+function rankInGroup(state: BattleState, groupId: string): number {
+  const all = [...state.blue.units, ...state.red.units].filter((u) => u.groupId === groupId);
+  const seen = new Set(all.map((u) => u.cardId));
+  return seen.size;
 }
 
 // Ponto de origem da força: a base principal do lado (ou a base avançada aliada
@@ -517,33 +633,40 @@ export function originFor(
 // número de unidades efetivamente criadas (0 = carta sem efeito).
 function deployForce(state: BattleState, side: Side, cardId: string, order: DeployOrder): number {
   const cfg = side === "blue" ? state.blue : state.red;
-  // UM ACIONAMENTO = UMA UNIDADE. Nada de pelotão/formação: a carta representa uma
-  // entidade militar individual (um soldado, um tanque, uma peça). O estoque da carta
-  // é o recurso (Sov) e cada clique lança exatamente uma unidade.
-  // Origem: a base escolhida pelo jogador quando informada; senão, a aliada mais
-  // próxima do destino (comportamento automático da IA).
+  // UMA carta lança `unitsPerDeploy(nível)` unidades: 1 na carta comum, 2 no nível
+  // máximo (50). É o marco de evolução — o pelotão de elite. Todas as unidades nascem
+  // na origem (base escolhida ou a aliada mais próxima do destino) e marcham juntas.
+  const level = cfg.cardLevels?.[cardId] ?? 1;
+  const count = unitsPerDeploy(level);
   const chosen = order.originStructureId
     ? launchBaseById(state, side, order.originStructureId)
     : null;
   const origin = chosen ?? originFor(state, side, order.x, order.y);
-  const u = spawnUnit(
-    state,
-    side,
-    cardId,
-    clamp(origin.x, WORLD_X_MIN, WORLD_X_MAX),
-    clamp(origin.y, WORLD_Y_MIN, WORLD_Y_MAX),
-  );
-  u.goalX = clamp(order.x, WORLD_X_MIN, WORLD_X_MAX);
-  u.goalY = clamp(order.y, WORLD_Y_MIN, WORLD_Y_MAX);
-  // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
-  // holdAtArrival=false e a unidade volta a caçar o inimigo em vez de congelar.
-  u.holdAtGoal = order.holdAtArrival ?? true;
-  if (order.targetUnitId) u.targetId = order.targetUnitId;
-  if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
-  if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
-  u.order = "avancar";
-  cfg.units.push(u);
-  return 1;
+  const ox = clamp(origin.x + (order.offsetX ?? 0), WORLD_X_MIN, WORLD_X_MAX);
+  const oy = clamp(origin.y + (order.offsetY ?? 0), WORLD_Y_MIN, WORLD_Y_MAX);
+  // Destino deslocado pela MESMA formação: a coluna inteira mantém o escalonamento ao
+  // chegar, em vez de convergir num único ponto.
+  const gx = clamp(order.x + (order.offsetX ?? 0), WORLD_X_MIN, WORLD_X_MAX);
+  const gy = clamp(order.y + (order.offsetY ?? 0), WORLD_Y_MIN, WORLD_Y_MAX);
+  const groupId = order.groupId ?? `g${state.nextId}`;
+  for (let i = 0; i < count; i++) {
+    // Leve espaçamento perpendicular para as unidades do par não nascerem sobrepostas.
+    const off = count > 1 ? (i - (count - 1) / 2) * 2.2 : 0;
+    const u = spawnUnit(state, side, cardId, clamp(ox + off, WORLD_X_MIN, WORLD_X_MAX), oy, {
+      groupId,
+    });
+    u.goalX = clamp(gx + off, WORLD_X_MIN, WORLD_X_MAX);
+    u.goalY = gy;
+    // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
+    // holdAtArrival=false e a unidade volta a caçar o inimigo em vez de congelar.
+    u.holdAtGoal = order.holdAtArrival ?? true;
+    if (order.targetUnitId) u.targetId = order.targetUnitId;
+    if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
+    if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
+    u.order = "avancar";
+    cfg.units.push(u);
+  }
+  return count;
 }
 
 // Habilidades de área podem ser lançadas sobre qualquer ponto do teatro.
@@ -619,7 +742,8 @@ function spawnUnit(
     levelMult;
   const speedMult =
     (mod?.speedMultiplier[card.category as UnitCategory] ?? 1) *
-    (1 + (sideMods?.speed?.[card.category] ?? 0));
+    (1 + (sideMods?.speed?.[card.category] ?? 0)) *
+    cardSpeedMultiplier(level);
   const maxHp = Math.max(1, Math.round(card.hp * hpMult));
   cfg.deployed += 1;
   return {
@@ -656,6 +780,7 @@ function spawnUnit(
     seen: { blue: false, red: false },
     heal: cardId === "apo-posto" ? Math.round(HEAL_PER_PULSE * levelMult) : 0,
     level,
+    armor: cardArmorFraction(level),
     hitFlash: 0,
     wear: 0,
   };
@@ -1848,7 +1973,9 @@ function damageUnit(
   const ob = obstacleAt(state.config.arena, target.x, target.y);
   const fort = coverBonusAt(state, target);
   const cover = target.domain === "aereo" ? 0 : Math.min(0.6, (ob?.cover ?? 0) + fort);
-  let final = dmg * (1 - cover);
+  // Resistência de veterano: a unidade de nível alto ignora parte do dano. Combinada
+  // com a cobertura, o dano final nunca fica negativo.
+  let final = dmg * (1 - cover) * (1 - Math.min(0.6, target.armor));
   if (
     from &&
     from.category === "infantaria" &&
@@ -2239,17 +2366,38 @@ function checkVictory(state: BattleState, dt: number): void {
   // (tratado em damageStructure). Objetivos alternativos só valem quando a MISSÃO os
   // define explicitamente — nunca por controle parcial, primeiro ponto ou metade do campo.
 
+  // Objetivo "militar": neutralizar a capacidade de combate do adversário. Exige
+  // EVIDÊNCIA de colapso real, não uma razão de baixas acumuladas — perder 70% de
+  // tudo que já entrou em campo é o custo normal de uma ofensiva e não pode encerrar
+  // a partida em 40 s. Vence quem tiver destruído a maior parte do exército adversário
+  // E mantiver a própria força em campo, com o outro lado sem base de renda ativa.
   const th = militaryThreshold ?? 0;
-  const blueInitial = initialCount(state, "blue");
-  const redInitial = initialCount(state, "red");
   if (th > 0) {
-    if (redInitial > 0 && state.red.losses / redInitial >= th)
+    const blueInitial = initialCount(state, "blue");
+    const redInitial = initialCount(state, "red");
+    const blueAlive = aliveUnits(state, "blue");
+    const redAlive = aliveUnits(state, "red");
+    const redIncome = hasActiveBase(state, "red");
+    const blueIncome = hasActiveBase(state, "blue");
+    const redNeutralized =
+      redInitial > 0 &&
+      state.red.losses / redInitial >= th &&
+      redAlive === 0 &&
+      !redIncome &&
+      sideIsBankrupt(state, "red");
+    const blueNeutralized =
+      blueInitial > 0 &&
+      state.blue.losses / blueInitial >= th &&
+      blueAlive === 0 &&
+      !blueIncome &&
+      sideIsBankrupt(state, "blue");
+    if (redNeutralized && !blueNeutralized)
       return finish(
         state,
         "vitoria",
         "Superioridade militar: o dispositivo adversário foi neutralizado.",
       );
-    if (blueInitial > 0 && state.blue.losses / blueInitial >= th)
+    if (blueNeutralized && !redNeutralized)
       return finish(state, "derrota", "Superioridade militar: seu dispositivo foi neutralizado.");
   }
 
@@ -2312,6 +2460,14 @@ function checkVictory(state: BattleState, dt: number): void {
     }
     return finish(state, "empate", "Janela encerrada: nenhuma base foi tomada.");
   }
+}
+
+// Um lado tem base de renda ativa quando possui ao menos uma base avançada operacional
+// (não em construção) paga em Sov ao longo do tempo — sinal de que ainda pode reagir.
+function hasActiveBase(state: BattleState, side: Side): boolean {
+  return state.structures.some(
+    (s) => s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction,
+  );
 }
 
 // Um lado está "falido" quando não tem Sov para NENHUMA carta da mão, não tem tropa

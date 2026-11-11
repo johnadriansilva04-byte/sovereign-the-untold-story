@@ -2,7 +2,7 @@
 // Local-first: sempre grava no localStorage para funcionar offline; quando há
 // sessão no Supabase, sincroniza em segundo plano. Nada aqui quebra se a rede faltar.
 
-import { allCards, startingDeck } from "@/game/battle/catalog";
+import { allCards, levelFromCopies, startingDeck } from "@/game/battle/catalog";
 import type { NationState } from "@/game/battle/missions";
 import { defaultNation } from "@/game/battle/missions";
 import type { BattleResult, Doctrine, SideModifiers } from "@/game/battle/types";
@@ -186,7 +186,36 @@ function ensureShape(p: ProfileState): ProfileState {
 // Recompensas
 // ---------------------------------------------------------------------------
 
-export function grantReward(profile: ProfileState, reward: Reward): ProfileState {
+export interface LevelUpInfo {
+  cardId: string;
+  from: number;
+  to: number;
+}
+
+/**
+ * Recalcula o nível de uma carta a partir das cópias possuídas e devolve o novo nível
+ * junto com o salto (para a tela de level-up). Regra de progressão: a carta SOBE
+ * AUTOMATICAMENTE ao receber cópias suficientes — o jogador nunca precisa "gastar"
+ * manualmente. O nível NUNCA cai (guardamos o maior valor já alcançado).
+ */
+export function recomputeLevel(
+  profile: ProfileState,
+  cardId: string,
+): { levels: Record<string, number>; levelUp: LevelUpInfo | null } {
+  const owned = profile.inventory.cards[cardId] ?? 0;
+  const prev = profile.cardLevels[cardId] ?? 1;
+  const next = Math.max(prev, levelFromCopies(owned));
+  if (next <= prev) return { levels: profile.cardLevels, levelUp: null };
+  return {
+    levels: { ...profile.cardLevels, [cardId]: next },
+    levelUp: { cardId, from: prev, to: next },
+  };
+}
+
+export function grantReward(
+  profile: ProfileState,
+  reward: Reward,
+): { profile: ProfileState; levelUps: LevelUpInfo[] } {
   const inv: Inventory = {
     cards: { ...profile.inventory.cards },
     accessories: { ...profile.inventory.accessories },
@@ -195,7 +224,7 @@ export function grantReward(profile: ProfileState, reward: Reward): ProfileState
   for (const c of reward.cards ?? []) next = addCard(next, c);
   for (const a of reward.accessories ?? []) next = addAccessory(next, a);
   const techs = new Set([...profile.nation.techs, ...(reward.techs ?? [])]);
-  return {
+  let updated: ProfileState = {
     ...profile,
     inventory: next,
     nation: { ...profile.nation, techs: Array.from(techs) },
@@ -203,6 +232,16 @@ export function grantReward(profile: ProfileState, reward: Reward): ProfileState
     research: profile.research + (reward.research ?? 0),
     xp: profile.xp + (reward.xp ?? 0),
   };
+  // Toda cópia nova pode subir o nível de uma carta (auto-level).
+  const levelUps: LevelUpInfo[] = [];
+  for (const cardId of reward.cards ?? []) {
+    const { levels, levelUp } = recomputeLevel(updated, cardId);
+    if (levelUp) {
+      updated = { ...updated, cardLevels: levels };
+      levelUps.push(levelUp);
+    }
+  }
+  return { profile: updated, levelUps };
 }
 
 // Resultado de uma batalha de campanha aplicado ao perfil: concede recompensa só na vitória,
@@ -220,12 +259,18 @@ export function applyChapterResult(
     recordId: string;
     createdAt: string;
   },
-): { profile: ProfileState; reward: Reward } {
+): { profile: ProfileState; reward: Reward; levelUps: LevelUpInfo[] } {
   const meta = chapterMetaById(opts.chapterId);
   const reward: Reward = opts.rewards ?? meta?.reward ?? {};
   const won = opts.result.outcome === "vitoria";
 
-  let next = won ? grantReward(profile, reward) : profile;
+  let levelUps: LevelUpInfo[] = [];
+  let next = profile;
+  if (won) {
+    const granted = grantReward(profile, reward);
+    next = granted.profile;
+    levelUps = granted.levelUps;
+  }
 
   const prev = next.chapters[opts.chapterId] ?? {
     status: "disponivel" as const,
@@ -265,7 +310,7 @@ export function applyChapterResult(
   };
 
   next = { ...next, chapters, records: [record, ...next.records].slice(0, 60) };
-  return { profile: next, reward };
+  return { profile: next, reward, levelUps };
 }
 
 // Cartas que o jogador possui (independente de tecnologia).

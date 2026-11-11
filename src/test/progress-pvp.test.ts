@@ -56,7 +56,11 @@ describe("progressão: inventário", () => {
 
   it("concede recompensa e registra cartas novas", () => {
     const p = createProfile();
-    const next = grantReward(p, { cards: ["bld-tanque"], research: 25, sovereigns: 100 });
+    const { profile: next } = grantReward(p, {
+      cards: ["bld-tanque"],
+      research: 25,
+      sovereigns: 100,
+    });
     expect(ownsCard(next.inventory, "bld-tanque")).toBe(true);
     expect(next.research).toBe(p.research + 25);
     expect(next.sovereigns).toBe(p.sovereigns + 100);

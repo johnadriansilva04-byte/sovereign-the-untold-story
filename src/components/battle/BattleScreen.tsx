@@ -223,10 +223,7 @@ export function LiveBattle({
   const addCard = useCallback(
     (cardId: string) => {
       const cost = battle.costOf(cardId);
-      if (state.blue.command - spent < cost) {
-        toast.error("Sov insuficiente para mais uma unidade.");
-        return;
-      }
+      if (state.blue.command - spent < cost) return;
       // Primeira carta da operação: a origem padrão é a base principal (nº 1).
       setOriginId((o) => o ?? bases[0]?.id ?? null);
       setCounts((cur) => ({ ...cur, [cardId]: (cur[cardId] ?? 0) + 1 }));
@@ -245,29 +242,26 @@ export function LiveBattle({
     });
   }, []);
 
-  const handleSend = useCallback(() => {
-    if (totalUnits === 0) return;
-    if (!destination) {
-      toast.error("Toque no mapa para definir o destino da tropa.");
-      return;
-    }
-    const requests = Object.entries(counts)
-      .filter(([, n]) => n > 0)
-      .map(([cardId, count]) => ({ cardId, count }));
-    const res = battle.sendBatch(
-      requests,
-      destination.x,
-      destination.y,
-      originId ?? undefined,
-      destination.target,
-    );
-    if (!res.ok) {
-      toast.error(res.error ?? "Envio recusado.");
-      return;
-    }
-    toast.success(`${res.deployed} unidade(s) em marcha.`);
-    clearSelection();
-  }, [battle, counts, destination, originId, totalUnits, clearSelection]);
+  const handleSend = useCallback(
+    (dest?: { x: number; y: number; target?: DeployTarget }) => {
+      if (totalUnits === 0) return;
+      const at = dest ?? destination;
+      if (!at) {
+        toast.error("Toque no mapa para definir o destino da tropa.");
+        return;
+      }
+      const requests = Object.entries(counts)
+        .filter(([, n]) => n > 0)
+        .map(([cardId, count]) => ({ cardId, count }));
+      const res = battle.sendBatch(requests, at.x, at.y, originId ?? undefined, at.target);
+      if (!res.ok) {
+        toast.error(res.error ?? "Envio recusado.");
+        return;
+      }
+      clearSelection();
+    },
+    [battle, counts, destination, originId, totalUnits, clearSelection],
+  );
 
   // Atalhos de teclado (PC): Z X C V B N M somam uma unidade da carta; 1-6 escolhem a
   // base de origem; ENTER envia; ESC limpa. Os handlers vivem em refs para o listener
@@ -324,9 +318,17 @@ export function LiveBattle({
     [battle],
   );
 
-  const handlePickDestination = useCallback((x: number, y: number, target?: DeployTarget) => {
-    setDestination({ x, y, ...(target ? { target } : {}) });
-  }, []);
+  // Clicar/tocar no mapa com cartas na mão = DEFINIR DESTINO E ENVIAR NA HORA. Sem
+  // etapa de confirmação: o clique no campo já manda a tropa marchar (era o "clico no
+  // mapa e não acontece nada / tenho que clicar em Enviar tropa").
+  const handlePickDestination = useCallback(
+    (x: number, y: number, target?: DeployTarget) => {
+      const dest = { x, y, ...(target ? { target } : {}) };
+      setDestination(dest);
+      handleSend(dest);
+    },
+    [handleSend],
+  );
 
   const handleOrder = useCallback(
     (order: Order) => {
@@ -487,8 +489,6 @@ export function LiveBattle({
             totalUnits={totalUnits}
             spent={spent}
             command={state.blue.command}
-            hasDestination={Boolean(destination)}
-            onSend={handleSend}
             onClear={clearSelection}
           />
 

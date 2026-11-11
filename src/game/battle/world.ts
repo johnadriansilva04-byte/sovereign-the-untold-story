@@ -5,13 +5,13 @@
 // Manter as dimensões num único lugar garante que motor, IA e renderizador usem
 // exatamente os mesmos limites — nenhum clampa coordenada por conta própria.
 
-export const WORLD_W = 132;
+export const WORLD_W = 184;
 /**
  * Profundidade do front (largura norte→sul). Subir este valor deixa o campo mais
  * FUNDO, com mais espaço de manobra entre as duas bases — não é só estética: o motor
  * usa o mesmo limite para movimento, alcance e captura.
  */
-export const WORLD_H = 76;
+export const WORLD_H = 92;
 
 /**
  * BEIRADA do teatro: faixa de borda (em unidades de mundo) que fica FORA da área de

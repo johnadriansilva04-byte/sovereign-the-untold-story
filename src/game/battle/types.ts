@@ -335,6 +335,9 @@ export interface BattleUnit {
   heal: number;
   // nível da carta que originou a unidade (1-15)
   level: number;
+  // fração do dano recebido que a unidade IGNORA por ser veterana (0-0,3). Aplicada
+  // no motor (damageUnit), não é só um número de ficha.
+  armor: number;
   // segundos restantes de "levou dano": a barra de vida só aparece nesse instante (ou
   // quando a unidade está selecionada). O campo limpa a poluição visual permanente.
   hitFlash: number;

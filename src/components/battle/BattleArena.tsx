@@ -777,11 +777,7 @@ export function BattleArena({
 
       {operationActive && (
         <div className="pointer-events-none absolute left-2 top-2 border border-primary bg-background/90 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary">
-          {!originId
-            ? "Escolha a base de origem (1-6)"
-            : !destination
-              ? "Toque no mapa: destino da tropa"
-              : "Pronto — envie a tropa"}
+          {!originId ? "Escolha a base de origem (1-6)" : "Toque no mapa: a tropa marcha"}
         </div>
       )}
     </div>
