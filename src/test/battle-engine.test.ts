@@ -76,11 +76,11 @@ describe("motor de batalha", () => {
     expect(deploy(state, "blue", cardId, 50, 85)).toBe(false);
   });
 
-  it("regenera comando ao longo do tempo", () => {
+  it("Sov é finito: NÃO regenera passivamente sem bases avançadas", () => {
     const state = createBattle(testConfig());
     state.blue.command = 0;
     for (let i = 0; i < 10; i++) stepBattle(state, 0.1);
-    expect(state.blue.command).toBeGreaterThan(0);
+    expect(state.blue.command).toBe(0);
   });
 
   it("unidades avançam para disputar objetivos e capturam pontos", () => {
@@ -135,7 +135,7 @@ describe("motor de batalha", () => {
 
   it("cartas de apoio funcionam (barricada vira obstáculo, ataque aéreo fere)", () => {
     const state = createBattle(testConfig({ duration: 60 }));
-    state.blue.command = 10;
+    state.blue.command = 100;
     state.blue.deck.hand[0] = { cardId: "sup-barricada", ready: true };
     state.blue.deck.hand[1] = { cardId: "sup-aereo", ready: true };
     const obstaclesBefore = state.config.arena.obstacles.length;
@@ -146,7 +146,7 @@ describe("motor de batalha", () => {
     deploy(state, "red", "inf-fuzileiros", 50, 20);
     const target = state.red.units[0]!;
     const hpBefore = target.hp;
-    state.blue.command = 10;
+    state.blue.command = 100;
     deploy(state, "blue", "sup-aereo", target.x, target.y);
     expect(target.hp).toBeLessThan(hpBefore);
   });

@@ -456,8 +456,8 @@ describe("motor de batalha — cartas, energia e ritmo", () => {
     expect(new Set(after)).toEqual(new Set(initial));
   });
 
-  // 16. Energia é consumida e regenerada corretamente.
-  it("16. energia é consumida ao desdobrar e regenera com o tempo", () => {
+  // 16. Sov é consumido ao desdobrar e NÃO regenera passivamente (recurso finito).
+  it("16. Sov é consumido ao desdobrar e não regenera sem conquista", () => {
     const state = createBattle(testConfig());
     const card = state.blue.deck.hand[0]!.cardId;
     const cost = cardById(card).cost;
@@ -466,7 +466,7 @@ describe("motor de batalha — cartas, energia e ritmo", () => {
     expect(state.blue.command).toBeCloseTo(before - cost, 1);
     const spent = state.blue.command;
     advance(state, 3);
-    expect(state.blue.command).toBeGreaterThan(spent);
+    expect(state.blue.command).toBeCloseTo(spent, 5);
     expect(state.blue.command).toBeLessThanOrEqual(state.blue.commandMax);
   });
 
@@ -523,6 +523,10 @@ describe("motor de batalha — IA autônoma", () => {
     advance(state, 6);
     expect(unit.goalX).toBeUndefined();
     expect(unit.goalY).toBeUndefined();
+    // O destino cai perto de um território neutro: a unidade para para CAPTURÁ-LO
+    // (mecânica territorial exige presença) e, concluída a captura, retoma a marcha.
+    // O que não pode acontecer é congelar para sempre no ponto clicado.
+    advance(state, 14);
     const at = { x: unit.x, y: unit.y };
     advance(state, 3);
     expect(dist(unit.x, unit.y, at.x, at.y)).toBeGreaterThan(0.5);

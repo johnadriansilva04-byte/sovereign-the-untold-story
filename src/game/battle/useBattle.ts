@@ -143,29 +143,26 @@ export function useBattle(
     return () => cancelAnimationFrame(raf);
   }, [wantsLlm]);
 
-  const playCard = useCallback(
-    (cardId: string, x: number, y: number, target?: DeployTarget) => {
-      const st = stateRef.current;
-      // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
-      // inimigo (holdAtArrival=false) — não congela no destino. Quando o clique
-      // acertou um alvo (inimigo/estrutura/território), a força já marcha para atacá-lo.
-      const order: {
-        x: number;
-        y: number;
-        holdAtArrival: boolean;
-        targetUnitId?: string;
-        targetStructureId?: string;
-        targetTerritoryId?: string;
-      } = { x, y, holdAtArrival: false };
-      if (target?.unitId) order.targetUnitId = target.unitId;
-      if (target?.structureId) order.targetStructureId = target.structureId;
-      if (target?.territoryId) order.targetTerritoryId = target.territoryId;
-      const ok = deploy(st, "blue", cardId, x, y, order);
-      forceRender();
-      return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
-    },
-    [],
-  );
+  const playCard = useCallback((cardId: string, x: number, y: number, target?: DeployTarget) => {
+    const st = stateRef.current;
+    // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
+    // inimigo (holdAtArrival=false) — não congela no destino. Quando o clique
+    // acertou um alvo (inimigo/estrutura/território), a força já marcha para atacá-lo.
+    const order: {
+      x: number;
+      y: number;
+      holdAtArrival: boolean;
+      targetUnitId?: string;
+      targetStructureId?: string;
+      targetTerritoryId?: string;
+    } = { x, y, holdAtArrival: false };
+    if (target?.unitId) order.targetUnitId = target.unitId;
+    if (target?.structureId) order.targetStructureId = target.structureId;
+    if (target?.territoryId) order.targetTerritoryId = target.territoryId;
+    const ok = deploy(st, "blue", cardId, x, y, order);
+    forceRender();
+    return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
+  }, []);
 
   const moveSelected = useCallback(
     (unitId: string, x: number, y: number, target?: DeployTarget) => {

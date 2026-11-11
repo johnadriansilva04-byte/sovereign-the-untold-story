@@ -39,7 +39,7 @@ describe("interface da batalha", () => {
     // avança da preparação para a batalha
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
-    expect(screen.getByText("Energia")).toBeInTheDocument();
+    expect(screen.getByText("Sov")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pausar" })).toBeInTheDocument();
 
     // as leituras táticas ficam no relatório, aberto sob demanda (sem rolagem na tela principal)
@@ -173,7 +173,7 @@ describe("interface da batalha", () => {
 
     const svg = document.querySelector("svg[viewBox]")!;
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
-    // desdobra na própria metade; a força nasce na base azul (x≈8)
+    // desdobra na própria metade; a unidade nasce na base azul (x≈17.3)
     fireEvent(
       svg,
       new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
@@ -183,7 +183,7 @@ describe("interface da batalha", () => {
     // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", { ...worldToClient(17.3, WORLD_H / 2), bubbles: true }),
     );
 
     // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
@@ -249,10 +249,10 @@ describe("interface da batalha", () => {
       svg,
       new MouseEvent("pointerdown", { ...worldToClient(10, WORLD_H / 2), bubbles: true }),
     );
-    // seleciona a unidade recém-desdobrada
+    // seleciona a unidade recém-desdobrada (nasce na base azul, x≈17.3)
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(10.8, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", { ...worldToClient(17.3, WORLD_H / 2), bubbles: true }),
     );
     expect(screen.getByText("Fuzileiros")).toBeInTheDocument();
 
@@ -296,8 +296,10 @@ describe("interface da batalha", () => {
       /scale\((?:[2-9](?:\.[0-9]+)?)\)/.test(g.getAttribute("transform") ?? ""),
     );
     expect(scaled).toBe(true);
-    // E não é mais um ponto cinza: o texto do rótulo (short) do inimigo aparece.
-    expect(svg.textContent ?? "").toContain("FUZ");
+    // E não é mais um ponto cinza: o inimigo é desenhado com o MODELO real da carta
+    // (o glifo carrega data-model, identificando a unidade em campo).
+    expect(svg.querySelector('[data-model="soldado-fuzil"]')).toBeTruthy();
+    expect(svg.querySelector('[data-side="red"]')).toBeTruthy();
   });
 
   it("desenha o teatro com câmera em perspectiva alinhada, sem mudar a lógica", () => {

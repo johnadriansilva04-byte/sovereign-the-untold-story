@@ -1270,7 +1270,13 @@ function UnitGlyph({
   const scale = MODEL_SCALE[unit.model] ?? 1;
   const r = unit.radius * scale;
   return (
-    <g pointerEvents="none" opacity={dim ? 0.55 : 1}>
+    <g
+      pointerEvents="none"
+      opacity={dim ? 0.55 : 1}
+      data-unit={unit.id}
+      data-model={unit.model}
+      data-side={unit.side}
+    >
       {airborne && (
         <ellipse
           cx={unit.x}
@@ -1280,7 +1286,20 @@ function UnitGlyph({
           fill="oklch(0 0 0 / 0.35)"
         />
       )}
-      <circle cx={unit.x} cy={y} r={unit.radius * 0.7} fill={color} opacity={0.22} />
+      {/* Campo limpo: nada de halo permanente. A unidade é lida pela silhueta do
+          modelo. Um aro fino marca a seleção; a barra de vida aparece só ao levar
+          dano (hitFlash) ou quando selecionada — nunca como ruído fixo. */}
+      {selected && (
+        <circle
+          cx={unit.x}
+          cy={y}
+          r={r + 0.8}
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth="0.45"
+          opacity={0.95}
+        />
+      )}
       {unit.level > 1 && (
         <circle
           cx={unit.x}
@@ -1311,37 +1330,25 @@ function UnitGlyph({
       {unit.jammed > 0 && (
         <circle cx={unit.x} cy={y} r={r * 1.2} fill="none" stroke="var(--ai)" strokeWidth="0.25" />
       )}
-      {/* barra de vida */}
-      <rect x={unit.x - r} y={y - r - 1.8} width={r * 2} height="0.9" fill="oklch(0 0 0 / 0.5)" />
-      <rect
-        x={unit.x - r}
-        y={y - r - 1.8}
-        width={r * 2 * Math.max(0, unit.hp / unit.maxHp)}
-        height="0.9"
-        fill={unit.hp / unit.maxHp > 0.4 ? "var(--fact)" : "var(--enemy)"}
-      />
-      {/* etiqueta da unidade: pequena placa escura, legível sobre qualquer terreno */}
-      <rect
-        x={unit.x - unit.short.length * 0.62}
-        y={y + r * 0.5}
-        width={unit.short.length * 1.24}
-        height="2.4"
-        rx="0.4"
-        fill="oklch(0.12 0.008 90 / 0.72)"
-      />
-      <text
-        x={unit.x}
-        y={y + r * 0.5 + 1.75}
-        textAnchor="middle"
-        fontSize="1.7"
-        fontFamily="var(--font-mono)"
-        fill="oklch(0.92 0.01 90)"
-        fontWeight={700}
-        transform={uprightText(portrait, unit.x, y + r * 0.5 + 1.75)}
-      >
-        {unit.short}
-      </text>
-      {unit.level > 1 && (
+      {(selected || unit.hitFlash > 0) && (
+        <>
+          <rect
+            x={unit.x - r}
+            y={y - r - 1.8}
+            width={r * 2}
+            height="0.9"
+            fill="oklch(0 0 0 / 0.5)"
+          />
+          <rect
+            x={unit.x - r}
+            y={y - r - 1.8}
+            width={r * 2 * Math.max(0, unit.hp / unit.maxHp)}
+            height="0.9"
+            fill={unit.hp / unit.maxHp > 0.4 ? "var(--fact)" : "var(--enemy)"}
+          />
+        </>
+      )}
+      {selected && (
         <g>
           <circle
             cx={unit.x - unit.short.length * 0.62 - 1.4}

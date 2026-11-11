@@ -40,27 +40,45 @@ const CATEGORY_BG: Record<string, string> = {
   apoio: "from-fiction/25",
 };
 
-export function CommandBar({ side, compact = false }: { side: SideState; compact?: boolean }) {
+// Barra de Sov: recurso FINITO de guerra. Sem renda passiva — só bases avançadas
+// pagam (lote a cada 45 s) e abates devolvem o valor do alvo + 50%. Quando zera e o
+// lado não tem mais tropas nem renda, ele quebra e a guerra acaba.
+export function CommandBar({
+  side,
+  compact = false,
+  align = "left",
+}: {
+  side: SideState;
+  compact?: boolean;
+  align?: "left" | "right";
+}) {
   const pct = (side.command / side.commandMax) * 100;
+  const low = pct <= 20;
+  const right = align === "right";
   return (
-    <div className="flex items-center gap-3">
+    <div className={cn("flex items-center gap-3", right && "flex-row-reverse")}>
       <div className={compact ? "w-36 sm:w-52" : "w-40"}>
         <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>Energia</span>
-          <span className="text-primary">
+          <span>{side.flag} Sov</span>
+          <span className={cn("tabular-nums", low ? "text-destructive" : "text-primary")}>
             {Math.floor(side.command)} / {side.commandMax}
           </span>
         </div>
         <div className="h-2.5 w-full border border-border bg-muted">
           <div
-            className="h-full bg-primary transition-[width] duration-100"
+            className={cn(
+              "h-full transition-[width] duration-100",
+              low ? "bg-destructive" : "bg-primary",
+            )}
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
       </div>
-      <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
-        +{side.regen.toFixed(2)}/s
-      </span>
+      {side.income > 0 && (
+        <span className="hidden font-mono text-[10px] text-primary sm:inline">
+          +{Math.round(side.income * 45)}/45s
+        </span>
+      )}
     </div>
   );
 }

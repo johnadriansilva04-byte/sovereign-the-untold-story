@@ -12,15 +12,7 @@
 //
 // O motor não conhece React nem rede — é testável de forma isolada.
 
-import {
-  cardById,
-  cardLevelMultiplier,
-  doctrines,
-  militaryById,
-  squadCount,
-  squadPowerScale,
-  startingDeck,
-} from "./catalog";
+import { cardById, cardLevelMultiplier, doctrines, militaryById, startingDeck } from "./catalog";
 import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
@@ -59,13 +51,20 @@ const BUILD_TIME = 10; // segundos para erguer uma base avançada
 const HEAL_PER_PULSE = 14; // vida curada por pulso do Posto de Socorro
 const FORT_COVER = 0.25; // cobertura concedida por fortificação a aliados próximos
 const FORT_COVER_RADIUS = 10; // raio da cobertura concedida
-const BASE_INCOME = 0.14; // energia/s gerada por cada base avançada operacional
+// Recurso de guerra "Sov": FINITO. Cada lado começa com um montante e NÃO regenera
+// passivamente — só volta a ter Sov conquistando território (base avançada operacional
+// paga um lote periódico) ou destruindo o inimigo (abate paga o valor do alvo + 50%).
+// Sem conquista, o lado quebra e perde: a guerra acaba quando o recurso acaba.
+const SOV_START = 100; // Sov inicial e teto por lado (finito; cartas caras o tornam decisivo)
+const SOV_PER_BASE = 50; // Sov pagos por cada base avançada operacional...
+const SOV_BASE_INTERVAL = 45; // ...a cada 45 segundos
+const SOV_KILL_BONUS = 0.5; // abate rende o custo da carta do alvo + 50%
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
 const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
 // Teto de EXÉRCITO por lado: quantas unidades vivas um lado pode manter em campo ao
 // mesmo tempo. Sem isto a IA (e o jogador) empilha soldados sem limite — o campo vira
-// uma multidão ilegível. Uma carta só é aceita se o esquadrão couber inteiro no teto.
-export const MAX_UNITS_PER_SIDE = 34;
+// uma multidão ilegível. Uma carta só é aceita se a unidade couber no teto.
+export const MAX_UNITS_PER_SIDE = 22;
 // Separação entre unidades: quantas vezes a soma dos raios elas mantêm de distância
 // e quanto do excesso é corrigido por passo. O empurrão é TOTAL (1.0): com o
 // relaxamento em passadas, cada par resolve a sobreposição no mesmo tick em vez de
@@ -129,11 +128,6 @@ function makeStructure(spec: StructureSpec): Structure {
 export function createBattle(config: BattleConfig): BattleState {
   const blue = makeSide("blue", config.blue, config);
   const red = makeSide("red", config.red, config);
-  const diff = config.aiDifficulty;
-  if (diff) {
-    red.commandMax = Math.max(6, Math.round(red.commandMax * diff.commandMult));
-    red.regen = red.regen * diff.commandMult;
-  }
   // A arena de catálogo é um TEMPLATE ESTÁTICO compartilhado por referência. Clonar
   // aqui garante que cada partida tenha o próprio estado: sem isso, um ponto de
   // controle capturado ou uma barricada de uma batalha vazariam para as seguintes
@@ -191,7 +185,11 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
       : [...cfg.deck, ...startingDeck].slice(0, 8);
   const hand = deck.slice(0, HAND_SIZE).map((cardId) => ({ cardId, ready: true }));
   const queue = deck.slice(HAND_SIZE);
-  void config;
+  // A dificuldade é uma alavanca ECONÔMICA além da velocidade de decisão: o lado
+  // controlado pela IA (vermelho) começa com mais/menos Sov conforme o degrau. Com o
+  // recurso finito, isto muda o quão rápido o inimigo pode escalar a ofensiva.
+  const diffMult = side === "red" ? (config.aiDifficulty?.commandMult ?? 1) : 1;
+  const startSov = Math.max(20, Math.round(SOV_START * diffMult));
   return {
     side,
     countryId: cfg.countryId,
@@ -199,11 +197,13 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
     flag: cfg.flag,
     commander: cfg.commander,
     doctrine: cfg.doctrine,
-    command: side === "blue" ? 7 : 7,
-    commandMax: cfg.commandMax,
-    regen: cfg.regen * (1 + cfg.economyBonus),
+    command: startSov,
+    commandMax: startSov,
+    regen: 0,
     coins: 0,
     income: 0,
+    incomeTimer: 0,
+    economyBonus: cfg.economyBonus,
     mods: cfg.mods,
     cardLevels: cfg.cardLevels ?? {},
     deck: { hand, queue, cycle: 0 },
@@ -287,11 +287,9 @@ export function canDeploy(
   const card = cardById(cardId);
   if (cfg.command < effectiveCost(card, cfg.doctrine)) return false;
   if (!cfg.deck.hand.some((h) => h.cardId === cardId)) return false;
-  // Teto de exército: a carta só entra se o esquadrão couber no limite do lado.
+  // Teto de exército: a carta só entra se a unidade couber no limite do lado.
   if (card.kind === "militar") {
-    const level = cfg.cardLevels?.[cardId] ?? 1;
-    const squad = squadCount(militaryById(cardId), level);
-    if (aliveUnits(state, side) + squad > MAX_UNITS_PER_SIDE) return false;
+    if (aliveUnits(state, side) + 1 > MAX_UNITS_PER_SIDE) return false;
   }
   return true;
 }
@@ -341,10 +339,8 @@ export function deploy(
   if (!inHand) return false;
 
   if (card.kind === "militar") {
-    // Teto de exército: recusa a carta se o esquadrão não couber inteiro em campo.
-    const level = cfg.cardLevels?.[cardId] ?? 1;
-    const squad = squadCount(militaryById(cardId), level);
-    if (aliveUnits(state, side) + squad > MAX_UNITS_PER_SIDE) return false;
+    // Teto de exército: recusa a carta se a unidade não couber em campo.
+    if (aliveUnits(state, side) + 1 > MAX_UNITS_PER_SIDE) return false;
     const force = deployForce(state, side, card.id, order);
     if (force === 0) return false;
     cfg.command -= cost;
@@ -393,59 +389,29 @@ export function originFor(
 // Gera a força da carta em formação, na origem, com a ordem de destino. Devolve o
 // número de unidades efetivamente criadas (0 = carta sem efeito).
 function deployForce(state: BattleState, side: Side, cardId: string, order: DeployOrder): number {
-  const card = militaryById(cardId);
   const cfg = side === "blue" ? state.blue : state.red;
-  const level = cfg.cardLevels?.[cardId] ?? 1;
-  const count = squadCount(card, level);
-  // Espaçamento da formação nunca menor que a separação entre unidades — assim a
-  // tropa já nasce aberta e não aparece "um soldado por dentro do outro" no desembarque.
-  const spacing = Math.max(card.squad?.spacing ?? 2.4, card.radius * 2 * SEPARATION_FACTOR);
+  // UM ACIONAMENTO = UMA UNIDADE. Nada de pelotão/formação: a carta representa uma
+  // entidade militar individual (um soldado, um tanque, uma peça). O estoque da carta
+  // é o recurso (Sov) e cada clique lança exatamente uma unidade.
   const origin = originFor(state, side, order.x, order.y);
-  const groupId = `g${state.nextId++}`;
-
-  const offsets = formationOffsets(count, spacing);
-  for (let i = 0; i < count; i++) {
-    const off = offsets[i]!;
-    const u = spawnUnit(
-      state,
-      side,
-      cardId,
-      clamp(origin.x + off.dx, WORLD_X_MIN, WORLD_X_MAX),
-      clamp(origin.y + off.dy, WORLD_Y_MIN, WORLD_Y_MAX),
-    );
-    u.groupId = groupId;
-    // O destino também recebe o deslocamento da formação: a tropa mantém o desenho ao
-    // chegar (em vez de todas mirarem o mesmo pixel e se empurrarem no destino).
-    u.goalX = clamp(order.x + off.dx, WORLD_X_MIN, WORLD_X_MAX);
-    u.goalY = clamp(order.y + off.dy, WORLD_Y_MIN, WORLD_Y_MAX);
-    // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
-    // holdAtArrival=false e a força volta a caçar o inimigo em vez de congelar.
-    u.holdAtGoal = order.holdAtArrival ?? true;
-    if (order.targetUnitId) u.targetId = order.targetUnitId;
-    if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
-    if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
-    u.order = "avancar";
-    cfg.units.push(u);
-  }
-  return count;
-}
-
-// Formação visual: linha de frente com fileiras, para o jogador identificar o
-// pelotão/coluna/esquadrilha como um conjunto e não como um pixel empilhado. As
-// fileiras usam o MESMO espaçamento das colunas: assim a tropa já nasce com a
-// separação mínima entre unidades e não precisa se "empurrar" ao desembarcar.
-function formationOffsets(count: number, spacing: number): { dx: number; dy: number }[] {
-  const out: { dx: number; dy: number }[] = [];
-  const perRow = Math.min(count, Math.max(2, Math.ceil(Math.sqrt(count))));
-  for (let i = 0; i < count; i++) {
-    const row = Math.floor(i / perRow);
-    const col = i % perRow;
-    const rowCount = Math.min(perRow, count - row * perRow);
-    const dx = (col - (rowCount - 1) / 2) * spacing;
-    const dy = row * spacing;
-    out.push({ dx, dy });
-  }
-  return out;
+  const u = spawnUnit(
+    state,
+    side,
+    cardId,
+    clamp(origin.x, WORLD_X_MIN, WORLD_X_MAX),
+    clamp(origin.y, WORLD_Y_MIN, WORLD_Y_MAX),
+  );
+  u.goalX = clamp(order.x, WORLD_X_MIN, WORLD_X_MAX);
+  u.goalY = clamp(order.y, WORLD_Y_MIN, WORLD_Y_MAX);
+  // Ordem da IA segura a posição ao chegar (padrão); a ordem do JOGADOR passa
+  // holdAtArrival=false e a unidade volta a caçar o inimigo em vez de congelar.
+  u.holdAtGoal = order.holdAtArrival ?? true;
+  if (order.targetUnitId) u.targetId = order.targetUnitId;
+  if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
+  if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
+  u.order = "avancar";
+  cfg.units.push(u);
+  return 1;
 }
 
 // Habilidades de área podem ser lançadas sobre qualquer ponto do teatro.
@@ -485,7 +451,7 @@ function spawnUnit(
   cardId: string,
   x: number,
   y: number,
-  opts: { name?: string; groupId?: string; powerScale?: number } = {},
+  opts: { name?: string; groupId?: string } = {},
 ): BattleUnit {
   const card = militaryById(cardId);
   const cfg = side === "blue" ? state.blue : state.red;
@@ -493,19 +459,16 @@ function spawnUnit(
   const sideMods = cfg.mods;
   const level = cfg.cardLevels?.[cardId] ?? 1;
   const levelMult = cardLevelMultiplier(level);
-  // Escala de esquadrão: cada membro fica mais fraco que a unidade "carta única"
-  // histórica, de modo que a força total permaneça equilibrada.
-  const squadScale = opts.powerScale ?? squadPowerScale(squadCount(card, level));
+  // Atributos COMPLETOS da carta: a unidade é individual e tem a vida, o dano e a
+  // resistência cheios definidos no catálogo. Não há mais divisão de esquadrão.
   const hpMult =
     (mod?.hpMultiplier[card.category as UnitCategory] ?? 1) *
     (1 + (sideMods?.hp?.[card.category] ?? 0)) *
-    levelMult *
-    squadScale;
+    levelMult;
   const dmgMult =
     (mod?.dmgMultiplier[card.category as UnitCategory] ?? 1) *
     (1 + (sideMods?.dmg?.[card.category] ?? 0)) *
-    levelMult *
-    squadScale;
+    levelMult;
   const speedMult =
     (mod?.speedMultiplier[card.category as UnitCategory] ?? 1) *
     (1 + (sideMods?.speed?.[card.category] ?? 0));
@@ -545,6 +508,7 @@ function spawnUnit(
     seen: { blue: false, red: false },
     heal: cardId === "apo-posto" ? Math.round(HEAL_PER_PULSE * levelMult) : 0,
     level,
+    hitFlash: 0,
   };
 }
 
@@ -910,11 +874,6 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   const pressao = state.t >= state.config.duration - PRESSAO_SECONDS;
   state.phase = state.t < MOBILIZACAO_SECONDS ? "mobilizacao" : pressao ? "pressao" : "combate";
 
-  const factor = pressao ? 2 : 1;
-  for (const side of ["blue", "red"] as Side[]) {
-    const cfg = side === "blue" ? state.blue : state.red;
-    cfg.command = Math.min(cfg.commandMax, cfg.command + (cfg.regen + cfg.income) * factor * dt);
-  }
   updateEconomy(state, dt);
 
   updateZones(state, dt);
@@ -946,8 +905,21 @@ function updateEconomy(state: BattleState, dt: number): void {
     for (const s of state.structures) {
       if (s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction) bases++;
     }
-    cfg.income = bases * BASE_INCOME;
-    cfg.coins += cfg.income * dt;
+    // Renda por LOTE (não contínua): cada base operacional paga a cada 45 s. O bônus
+    // econômico da nação aumenta o valor do lote, nunca a frequência.
+    const perBase = SOV_PER_BASE * (1 + cfg.economyBonus);
+    cfg.income = (bases * perBase) / SOV_BASE_INTERVAL; // Sov/s (para o HUD)
+    if (bases === 0) {
+      cfg.incomeTimer = 0;
+      continue;
+    }
+    cfg.incomeTimer += dt;
+    while (cfg.incomeTimer >= SOV_BASE_INTERVAL) {
+      cfg.incomeTimer -= SOV_BASE_INTERVAL;
+      const grant = Math.round(bases * perBase);
+      cfg.command = Math.min(cfg.commandMax, cfg.command + grant);
+      cfg.coins += grant;
+    }
   }
 }
 
@@ -992,6 +964,7 @@ function updateEffects(state: BattleState, dt: number): void {
 
 function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   if (u.smoke > 0) u.smoke = Math.max(0, u.smoke - dt);
+  if (u.hitFlash > 0) u.hitFlash = Math.max(0, u.hitFlash - dt);
   if (u.revealed > 0) u.revealed = Math.max(0, u.revealed - dt);
   if (u.jammed > 0) u.jammed = Math.max(0, u.jammed - dt);
   if (u.readyIn > 0) u.readyIn = Math.max(0, u.readyIn - dt);
@@ -1676,6 +1649,7 @@ function damageUnit(
   )
     final *= 1.6;
   target.hp -= final;
+  if (final > 0) target.hitFlash = 2.5;
   if (target.hp <= 0 && target.alive) {
     target.alive = false;
     addEffect(
@@ -1699,15 +1673,17 @@ function damageUnit(
   }
 }
 
-// Recompensa econômica por abate, derivada do custo da carta do alvo.
+// Recompensa econômica por abate: o valor da CARTA do alvo + 50%. Cada unidade em
+// campo É a carta inteira (um soldado, um tanque), então o abate devolve o valor cheio.
 function rewardForKill(target: BattleUnit): { command: number; coins: number } {
-  let cost = 3;
+  let cost = 10;
   try {
     cost = cardById(target.cardId).cost;
   } catch {
     /* alvos de habilidade sem carta: usa custo mínimo */
   }
-  return { command: cost * 0.3, coins: cost * 0.5 };
+  const value = Math.max(1, Math.round(cost * (1 + SOV_KILL_BONUS)));
+  return { command: value, coins: value };
 }
 
 // Cobertura concedida pela Fortificação de Campanha aliada próxima (não se aplica a alvos aéreos).
@@ -1739,8 +1715,10 @@ function damageStructure(
     killerCfg.structuresDestroyed += 1;
     // Destruir uma base avançada paga em moeda; derrubar a base principal encerra o jogo.
     if (target.kind === "base-avancada") {
+      killerCfg.command = Math.min(killerCfg.commandMax, killerCfg.command + 80);
       killerCfg.coins += 80;
     } else if (target.kind === "torre") {
+      killerCfg.command = Math.min(killerCfg.commandMax, killerCfg.command + 120);
       killerCfg.coins += 120;
     }
     pushLog(state, killerSide, "destruicao", `${victimCfg.countryName} perde ${target.name}.`);
@@ -2067,6 +2045,19 @@ function checkVictory(state: BattleState, dt: number): void {
       return finish(state, "derrota", "Superioridade militar: seu dispositivo foi neutralizado.");
   }
 
+  // Exaustão de recursos: com Sov FINITO, quem gasta tudo e não conquista nada fica
+  // sem como agir. Um lado é declarado falido quando NÃO consegue mais jogar: sem Sov
+  // para nenhuma carta da mão, sem tropas vivas em campo e sem base avançada pagando
+  // renda. Se um lado faliu e o outro não, o que ainda joga vence a guerra de atrito.
+  const blueStuck = sideIsBankrupt(state, "blue");
+  const redStuck = sideIsBankrupt(state, "red");
+  if (blueStuck && !redStuck)
+    return finish(state, "derrota", "Recursos esgotados: sem Sov nem tropas, a operação parou.");
+  if (redStuck && !blueStuck)
+    return finish(state, "vitoria", "Recursos esgotados: o adversário ficou sem como reagir.");
+  if (blueStuck && redStuck)
+    return finish(state, "empate", "Recursos esgotados nos dois lados: a guerra travou.");
+
   const op = state.config.operationalTarget;
   if (op) {
     const p = allPoints.find((x) => x.id === op.controlPointId);
@@ -2113,6 +2104,24 @@ function checkVictory(state: BattleState, dt: number): void {
     }
     return finish(state, "empate", "Janela encerrada: nenhuma base foi tomada.");
   }
+}
+
+// Um lado está "falido" quando não tem Sov para NENHUMA carta da mão, não tem tropa
+// viva em campo e não tem base avançada operacional gerando renda. Nesse estado ele não
+// pode mais influenciar a partida — é a derrota por exaustão de recursos.
+function sideIsBankrupt(state: BattleState, side: Side): boolean {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const cheapest = cfg.deck.hand.reduce(
+    (min, h) => Math.min(min, effectiveCost(cardById(h.cardId), cfg.doctrine)),
+    Infinity,
+  );
+  if (cfg.command >= cheapest) return false;
+  if (cfg.units.some((u) => u.alive)) return false;
+  const hasIncome = state.structures.some(
+    (s) => s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction,
+  );
+  if (hasIncome) return false;
+  return true;
 }
 
 // Fração de vida restante da Base Principal de um lado (1 = intacta).

@@ -335,6 +335,9 @@ export interface BattleUnit {
   heal: number;
   // nível da carta que originou a unidade (1-15)
   level: number;
+  // segundos restantes de "levou dano": a barra de vida só aparece nesse instante (ou
+  // quando a unidade está selecionada). O campo limpa a poluição visual permanente.
+  hitFlash: number;
 }
 
 export type ProjectileKind = "tracer" | "shell" | "rocket" | "missile";
@@ -415,8 +418,12 @@ export interface SideState {
   // Moeda da partida: renda das bases avançadas + recompensa por combate. Serve de
   // placar econômico e é convertida em prêmio ao fim da operação.
   coins: number;
-  // Renda passiva atual (energia/s vinda das bases avançadas), para exibir no HUD.
+  // Renda passiva atual (Sov/s vinda das bases avançadas), para exibir no HUD.
   income: number;
+  // Acumulador do pagamento por lote das bases avançadas (a cada 45 s).
+  incomeTimer: number;
+  // Bônus econômico da nação: aumenta o VALOR do lote de Sov (nunca a frequência).
+  economyBonus: number;
   mods?: SideModifiers | undefined; // bônus de acessórios equipados
   cardLevels: Record<string, number>; // nível por carta (1-15)
   deck: DeckState;

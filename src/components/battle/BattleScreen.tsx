@@ -430,6 +430,21 @@ function FrontLineScore({ state }: { state: BattleState }) {
           </span>
         </>
       )}
+      <span className="h-3 w-px bg-border" />
+      {/* Sov do adversário: a guerra de atrito é pública — o jogador precisa ver
+          quanto recurso o inimigo ainda tem para decidir entre atacar e segurar. */}
+      <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-enemy">{state.red.flag}</span>
+        Sov
+        <span
+          className={cn(
+            "tabular-nums",
+            state.red.command <= state.red.commandMax * 0.2 ? "text-enemy" : "text-foreground",
+          )}
+        >
+          {Math.floor(state.red.command)}
+        </span>
+      </span>
     </div>
   );
 }

@@ -176,16 +176,18 @@ function intervalFor(p: CommanderPersonality): number {
   }
 }
 
+// Reserva de Sov que a IA guarda antes de gastar. Com recurso FINITO (teto 1000) a
+// reserva é uma fração do teto — guardar "3" num total de 1000 seria nada.
 function reserveFor(p: CommanderPersonality, max: number): number {
   switch (p) {
     case "Cauteloso":
-      return 3;
+      return Math.round(max * 0.18);
     case "Econômico":
-      return Math.round(max * 0.5);
+      return Math.round(max * 0.35);
     case "Agressivo":
       return 0;
     default:
-      return 1;
+      return Math.round(max * 0.08);
   }
 }
 
@@ -374,8 +376,8 @@ function scoreCard(
       score += expand * weights.objective;
     }
     if (read.enemyStructures > 1 && m.priority && m.priority.includes("blindado")) score += 0.5;
-    score -= cost * 0.12 * weights.economy;
-    if (cfg.command - cost < 2) score -= 0.3;
+    score -= (cost / 10) * 0.4 * weights.economy;
+    if (cfg.command - cost < cost) score -= 0.3;
   } else {
     score = scoreSupport(state, side, card as SupportCard, read, weights, defensive);
   }
