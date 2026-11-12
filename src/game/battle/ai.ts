@@ -537,6 +537,24 @@ export function aiStrategy(
       };
   }
 
+  // 2.4 OBJETIVO OPERACIONAL — o ponto que DECIDE a partida vem antes da expansão e
+  // da caça: quem o segura vence. Sem esta frente a IA dispersava o exército tomando
+  // territórios enquanto o adversário fincava posse no ponto — e depois de conquistá-lo
+  // o abandonava para atacar outros alvos (o ponto voltava para o inimigo). As missões
+  // operacionais viravam um "penhasco": ou o azul nunca chegava, ou chegava e saía.
+  const opTarget = state.config.operationalTarget;
+  if (opTarget) {
+    const opPoint = state.config.arena.controlPoints.find((p) => p.id === opTarget.controlPointId);
+    if (opPoint) {
+      return {
+        intent: opPoint.owner === side ? "defend" : "push",
+        point: { x: opPoint.x, y: opPoint.y },
+        reason:
+          opPoint.owner === side ? "Segurar o objetivo operacional" : "Tomar o objetivo operacional",
+      };
+    }
+  }
+
   // 2.5 ECONOMIA — sem Sov não há guerra: se a renda territorial está escassa (poucos
   // territórios e caixa baixa), EXPANDIR passa à frente da caça/guarda. É o "vou pegar
   // esses territórios pra garantir Sov" — a expansão financia o resto da partida. Mas

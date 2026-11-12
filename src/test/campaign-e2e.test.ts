@@ -16,6 +16,7 @@ import {
   effectiveDeck,
   effectiveDoctrine,
   effectiveMods,
+  ownedCardIds,
   type ProfileState,
 } from "@/game/progress/profile";
 
@@ -41,7 +42,7 @@ function playChapter(profile: ProfileState, chapterId: string, seed: number): Ba
     doctrine: effectiveDoctrine(profile, chapterId, deck?.doctrine ?? commander.doctrine),
     mods: effectiveMods(profile, chapterId),
     cardLevels: profile.cardLevels,
-
+    ownedCardIds: ownedCardIds(profile),
     aiDifficulty: enemyScalingForChapter(meta.number).aiDifficulty,
     seed: seed >>> 0,
   });

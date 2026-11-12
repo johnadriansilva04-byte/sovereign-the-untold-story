@@ -1210,8 +1210,9 @@ export function enemyLevelForChapter(number: number, blueLevel?: number): number
   // vantagem nos capítulos finais), então a curva fica sempre justa: quem treina as
   // cartas enfrenta um inimigo à altura, quem fica fraco não é esmagado.
   if (blueLevel !== undefined) {
-    const offset = number >= 30 ? 1 : 0;
-    return Math.max(1, Math.min(12, Math.round(blueLevel) + offset));
+    // Nível ESPELHADO: o adversário usa o MESMO nível das suas cartas. Antes ele ganhava
+    // +1 no fim da campanha, o que somado ao deck de elite virava um muro duplo.
+    return Math.max(1, Math.min(12, Math.round(blueLevel)));
   }
   // Fallback (exibição, quando não se conhece o deck do jogador): curva suave por capítulo.
   return Math.max(1, Math.min(12, 1 + Math.floor((number - 1) / 6)));
@@ -1306,6 +1307,33 @@ const DECK_UPGRADES: { from: number; out: string; in: string }[] = [
   { from: 44, out: "sup-gas", in: "apo-posto" },
 ];
 
+// DECK JUSTO DO INIMIGO — o coração do equilíbrio. O adversário NÃO pode montar um
+// exército de cartas que você não tem: no fim da campanha ele trazia tanque (1050 HP),
+// obus (130 dano/alcance 38), míssil e AA contra o seu deck inicial, e a missão virava
+// um muro (caps 34/41/43/46/48 perdiam 0-1/20). A base do deck inimigo passa a ser o SEU
+// arsenal; ele só traz um número pequeno de cartas "premium" (as que você ainda não tem,
+// que são justamente o espólio de guerra a capturar). O teto cresce devagar: 0 no início,
+// 2 no fim — presença de elite, nunca um exército inteiro de elite.
+export function premiumCapForChapter(number: number): number {
+  return Math.max(0, Math.min(2, Math.floor((number - 1) / 16)));
+}
+
+export function fairEnemyDeck(enemyDeck: string[], blueDeck: string[], number: number): string[] {
+  const owned = new Set(blueDeck);
+  const cap = premiumCapForChapter(number);
+  const base: string[] = [];
+  const premium: string[] = [];
+  for (const c of enemyDeck) (owned.has(c) ? base : premium).push(c);
+  const keepPremium = premium.slice(0, cap);
+  const fill = blueDeck.filter((c) => !base.includes(c) && !keepPremium.includes(c));
+  const deck = [...base, ...keepPremium, ...fill].slice(0, 8);
+  for (let i = 0; deck.length < 8 && i < enemyDeck.length * 2; i++) {
+    const c = enemyDeck[i % enemyDeck.length]!;
+    if (!deck.includes(c)) deck.push(c);
+  }
+  return deck;
+}
+
 export function enemyDeckForChapter(number: number): string[] {
   const deck = [...ENEMY_DECKS[0]!];
   for (const u of DECK_UPGRADES) {
@@ -1370,9 +1398,9 @@ export interface BuildBattleOptions {
 function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
   const scen = mission.heroScenario;
   if (!scen) return null;
-  const baseOf = (side: Side): { x: number; y: number } => {
+  const baseOf = (side: Side): { x: number; y: number; r: number } => {
     const b = arena.structures.find((s) => s.side === side && s.kind === "base-principal");
-    return b ? { x: b.x, y: b.y } : HOME_POINT[side];
+    return b ? { x: b.x, y: b.y, r: b.radius } : { ...HOME_POINT[side], r: 9 };
   };
   const blueBase = baseOf("blue");
   const redBase = baseOf("red");
@@ -1381,30 +1409,41 @@ function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
     x: from.x + (to.x - from.x) * t,
     y: from.y + (to.y - from.y) * t,
   });
+  // O chanceler livre nasce no FUNDO da base (atrás da instalação), abrigado pela
+  // própria defesa — o posto de comando fica recuado, longe do front. O recuo usa o raio
+  // da base para ele não ficar escondido sob o centro do vilarejo.
+  const rearPost = (base: { x: number; y: number; r: number }) => {
+    const f = base.x < mid.x ? -1 : 1; // afasta-se do centro do campo
+    return { x: base.x + f * base.r * 0.5, y: base.y };
+  };
   switch (scen) {
     case "resgatar-nosso":
     case "eles-tem-o-nosso": {
       // O chanceler azul está preso no lado vermelho; o vermelho começa com o seu livre.
       const prison = toward(redBase, mid, 0.45);
+      const redPost = rearPost(redBase);
       return [
         { side: "blue", status: "preso", x: prison.x, y: prison.y },
-        { side: "red", status: "livre", x: redBase.x, y: redBase.y },
+        { side: "red", status: "livre", x: redPost.x, y: redPost.y },
       ];
     }
     case "nos-temos-o-deles": {
       // Nós capturamos o chanceler vermelho: ele está preso perto da NOSSA base.
       const prison = toward(blueBase, mid, 0.45);
+      const bluePost = rearPost(blueBase);
       return [
-        { side: "blue", status: "livre", x: blueBase.x, y: blueBase.y },
+        { side: "blue", status: "livre", x: bluePost.x, y: bluePost.y },
         { side: "red", status: "preso", x: prison.x, y: prison.y },
       ];
     }
     case "civis":
     default:
-      // Sem reféns: os dois chanceleres começam em campo, protegidos pela própria base.
+      // Sem reféns: os dois chanceleres começam em campo, atrás da própria base.
+      const bluePost = rearPost(blueBase);
+      const redPost = rearPost(redBase);
       return [
-        { side: "blue", status: "livre", x: blueBase.x, y: blueBase.y },
-        { side: "red", status: "livre", x: redBase.x, y: redBase.y },
+        { side: "blue", status: "livre", x: bluePost.x, y: bluePost.y },
+        { side: "red", status: "livre", x: redPost.x, y: redPost.y },
       ];
   }
 }
@@ -1416,7 +1455,13 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   // (ver enemyLevelForChapter). Sem os níveis do azul, cai na curva suave por capítulo.
   if (opts.chapterNumber !== undefined) {
     const scale = enemyScalingForChapter(opts.chapterNumber, meanCardLevel(opts.cardLevels));
-    red.deck = scale.deck;
+    // O deck do inimigo é montado sobre o SEU arsenal (ver fairEnemyDeck): ele não
+    // despeja um exército de cartas que você ainda não tem.
+    const ownedSource = opts.ownedCardIds ?? opts.deck;
+    red.deck =
+      ownedSource && ownedSource.length >= 8
+        ? fairEnemyDeck(scale.deck, ownedSource, opts.chapterNumber)
+        : scale.deck;
     red.cardLevels = Object.fromEntries(red.deck.map((c) => [c, scale.cardLevel]));
   }
   if (opts.redDeck && opts.redDeck.length >= 8) red.deck = opts.redDeck.slice(0, 8);

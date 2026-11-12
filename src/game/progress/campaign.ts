@@ -16,7 +16,13 @@ import {
   type Difficulty,
   type Reward,
 } from "./catalog";
-import { activeAccessories, cardLevelsForDeck, effectiveDeck, type ProfileState } from "./profile";
+import {
+  activeAccessories,
+  cardLevelsForDeck,
+  effectiveDeck,
+  ownedCardIds,
+  type ProfileState,
+} from "./profile";
 
 export interface ChapterMeta {
   id: string;
@@ -895,6 +901,7 @@ export function battleConfigForChapter(
     mission,
     chapterNumber: meta.number,
     deck: effectiveDeck(profile),
+    ownedCardIds: ownedCardIds(profile),
     commander,
     doctrine: activeDeck?.doctrine ?? commander.doctrine,
     mods: modsFromAccessories(activeAccessories(profile)),

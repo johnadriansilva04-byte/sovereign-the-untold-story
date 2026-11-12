@@ -515,7 +515,9 @@ export const difficulties: DifficultyDef[] = [
     id: "soberano",
     name: "Soberano",
     summary: "Pressão constante, coordenação de cartas e leitura do seu erro. Vencer exige plano.",
-    aiIntervalMult: 0.7,
+    // COMPETITIVO, NÃO IMBATÍVEL: 0.7/1.08 fazia o azul dominar (winrate ~0.85-0.9).
+    // 0.6/1.08 fica no ponto: adversário pressiona de verdade, mas o azul vence ~60-65%.
+    aiIntervalMult: 0.6,
     aiCommandMult: 1.08,
     aiReserveBonus: -2,
     rewardMult: 1.7,
@@ -540,8 +542,11 @@ const AI_ANCHORS: { at: number; intervalMult: number; commandMult: number; reser
   [
     { at: 0.0, intervalMult: 1.45, commandMult: 0.94, reserveBonus: 2 },
     { at: 0.3, intervalMult: 1.25, commandMult: 0.98, reserveBonus: 1 },
-    { at: 0.6, intervalMult: 1.0, commandMult: 1.03, reserveBonus: -1 },
-    { at: 1.0, intervalMult: 0.7, commandMult: 1.08, reserveBonus: -2 },
+    { at: 0.6, intervalMult: 1.0, commandMult: 1.0, reserveBonus: -1 },
+    // Vantagem FINAL suavizada: 0.7/1.08 fazia o adversário decidir 30% mais rápido e
+    // com 8% mais economia no fim da campanha — combinado ao deck de elite, era um muro.
+    // 0.9/1.02 mantém o adversário pressionando sem dobrar a dificuldade.
+    { at: 1.0, intervalMult: 0.9, commandMult: 1.02, reserveBonus: -2 },
   ];
 
 export interface AiParams {

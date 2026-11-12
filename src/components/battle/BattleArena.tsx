@@ -881,41 +881,51 @@ function ZoneGlyph({ zone: z, portrait = false }: { zone: EffectZone; portrait?:
 function PrisonGlyph({ s, color }: { s: Structure; color: string }) {
   const captive = s.captiveSide ?? s.side;
   const captiveColor = sideColor(captive);
+  const R = s.radius;
+  const x = s.x;
+  const y = s.y;
+  const wood = "oklch(0.46 0.05 70)";
+  const woodDark = "oklch(0.3 0.04 70)";
+  // Curral de refém: pátio cercado por paliçada, com torres de vigia nos cantos.
   return (
     <g>
-      <rect
-        x={s.x - s.radius}
-        y={s.y - s.radius}
-        width={s.radius * 2}
-        height={s.radius * 2}
-        rx="0.6"
-        fill="oklch(0.2 0.01 90 / 0.85)"
-        stroke={color}
-        strokeWidth="0.5"
-      />
-      {/* grades da cerca */}
-      {[-0.6, -0.2, 0.2, 0.6].map((f) => (
-        <line
-          key={f}
-          x1={s.x + f * s.radius}
-          y1={s.y - s.radius}
-          x2={s.x + f * s.radius}
-          y2={s.y + s.radius}
-          stroke={color}
-          strokeWidth="0.18"
-          opacity={0.7}
-        />
-      ))}
+      <circle cx={x} cy={y} r={R * 1.06} fill="oklch(0.24 0.03 75)" opacity="0.92" />
+      <circle cx={x} cy={y} r={R * 1.06} fill="none" stroke={color} strokeWidth="0.3" opacity="0.6" />
+      {Array.from({ length: 16 }).map((_, i) => {
+        const a0 = (i * 2 * Math.PI) / 16;
+        const a1 = ((i + 1) * 2 * Math.PI) / 16;
+        const x0 = x + Math.cos(a0) * R;
+        const y0 = y + Math.sin(a0) * R;
+        const x1 = x + Math.cos(a1) * R;
+        const y1 = y + Math.sin(a1) * R;
+        return (
+          <g key={i}>
+            <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={woodDark} strokeWidth="0.55" />
+            <line x1={x0} y1={y0 - 0.5} x2={x1} y2={y1 - 0.5} stroke={wood} strokeWidth="0.18" opacity="0.85" />
+          </g>
+        );
+      })}
+      {/* torres de vigia nos cantos */}
+      {(
+        [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1],
+        ] as [number, number][]
+      ).map(([dx, dy], i) => {
+        const tx = x + dx * R * 0.72;
+        const ty = y + dy * R * 0.72;
+        return (
+          <g key={`t${i}`} transform={`translate(${tx} ${ty})`}>
+            <rect x="-0.8" y="-0.6" width="1.6" height="1.7" fill={woodDark} stroke={wood} strokeWidth="0.14" />
+            <polygon points="-1,-0.6 0,-2.3 1,-0.6" fill={color} opacity="0.8" stroke={woodDark} strokeWidth="0.12" />
+          </g>
+        );
+      })}
       {/* cativo */}
-      <circle cx={s.x} cy={s.y} r={s.radius * 0.32} fill={captiveColor} />
-      <circle
-        cx={s.x}
-        cy={s.y}
-        r={s.radius * 0.5}
-        fill="none"
-        stroke={captiveColor}
-        strokeWidth="0.22"
-      >
+      <circle cx={x} cy={y} r={R * 0.3} fill={captiveColor} />
+      <circle cx={x} cy={y} r={R * 0.48} fill="none" stroke={captiveColor} strokeWidth="0.22">
         <animate attributeName="opacity" values="0.3;0.9;0.3" dur="1.4s" repeatCount="indefinite" />
       </circle>
     </g>
@@ -998,93 +1008,155 @@ function StructureGlyph({
 }
 
 function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
+  const R = s.radius;
+  const x = s.x;
+  const y = s.y;
+  const hpFrac = Math.max(0, Math.min(1, s.hp / s.maxHp));
+  const wood = "oklch(0.46 0.05 70)";
+  const woodDark = "oklch(0.3 0.04 70)";
+  const thatch = color;
+  const ground = "oklch(0.26 0.03 80)";
+  // Aldeia: casas com telhado de palha, casa do chefe no centro e torres de vigia
+  // pontiagudas. A PALIÇADA é desenhada em seções que caem conforme o dano — cada
+  // estaca some quando a vida passa do seu limiar, então o cerco come a cerca.
+  const posts = (i: number): [number, number] => {
+    const a = (i * 2 * Math.PI) / 20;
+    return [x + Math.cos(a) * R * 0.96, y + Math.sin(a) * R * 0.96];
+  };
+  const houses: [number, number, number, number][] = [
+    [-0.46, -0.3, 0.5, 1],
+    [-0.44, 0.34, -0.7, 0.9],
+    [0.06, -0.56, 0.2, 0.82],
+    [0.5, -0.24, -0.4, 0.92],
+    [0.4, 0.44, 0.8, 0.88],
+  ];
   return (
     <g>
-      {/* perímetro fortificado */}
-      <circle
-        cx={s.x}
-        cy={s.y}
-        r={s.radius}
-        fill={color}
-        opacity={0.14}
-        stroke={color}
-        strokeWidth="0.35"
-      />
-      <circle cx={s.x} cy={s.y} r={s.radius * 0.72} fill={color} opacity={0.22} />
-      {/* centro de comando */}
-      <rect
-        x={s.x - s.radius * 0.42}
-        y={s.y - s.radius * 0.42}
-        width={s.radius * 0.84}
-        height={s.radius * 0.84}
-        fill="oklch(0.18 0 0)"
-        stroke={color}
-        strokeWidth="0.3"
-      />
-      {/* radar */}
-      <circle cx={s.x} cy={s.y} r={s.radius * 0.28} fill="none" stroke={color} strokeWidth="0.3" />
-      <line
-        x1={s.x}
-        y1={s.y}
-        x2={s.x + Math.cos(s.aim) * s.radius * 0.28}
-        y2={s.y + Math.sin(s.aim) * s.radius * 0.28}
-        stroke={color}
-        strokeWidth="0.3"
-      />
-      {/* torres de comunicação */}
-      <line
-        x1={s.x - s.radius * 0.6}
-        y1={s.y - s.radius * 0.6}
-        x2={s.x - s.radius * 0.6}
-        y2={s.y - s.radius}
-        stroke={color}
-        strokeWidth="0.4"
-      />
-      <line
-        x1={s.x + s.radius * 0.6}
-        y1={s.y - s.radius * 0.6}
-        x2={s.x + s.radius * 0.6}
-        y2={s.y - s.radius}
-        stroke={color}
-        strokeWidth="0.4"
-      />
+      {/* terreno batido */}
+      <circle cx={x} cy={y} r={R} fill={ground} opacity="0.9" />
+      <circle cx={x} cy={y} r={R} fill={color} opacity="0.07" />
+      <circle cx={x} cy={y} r={R} fill="none" stroke={color} strokeWidth="0.2" opacity="0.4" />
+      {/* PALIÇADA (rompe com o dano) */}
+      {Array.from({ length: 20 }).map((_, i) => {
+        if (hpFrac <= i / 20) return null;
+        const [x0, y0] = posts(i);
+        const [x1, y1] = posts(i + 1);
+        return (
+          <g key={i}>
+            <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={woodDark} strokeWidth="0.55" />
+            <line x1={x0} y1={y0 - 0.45} x2={x1} y2={y1 - 0.45} stroke={wood} strokeWidth="0.18" opacity="0.8" />
+          </g>
+        );
+      })}
+      {/* casas */}
+      {houses.map(([hx, hy, rot, sc], i) => {
+        const px = x + hx * R;
+        const py = y + hy * R;
+        const w = 3.6 * sc;
+        const h = 2.7 * sc;
+        return (
+          <g key={`h${i}`} transform={`translate(${px} ${py}) rotate(${(rot * 180) / Math.PI})`}>
+            <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={wood} stroke={woodDark} strokeWidth="0.16" />
+            <polygon
+              points={`${-w / 2 - 0.4},${-h / 2} 0,${-h / 2 - 1.2 * sc} ${w / 2 + 0.4},${-h / 2}`}
+              fill={thatch}
+              opacity="0.9"
+              stroke={woodDark}
+              strokeWidth="0.12"
+            />
+            <rect x="-0.4" y={h / 2 - 0.9} width="0.8" height="0.9" fill={woodDark} />
+          </g>
+        );
+      })}
+      {/* casa do chefe / centro de comando */}
+      <g transform={`translate(${x} ${y})`}>
+        <rect x="-2.7" y="-2" width="5.4" height="4" fill={wood} stroke={woodDark} strokeWidth="0.2" />
+        <polygon points="-3.1,-2 0,-4.2 3.1,-2" fill={thatch} stroke={woodDark} strokeWidth="0.14" />
+        <rect x="-0.6" y="0.5" width="1.2" height="1.5" fill={woodDark} />
+        <line x1="0" y1="-4.2" x2="0" y2="-6.2" stroke={woodDark} strokeWidth="0.18" />
+        <polygon points="0,-6.2 2.2,-5.6 0,-5" fill={color} />
+      </g>
+      {/* torres de vigia (as "pontas" da aldeia) */}
+      {(
+        [
+          [-0.74, -0.74],
+          [0.74, -0.74],
+          [-0.74, 0.74],
+          [0.74, 0.74],
+        ] as [number, number][]
+      ).map(([dx, dy], i) => {
+        const tx = x + dx * R * 0.6;
+        const ty = y + dy * R * 0.6;
+        return (
+          <g key={`w${i}`} transform={`translate(${tx} ${ty})`}>
+            <rect x="-0.9" y="-0.6" width="1.8" height="1.9" fill={woodDark} stroke={wood} strokeWidth="0.14" />
+            <polygon points="-1.2,-0.6 0,-2.6 1.2,-0.6" fill={thatch} opacity="0.85" stroke={woodDark} strokeWidth="0.12" />
+          </g>
+        );
+      })}
+      {/* antena/luz de sinal no centro do pátio */}
+      <circle cx={x - R * 0.5} cy={y - R * 0.42} r="0.3" fill={color}>
+        <animate attributeName="opacity" values="0.2;1;0.2" dur="1.6s" repeatCount="indefinite" />
+      </circle>
     </g>
   );
 }
 
 function TowerGlyph({ s, color }: { s: Structure; color: string }) {
-  const rx = s.x + Math.cos(s.aim) * s.radius * 0.9;
-  const ry = s.y + Math.sin(s.aim) * s.radius * 0.9;
+  const R = s.radius;
+  const x = s.x;
+  const y = s.y;
+  const rx = x + Math.cos(s.aim) * (R * 0.9 - s.recoil * 0.6);
+  const ry = y + Math.sin(s.aim) * (R * 0.9 - s.recoil * 0.6);
+  const wood = "oklch(0.46 0.05 70)";
+  const woodDark = "oklch(0.3 0.04 70)";
   return (
     <g>
-      <circle
-        cx={s.x}
-        cy={s.y}
-        r={s.radius}
-        fill={color}
-        opacity={0.2}
-        stroke={color}
-        strokeWidth="0.3"
+      {/* pátio da torre de vigia */}
+      <circle cx={x} cy={y} r={R} fill="oklch(0.26 0.03 80)" opacity="0.85" />
+      <circle cx={x} cy={y} r={R} fill={color} opacity="0.12" />
+      {/* paliçada de sacos/toras nos cantos */}
+      {(
+        [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1],
+        ] as [number, number][]
+      ).map(([dx, dy], i) => (
+        <circle key={i} cx={x + dx * R * 0.7} cy={y + dy * R * 0.7} r="0.6" fill={wood} opacity="0.55" />
+      ))}
+      {/* base da torre */}
+      <rect
+        x={x - R * 0.5}
+        y={y - R * 0.5}
+        width={R}
+        height={R}
+        rx="0.3"
+        fill={woodDark}
+        stroke={wood}
+        strokeWidth="0.22"
       />
       <rect
-        x={s.x - s.radius * 0.55}
-        y={s.y - s.radius * 0.55}
-        width={s.radius * 1.1}
-        height={s.radius * 1.1}
-        fill="oklch(0.2 0 0)"
-        stroke={color}
-        strokeWidth="0.3"
+        x={x - R * 0.32}
+        y={y - R * 0.32}
+        width={R * 0.64}
+        height={R * 0.64}
+        fill="oklch(0.22 0.03 70)"
+        stroke={wood}
+        strokeWidth="0.14"
       />
-      {/* canhão com recuo */}
-      <line
-        x1={s.x}
-        y1={s.y}
-        x2={s.x + Math.cos(s.aim) * (s.radius * 0.9 - s.recoil * 0.6)}
-        y2={s.y + Math.sin(s.aim) * (s.radius * 0.9 - s.recoil * 0.6)}
-        stroke={color}
-        strokeWidth="0.6"
+      {/* telhado pontiagudo da torre */}
+      <polygon
+        points={`${x - R * 0.62},${y - R * 0.5} ${x},${y - R * 1.15} ${x + R * 0.62},${y - R * 0.5}`}
+        fill={color}
+        opacity="0.85"
+        stroke={woodDark}
+        strokeWidth="0.14"
       />
-      <circle cx={rx} cy={ry} r="0.5" fill={color} />
+      {/* peça de defesa apontando para o alvo, com recuo */}
+      <line x1={x} y1={y} x2={rx} y2={ry} stroke={wood} strokeWidth="0.5" strokeLinecap="round" />
+      <circle cx={rx} cy={ry} r="0.45" fill={color} />
     </g>
   );
 }

@@ -92,7 +92,7 @@ const SUPPLY_RADIUS = 14; // dentro deste raio de uma base aliada não há desga
 // Teto de EXÉRCITO por lado: quantas unidades vivas um lado pode manter em campo ao
 // mesmo tempo. Sem isto a IA (e o jogador) empilha soldados sem limite — o campo vira
 // uma multidão ilegível. Uma carta só é aceita se a unidade couber no teto.
-export const MAX_UNITS_PER_SIDE = 22;
+export const MAX_UNITS_PER_SIDE = 33;
 // Separação entre unidades: quantas vezes a soma dos raios elas mantêm de distância
 // e quanto do excesso é corrigido por passo. O empurrão é TOTAL (1.0): com o
 // relaxamento em passadas, cada par resolve a sobreposição no mesmo tick em vez de
