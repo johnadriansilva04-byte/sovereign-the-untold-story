@@ -679,10 +679,11 @@ describe("motor de batalha — cartas com efeito real", () => {
     local.blue.command = 999;
     local.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
     expect(deploy(local, "blue", "inf-fuzileiros", enemyBase.x - 6, enemyBase.y)).toBe(true);
-    const trooper = local.blue.units[0]!;
+    const troop = local.blue.units.filter((u) => !u.hero);
+    const trooper = troop[0]!;
     expect(trooper.x).toBeLessThan(50); // nasceu na base azul (oeste)
     // O destino é o ponto clicado: a formação se distribui em volta dele.
-    const goals = local.blue.units.map((u) => u.goalX ?? 0);
+    const goals = troop.map((u) => u.goalX ?? 0);
     const cx = goals.reduce((a, v) => a + v, 0) / goals.length;
     expect(cx).toBeCloseTo(enemyBase.x - 6, 0); // centro da tropa no destino inimigo
   });
@@ -702,7 +703,7 @@ describe("motor de batalha — cartas com efeito real", () => {
       targetUnitId: victim.id,
     });
     expect(ok).toBe(true);
-    const squad = state.blue.units.filter((u) => u.alive);
+    const squad = state.blue.units.filter((u) => u.alive && !u.hero);
     expect(squad.every((u) => u.targetId === victim.id)).toBe(true);
     // A força marcha até o alcance e abre fogo: a vida do inimigo cai.
     const hpBefore = victim.hp;
@@ -749,11 +750,11 @@ describe("motor de batalha — cartas com efeito real", () => {
     });
     expect(ok).toBe(true);
     expect(
-      state.blue.units.filter((u) => u.alive).every((u) => u.attackStructureId === tower.id),
+      state.blue.units.filter((u) => u.alive && !u.hero).every((u) => u.attackStructureId === tower.id),
     ).toBe(true);
     const hpBefore = tower.hp;
     for (let i = 0; i < 3000 && state.running && tower.hp >= hpBefore; i++) {
-      for (const u of state.blue.units) if (u.alive) u.hp = u.maxHp;
+      for (const u of state.blue.units) if (u.alive && !u.hero) u.hp = u.maxHp;
       stepBattle(state, 0.1);
     }
     expect(tower.hp).toBeLessThan(hpBefore);
@@ -907,13 +908,13 @@ describe("motor de batalha — separar tropa", () => {
     expect(
       deployBatch(state, "blue", [{ cardId: "inf-fuzileiros", count: 3 }], { x: 60, y: 46 }).ok,
     ).toBe(true);
-    const units = state.blue.units.filter((u) => u.alive);
+    const units = state.blue.units.filter((u) => u.alive && !u.hero);
     const gid = units[0]!.groupId;
     expect(units.every((u) => u.groupId === gid)).toBe(true);
     expect(applyAction(state, { type: "separar", side: "blue", groupId: gid })).toEqual({
       ok: true,
     });
-    const ids = new Set(state.blue.units.map((u) => u.groupId));
+    const ids = new Set(state.blue.units.filter((u) => !u.hero).map((u) => u.groupId));
     expect(ids.size).toBeGreaterThan(1);
   });
 });
@@ -925,6 +926,7 @@ describe("motor de batalha — chanceler, prisão e escolta", () => {
       { side: "blue", status: "preso", x: 130, y: 46 },
       { side: "red", status: "livre", x: 150, y: 46 },
     ];
+    base.heroDecisive = true;
     return base;
   }
 
@@ -959,6 +961,7 @@ describe("motor de batalha — chanceler, prisão e escolta", () => {
       { side: "blue", status: "livre", x: 34, y: 46 },
       { side: "red", status: "livre", x: 150, y: 46 },
     ];
+    base.heroDecisive = true;
     const state = createBattle(base);
     const redHero = state.red.units.find((u) => u.hero)!;
     expect(redHero).toBeTruthy();
@@ -1050,6 +1053,7 @@ describe("motor de batalha — resgate exige extração (fugindo → seguro)", (
       { side: "blue", status: "preso", x: 118, y: 46 }, // preso longe, no lado vermelho
       { side: "red", status: "livre", x: 150, y: 46 },
     ];
+    base.heroDecisive = true;
     return base;
   }
 

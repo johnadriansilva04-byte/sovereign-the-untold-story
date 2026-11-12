@@ -1148,7 +1148,10 @@ function placement(
 }
 
 function frontCentroid(state: BattleState, side: Side): { x: number; y: number } {
-  const units = sideState(state, side).units.filter((u) => u.alive);
+  // O CHANCELER fica de fora: é o comandante, e nas missões comuns ele começa recuado
+  // atrás da base. Se contasse, puxaria a "frente" da IA para o fundo do próprio
+  // território e ela avançaria com o flanco errado.
+  const units = sideState(state, side).units.filter((u) => u.alive && !u.hero);
   if (units.length === 0) {
     const zone = state.config.arena.deployZone[side];
     return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };

@@ -97,6 +97,9 @@ const HERO_THREAT_RADIUS = 18;
 // Regeneração do chanceler parado (% da vida máxima por segundo). Compensa o atrito
 // em marcha e faz o herói se recuperar ao segurar posição — o desgaste não o mata.
 const HERO_REGEN = 0.03;
+// Tempo (s) para o chanceler NÃO-DECISIVO reagrupar na base depois de tombar em combate.
+// Nas missões comuns o comandante em campo não decide a guerra sozinho: se cair, volta.
+const HERO_RESPAWN = 22;
 
 const WEAR_IDLE = 0.001; // fração da vida máxima perdida por segundo parado
 const WEAR_MOVE = 0.006; // fração extra por segundo em deslocamento
@@ -498,8 +501,15 @@ function liberatePrison(state: BattleState, prison: Structure, liberator: Battle
 // chanceler preso ou fugindo elimina o adversário, mas a guerra segue até ele voltar.
 function heroDied(state: BattleState, unit: BattleUnit): void {
   const side = unit.side;
-  state.heroes[side] = { state: "morto", unitId: unit.id };
   const cfg = side === "blue" ? state.blue : state.red;
+  // Chanceler NÃO-decisivo (missões comuns): o comandante tomba, mas o posto de comando
+  // reagrupa — ele volta à base depois de HERO_RESPAWN. Não decide a guerra.
+  if (state.config.heroDecisive === false) {
+    state.heroes[side] = { state: "morto", unitId: unit.id, respawnAt: state.t + HERO_RESPAWN };
+    pushLog(state, side, "evento", `Chanceler ${cfg.countryName} foi ferido — reagrupando.`);
+    return;
+  }
+  state.heroes[side] = { state: "morto", unitId: unit.id };
   pushLog(state, other(side), "evento", `Chanceler ${cfg.countryName} foi eliminado.`);
   if (!checkHeroVictory(state)) {
     // O outro lado ainda não pode vencer (chanceler preso ou fugindo): continua.
@@ -519,7 +529,9 @@ function heroDied(state: BattleState, unit: BattleUnit): void {
 // Um lado só pode VENCER com o próprio chanceler seguro: "livre" (nunca foi capturado)
 // ou "seguro" (resgatado e de volta ao território controlado). "preso" e "fugindo" não
 // contam. Decide o fim quando um chanceler morre; devolve true se encerrou a partida.
+// Nas missões NÃO-decisivas o chanceler não decide nada — a vitória segue por objetivo/base.
 function checkHeroVictory(state: BattleState): boolean {
+  if (state.config.heroDecisive === false) return false;
   const blueDead = state.heroes.blue.state === "morto";
   const redDead = state.heroes.red.state === "morto";
   if (!blueDead && !redDead) return false;
@@ -568,12 +580,38 @@ function inFriendlyTerritory(state: BattleState, side: Side, x: number, y: numbe
   return false;
 }
 
+// Posto de comando: o fundo da própria base, recuado do front (onde o chanceler nasce e
+// reagrupa). Mesma lógica de recuo usada no posicionamento inicial das missões.
+function heroHome(state: BattleState, side: Side): { x: number; y: number } | null {
+  const own = state.structures.find(
+    (s) => s.side === side && s.kind === "base-principal" && s.alive,
+  );
+  if (!own) return null;
+  const foe = state.structures.find((s) => s.side === other(side) && s.kind === "base-principal");
+  const midX = (own.x + (foe?.x ?? own.x + 1)) / 2;
+  const f = own.x < midX ? -1 : 1;
+  return { x: own.x + f * own.radius * 0.5, y: own.y };
+}
+
 // Atualiza o estado dos chanceleres a cada passo: um chanceler FUGINDO corre sozinho
 // para a base aliada mais próxima e, ao alcançar território controlado, fica SEGURO —
 // é a "extração" que habilita a vitória. Também reavalia a vitória quando ele chega.
 function updateHeroes(state: BattleState): void {
   for (const side of ["blue", "red"] as Side[]) {
     const st = state.heroes[side];
+    // REAGRUPAMENTO: nas missões não-decisivas o chanceler abatido volta à base.
+    if (st.state === "morto" && st.respawnAt !== undefined) {
+      if (state.t >= st.respawnAt) {
+        const home = heroHome(state, side);
+        if (home) {
+          const hero = spawnChancellor(state, side, home.x, home.y);
+          state.heroes[side] = { state: "livre", unitId: hero.id };
+          const cfg = side === "blue" ? state.blue : state.red;
+          pushLog(state, side, "evento", `Chanceler ${cfg.countryName} reagrupou na base.`);
+        }
+      }
+      continue;
+    }
     if (st.state !== "fugindo" || !st.unitId) continue;
     const cfg = side === "blue" ? state.blue : state.red;
     const hero = cfg.units.find((u) => u.id === st.unitId && u.alive);
@@ -831,8 +869,10 @@ export function canDeploy(
 export function aliveUnits(state: BattleState, side: Side): number {
   const cfg = side === "blue" ? state.blue : state.red;
   let n = 0;
-  // Prisioneiros rendidos não contam como força: saíram do combate.
-  for (const u of cfg.units) if (u.alive && !u.prizeConvoy && !u.surrendered) n++;
+  // Prisioneiros rendidos não contam como força: saíram do combate. O CHANCELER também
+  // não conta: é o comandante, não um corpo de tropa — senão ele ocupa uma vaga do teto.
+  for (const u of cfg.units)
+    if (u.alive && !u.prizeConvoy && !u.surrendered && !u.hero) n++;
   return n;
 }
 
@@ -3314,10 +3354,12 @@ function checkVictory(state: BattleState, dt: number): void {
   // (tratado em damageStructure). Objetivos alternativos só valem quando a MISSÃO os
   // define explicitamente — nunca por controle parcial, primeiro ponto ou metade do campo.
 
-  // CENÁRIO DE CHANCELER: a guerra gira em torno dos chefes de Estado. O relógio NÃO
-  // decide por vida de base aqui — quem perde o chanceler perde a guerra (tratado em
-  // heroDied). Só restam o colapso de recursos e a destruição da base principal.
-  if (state.config.heroSetup && state.config.heroSetup.length > 0) {
+  // CENÁRIO DE CHANCELER DECISIVO: a guerra gira em torno dos chefes de Estado. O
+  // relógio NÃO decide por vida de base aqui — quem perde o chanceler perde a guerra
+  // (tratado em heroDied). Só restam o colapso de recursos e a destruição da base.
+  // ATENÇÃO: só vale nas missões decisivas. Nas missões comuns o chanceler está em
+  // campo, mas a vitória continua sendo por OBJETIVO/BASE — não pode capturar o check.
+  if (state.config.heroDecisive === true) {
     const blueStuck = sideIsBankrupt(state, "blue");
     const redStuck = sideIsBankrupt(state, "red");
     if (blueStuck && !redStuck)

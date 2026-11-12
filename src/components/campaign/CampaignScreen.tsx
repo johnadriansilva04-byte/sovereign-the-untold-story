@@ -431,6 +431,18 @@ function VerdictScreen({
         </p>
       )}
 
+      {result.prizeCardWon && (
+        <p className="font-mono text-[11px] uppercase text-ai">
+          Carta-prêmio capturada: <span className="text-foreground">{cardName(result.prizeCardWon)}</span>
+        </p>
+      )}
+      {won && (result.capturedCards?.length ?? 0) > 0 && (
+        <p className="font-mono text-[10px] uppercase text-ai">
+          Espólio de guerra:{" "}
+          <span className="text-foreground">{result.capturedCards!.map(cardName).join(" · ")}</span>
+        </p>
+      )}
+
       {won && loot.length > 0 && (
         <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
           {loot.map((l) => (
@@ -632,7 +644,7 @@ function CampaignOverview({
           <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             {mission?.terrain} · {Math.round((mission?.duration ?? 0) / 60)} min
           </span>
-          <span className="max-w-2xl font-serif text-sm italic text-foreground/85 [@media(max-height:560px)]:line-clamp-2">
+          <span className="line-clamp-3 max-w-2xl font-serif text-sm italic text-foreground/85 [@media(max-height:560px)]:line-clamp-2">
             {currentMeta.intro}
           </span>
           {decision && (

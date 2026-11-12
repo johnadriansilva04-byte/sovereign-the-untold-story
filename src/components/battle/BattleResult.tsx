@@ -1,7 +1,10 @@
 import { cn } from "@/lib/utils";
+import { cardById } from "@/game/battle/catalog";
 import type { BattleResult } from "@/game/battle/types";
 import type { WarConsequence } from "@/game/battle/missions";
 import { GameButton } from "@/components/game/shell";
+
+const cardName = (id: string): string => cardById(id).name;
 
 interface Props {
   result: BattleResult;
@@ -81,7 +84,18 @@ export function BattleResultScreen({
               value={`${result.structuresDestroyed.blue} / ${result.structuresDestroyed.red}`}
             />
             <Line label="Baixas" value={`${result.losses.blue} / ${result.kills.blue}`} />
+            {result.prizeCardWon && (
+              <Line label="Carta-prêmio" value={cardName(result.prizeCardWon)} />
+            )}
+            {(result.capturedCards?.length ?? 0) > 0 && (
+              <Line label="Cartas capturadas" value={`${result.capturedCards!.length}`} />
+            )}
           </dl>
+          {(result.capturedCards?.length ?? 0) > 0 && (
+            <p className="mt-1 font-mono text-[10px] uppercase text-ai">
+              Espólio: {result.capturedCards!.map(cardName).join(" · ")}
+            </p>
+          )}
           <div className="mt-2 flex min-h-0 flex-1 flex-wrap content-start gap-x-3 gap-y-1 overflow-y-auto border-t border-border pt-2">
             {result.pointsHeld.map((p) => (
               <span

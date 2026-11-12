@@ -559,6 +559,11 @@ export interface BattleConfig {
   // CHANCELERES: onde cada herói começa. "livre" = unidade em campo desde o início;
   // "preso" = cativo dentro de uma PRISÃO inimiga, libertado quando ela é destruída.
   heroSetup?: HeroSetup[];
+  // O chanceler DECIDE a partida? Nas missões de história do herói (cativeiro, resgate)
+  // sim: matar o adversário vence / perder o seu perde. Nas demais ele é só o comandante
+  // em campo — não decide por si (a vitória continua por objetivo/base) e, se tomba,
+  // reagrupa na base depois de um tempo.
+  heroDecisive?: boolean;
 }
 
 export interface HeroSetup {
@@ -655,6 +660,8 @@ export interface HeroStatus {
    */
   state: "livre" | "preso" | "fugindo" | "seguro" | "morto";
   prisonId?: string;
+  /** Instante (s) em que um chanceler não-decisivo volta à base depois de tombar. */
+  respawnAt?: number;
 }
 
 export interface BattleResult {

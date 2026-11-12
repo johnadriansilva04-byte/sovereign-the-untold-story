@@ -1311,11 +1311,12 @@ const DECK_UPGRADES: { from: number; out: string; in: string }[] = [
 // exército de cartas que você não tem: no fim da campanha ele trazia tanque (1050 HP),
 // obus (130 dano/alcance 38), míssil e AA contra o seu deck inicial, e a missão virava
 // um muro (caps 34/41/43/46/48 perdiam 0-1/20). A base do deck inimigo passa a ser o SEU
-// arsenal; ele só traz um número pequeno de cartas "premium" (as que você ainda não tem,
-// que são justamente o espólio de guerra a capturar). O teto cresce devagar: 0 no início,
-// 2 no fim — presença de elite, nunca um exército inteiro de elite.
+// arsenal; ele traz um número pequeno de cartas "premium" (as que você ainda não tem,
+// que são justamente o espólio de guerra a capturar). O teto começa em 1 — já no primeiro
+// capítulo o inimigo mostra uma carta que você não tem, e o espólio existe desde o início
+// — e chega a 3 no fim: presença de elite, nunca um exército inteiro de elite.
 export function premiumCapForChapter(number: number): number {
-  return Math.max(0, Math.min(2, Math.floor((number - 1) / 16)));
+  return Math.max(1, Math.min(3, 1 + Math.floor((number - 1) / 17)));
 }
 
 export function fairEnemyDeck(enemyDeck: string[], blueDeck: string[], number: number): string[] {
@@ -1396,8 +1397,10 @@ export interface BuildBattleOptions {
 // chanceler cativo fica no território do captor, adiantada na direção do centro — o
 // resgate exige uma ofensiva real, não um passeio até o fundo do mapa inimigo.
 function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
-  const scen = mission.heroScenario;
-  if (!scen) return null;
+  // O chanceler está presente em TODAS as missões (é o comandante em campo). Sem
+  // cenário narrativo declarado, vale o padrão "civis": os dois começam livres,
+  // atrás da própria base.
+  const scen = mission.heroScenario ?? "civis";
   const baseOf = (side: Side): { x: number; y: number; r: number } => {
     const b = arena.structures.find((s) => s.side === side && s.kind === "base-principal");
     return b ? { x: b.x, y: b.y, r: b.radius } : { ...HOME_POINT[side], r: 9 };
@@ -1494,6 +1497,10 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
     config.militaryThreshold = opts.mission.militaryThreshold;
   const heroSetup = heroSetupFor(opts.mission, arena);
   if (heroSetup) config.heroSetup = heroSetup;
+  // O chanceler só DECIDE a partida nas missões de história do herói (as que declaram
+  // cenário: resgate, cativeiro, civis). Nas demais ele comanda, luta e reagrupa, mas a
+  // vitória continua sendo por objetivo/base.
+  config.heroDecisive = opts.mission.heroScenario !== undefined;
   if (opts.mission.operational !== undefined) config.operationalTarget = opts.mission.operational;
   if (opts.aiDifficulty !== undefined) config.aiDifficulty = opts.aiDifficulty;
   if (opts.prizeCardId) config.prizeCardId = opts.prizeCardId;

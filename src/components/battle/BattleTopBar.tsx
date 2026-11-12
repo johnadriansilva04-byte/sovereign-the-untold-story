@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { prizeProgress } from "@/game/battle/engine";
 import type { BattlePhase, BattleState, Side, Structure } from "@/game/battle/types";
 
 // Barra superior da batalha: relógio no centro, bases nas laterais.
@@ -33,10 +34,42 @@ export function BattleTopBar({ state }: { state: BattleState }) {
         >
           {phase}
         </p>
+        <PrizeBadge state={state} />
       </div>
 
       <SideBadge state={state} side="red" align="right" />
     </div>
+  );
+}
+
+// Comboio da carta-prêmio: enquanto ele está em campo, o jogador precisa saber que há
+// uma carta a capturar — sem o aviso, o prêmio passa despercebido e a mecânica some.
+function PrizeBadge({ state }: { state: BattleState }) {
+  const prize = state.prize;
+  if (!prize) return null;
+  if (prize.failed)
+    return (
+      <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-destructive">
+        Comboio recuou · carta perdida
+      </p>
+    );
+  if (prize.extracted)
+    return (
+      <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-fact">
+        Carta-prêmio garantida
+      </p>
+    );
+  if (prize.capturedBy === "blue")
+    return (
+      <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-ai">
+        Escolte a carga até a base
+      </p>
+    );
+  const pct = Math.round(prizeProgress(state, "blue"));
+  return (
+    <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-ai">
+      {pct > 0 ? `Capturando comboio ${pct}%` : "Comboio com carta em campo"}
+    </p>
   );
 }
 

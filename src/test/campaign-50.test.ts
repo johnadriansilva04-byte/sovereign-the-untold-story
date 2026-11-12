@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { archives, chapters, archiveById } from "@/game/campaign";
+import { commanders } from "@/game/battle/catalog";
+import {
+  buildBattleConfig,
+  enemyScalingForChapter,
+  premiumCapForChapter,
+} from "@/game/battle/missions";
 import { chapterMeta, totalChapters } from "@/game/progress/campaign";
 import { difficultyForChapter } from "@/game/progress/catalog";
 import { missions, chapterMission, missionById } from "@/game/battle/missions";
@@ -94,5 +100,41 @@ describe("campanha expandida: 50 capítulos", () => {
     }
     expect(profile.chapters["c49"]!.status).toBe("concluido");
     expect(profile.chapters["c50"]!.status).toBe("disponivel");
+  });
+});
+
+describe("baralho do inimigo: cartas novas desde o primeiro capítulo", () => {
+  const blueDeck = createProfile().decks[0]!.cards;
+
+  it("o teto de cartas premium nunca é zero — o espólio existe desde o cap. 1", () => {
+    for (const n of [1, 5, 17, 34, 50]) {
+      expect(premiumCapForChapter(n), `cap ${n} sem carta nova`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("o inimigo traz pelo menos uma carta que o jogador não possui, em todo capítulo", () => {
+    const owned = ["inf-fuzileiros", "inf-assalto", "inf-engenheiro", "rec-drone", "sup-gas", "art-canhao", "bld-vbld", "inf-antitanque"];
+    for (const meta of chapterMeta) {
+      const scale = enemyScalingForChapter(meta.number);
+      const config = buildBattleConfig({
+        nation: createProfile().nation,
+        mission: missionById(meta.missionId),
+        chapterNumber: meta.number,
+        deck: blueDeck,
+        ownedCardIds: owned,
+        commander: commanders[0]!,
+        doctrine: commanders[0]!.doctrine,
+        seed: 1,
+      });
+      const novas = config.red.deck.filter((c) => !owned.includes(c));
+      expect(novas.length, `cap ${meta.number} sem carta nova no deck inimigo`).toBeGreaterThan(0);
+      // As cartas novas são o espólio de guerra: precisam estar marcadas como tal.
+      for (const c of novas) expect(config.bountyCardIds ?? []).toContain(c);
+    }
+  });
+
+  it("o teto de cartas novas cresce com o capítulo (elite no fim, não no início)", () => {
+    expect(premiumCapForChapter(1)).toBeLessThan(premiumCapForChapter(50));
+    expect(premiumCapForChapter(50)).toBeLessThanOrEqual(3);
   });
 });
