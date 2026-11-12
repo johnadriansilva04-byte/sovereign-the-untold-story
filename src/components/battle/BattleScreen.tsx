@@ -656,6 +656,10 @@ function FrontLineScore({ state }: { state: BattleState }) {
   // Bases neutras do centro: quantas ainda faltam conquistar e o total da partida.
   const neutralBases = state.territories.filter((t) => t.base);
   const neutralLeft = neutralBases.filter((t) => t.owner === "neutro").length;
+  // O CHANCELER só existe nas missões com cenário de herói (`heroSetup`). Sem ele, a
+  // linha de chanceler não pode aparecer — senão o HUD anuncia "em campo" para os dois
+  // lados numa partida que não tem chanceler nenhum.
+  const hasHeroes = (state.config.heroSetup?.length ?? 0) > 0;
   const cell = (v: number, other: number, tone: "ally" | "enemy") => (
     <span
       className={cn(
@@ -695,8 +699,12 @@ function FrontLineScore({ state }: { state: BattleState }) {
           </span>
         </>
       )}
-      <span className="h-3 w-px bg-border" />
-      <HeroObjective state={state} />
+      {hasHeroes && (
+        <>
+          <span className="h-3 w-px bg-border" />
+          <HeroObjective state={state} />
+        </>
+      )}
       <span className="h-3 w-px bg-border" />
       {/* Sov do adversário: a guerra de atrito é pública — o jogador precisa ver
           quanto recurso o inimigo ainda tem para decidir entre atacar e segurar. */}
