@@ -35,6 +35,7 @@ import type {
   DeployTarget,
   Doctrine,
   Order,
+  Side,
 } from "@/game/battle/types";
 import { difficultyById, modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
 import { activeAccessories, type ProfileState } from "@/game/progress/profile";
@@ -201,7 +202,21 @@ export function LiveBattle({
 
   // Bases de lançamento aliadas (base principal + bases avançadas operacionais), na
   // ordem de conquista. A numeração 1-6 do HUD e das teclas segue esta lista.
-  const bases = useMemo(() => launchBases(state, "blue"), [state]);
+  //
+  // `state` é um objeto MUTÁVEL cuja referência nunca muda entre quadros: usar `state`
+  // como dependência do useMemo congela a lista para sempre (as bases 2, 3… jamais
+  // apareciam). A chave de memo é derivada do conteúdo que importa — quais bases de
+  // lançamento existem e em que ordem — recalculada a cada render.
+  const baseKey = state.structures
+    .filter(
+      (s) =>
+        s.alive &&
+        s.side === "blue" &&
+        (s.kind === "base-principal" || (s.kind === "base-avancada" && !s.underConstruction)),
+    )
+    .map((s) => s.id)
+    .join(",");
+  const bases = useMemo(() => launchBases(state, "blue"), [baseKey]);
   const baseLabels = useMemo(() => {
     const labels: Record<string, number> = {};
     bases.forEach((b, i) => (labels[b.id] = i + 1));
@@ -510,6 +525,37 @@ export function LiveBattle({
   );
 }
 
+// Estado do objetivo central: onde está cada chanceler. Traduz o `heroes` do motor em
+// uma leitura direta — PRESO / EM CAMPO / MORTO — com a vida do nosso quando exposto.
+function HeroObjective({ state }: { state: BattleState }) {
+  const label = (side: Side) => {
+    const h = state.heroes[side];
+    if (h.state === "morto") return "morto";
+    if (h.state === "preso") return "preso";
+    if (h.state === "fugindo") return "fugindo";
+    const unit = (side === "blue" ? state.blue : state.red).units.find(
+      (u) => u.id === h.unitId && u.alive,
+    );
+    const pct = unit ? `${Math.round((unit.hp / unit.maxHp) * 100)}%` : "em campo";
+    return h.state === "seguro" ? `${pct} seguro` : pct;
+  };
+  const tone = (side: Side) => {
+    const h = state.heroes[side];
+    if (h.state === "morto") return side === "blue" ? "text-enemy" : "text-ally";
+    if (h.state === "preso" || h.state === "fugindo") return "text-primary";
+    return "text-foreground";
+  };
+  return (
+    <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span aria-hidden>👤</span>
+      Chanceler
+      <span className={cn("tabular-nums", tone("blue"))}>{label("blue")}</span>
+      <span className="text-border">×</span>
+      <span className={cn("tabular-nums", tone("red"))}>{label("red")}</span>
+    </span>
+  );
+}
+
 // Placar de frente: leitura instantânea de quem domina o campo, sem abrir o relatório.
 function FrontLineScore({ state }: { state: BattleState }) {
   const terrBlue = state.territories.filter((t) => t.owner === "blue").length;
@@ -562,6 +608,8 @@ function FrontLineScore({ state }: { state: BattleState }) {
           </span>
         </>
       )}
+      <span className="h-3 w-px bg-border" />
+      <HeroObjective state={state} />
       <span className="h-3 w-px bg-border" />
       {/* Sov do adversário: a guerra de atrito é pública — o jogador precisa ver
           quanto recurso o inimigo ainda tem para decidir entre atacar e segurar. */}

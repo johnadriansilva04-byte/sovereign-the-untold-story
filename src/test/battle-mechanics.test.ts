@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { aiTick, aiTickSide, configureAi, defaultAiWeights } from "@/game/battle/ai";
 import { cardById, commanders, militaryById, startingDeck } from "@/game/battle/catalog";
 import {
+  applyAction,
   createBattle,
   deploy,
   deployBatch,
@@ -537,33 +538,29 @@ describe("motor de batalha — IA autônoma", () => {
     expect(dist(unit.x, unit.y, start.x, start.y)).toBeGreaterThan(3);
   });
 
-  // Regressão do "as cartas congelam": ordem do JOGADOR passa holdAtArrival=false,
-  // então ao chegar ao destino a força retoma o avanço (não trava no lugar).
+  // Regressão do "as cartas congelam": uma ordem do JOGADOR (destino explícito)
+  // impulsiona a força para frente — ela NÃO trava no ponto clicado.
   it("ordem do jogador não congela a força no destino", () => {
     const state = createBattle(testConfig({ duration: 180 }));
     state.blue.command = 30;
     state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
-    // Mira num TERRITÓRIO neutro real: o objetivo fica a meio caminho e a unidade
-    // para para capturá-lo antes de retomar a marcha.
     const terr = state.territories.find((t) => t.owner === "neutro")!;
+    const enemyBase = baseOf(state, "red");
+    // O jogador manda a tropa contra a base inimiga a partir do território neutro.
     expect(
       deploy(state, "blue", "inf-fuzileiros", terr.x, terr.y, {
-        x: terr.x,
-        y: terr.y,
+        x: enemyBase.x,
+        y: enemyBase.y,
         holdAtArrival: false,
       }),
     ).toBe(true);
     const unit = state.blue.units.at(-1)!;
     expect(unit.holdAtGoal).toBe(false);
 
-    // avança até passar do destino; o objetivo clicado é consumido e a força segue
-    // se movendo em vez de travar no ponto (sem ordens de IA, só a marcha natural).
-    advance(state, 40);
-    // O que não pode acontecer é congelar para sempre no ponto clicado: depois de
-    // capturar o território, a unidade volta a se mover.
-    const at = { x: unit.x, y: unit.y };
-    advance(state, 3);
-    expect(dist(unit.x, unit.y, at.x, at.y)).toBeGreaterThan(0.5);
+    const start = { x: unit.x, y: unit.y };
+    advance(state, 25);
+    // Não congela: a tropa avança firme rumo ao objetivo (sem parar no ponto).
+    expect(dist(unit.x, unit.y, start.x, start.y)).toBeGreaterThan(10);
   });
 });
 
@@ -768,6 +765,7 @@ describe("motor de batalha — desgaste (atrito de campanha)", () => {
     const state = createBattle(testConfig({ duration: 300 }));
     const home = baseOf(state, "blue");
     const u = place(state, "blue", "inf-fuzileiros", home.x + 2, home.y + 2);
+    u.order = "manter"; // segura posição na base: mede só o atrito, sem marcha
     const hp = u.hp;
     for (let i = 0; i < 60; i++) {
       u.hp = hp; // isola o desgaste do combate
@@ -813,5 +811,392 @@ describe("motor de batalha — desgaste (atrito de campanha)", () => {
       stepBattle(state, 0.1);
     }
     expect(u.hp).toBe(hp);
+  });
+});
+
+describe("motor de batalha — ciclo de contrapesos (ninguém é imbatível)", () => {
+  // Ancora uma base aliada no local para cortar o atrito de campanha: aqui medimos
+  // só o dano do combate, não o desgaste por distância.
+  function supply(state: BattleState, side: Side, x: number, y: number): void {
+    state.structures.push({
+      ...state.structures[0]!,
+      id: `sup-${side}-${state.structures.length}`,
+      kind: "base-avancada",
+      side,
+      x,
+      y,
+      dmg: 0, // passiva: só abastece, não interfere na medição de dano
+      range: 0,
+      radius: 0.1, // fora de mira: não rouba o alvo do duelista
+      underConstruction: false,
+      alive: true,
+      hp: 900,
+      maxHp: 900,
+    } as Structure);
+  }
+
+  // Mede o dano real aplicado por um atirador a um alvo, isolando o combate: as
+  // unidades ficam lado a lado, "manter" e sem cobertura, e a diferença de vida é
+  // lida após alguns disparos.
+  function damageOf(
+    state: BattleState,
+    shooterId: string,
+    targetId: string,
+    side: Side,
+    seconds = 4,
+  ): number {
+    // Duelo no CENTRO do mapa, longe das torres das bases: mede só o dano do
+    // atirador sobre o alvo, sem interferência de estruturas defensivas.
+    const cx = 92;
+    const cy = 30;
+    const shooter = place(state, side, shooterId, cx, cy);
+    const foe = place(
+      state,
+      side === "blue" ? "red" : "blue",
+      targetId,
+      cx + shooter.range - 1,
+      cy,
+    );
+    supply(state, side, cx, cy);
+    // A âncora logística do alvo fica FORA do alcance do atirador, para não roubar a
+    // mira (estruturas também são alvos).
+    supply(state, side === "blue" ? "red" : "blue", foe.x + 14, foe.y);
+    shooter.order = "manter";
+    foe.order = "manter";
+    foe.revealed = 999; // sempre visível: isola o combate do reconhecimento
+    foe.maxHp = 100000;
+    foe.hp = 100000;
+    const before = foe.hp;
+    for (let i = 0; i < seconds * 10 && state.running; i++) stepBattle(state, 0.1);
+    return before - foe.hp;
+  }
+
+  // O atirador causa, contra um alvo, um dano proporcional ao seu multiplicador de
+  // contrapeso. Comparar o MESMO atirador contra dois alvos isola o ciclo: as
+  // diferenças de cadência/alcance somem e sobra a relação pedra-papel-tesoura.
+  function ratio(shooterId: string, strongVs: string, weakVs: string): number {
+    const s1 = createBattle(testConfig({ duration: 60 }));
+    const strong = damageOf(s1, shooterId, strongVs, "blue");
+    const s2 = createBattle(testConfig({ duration: 60 }));
+    const weak = damageOf(s2, shooterId, weakVs, "blue");
+    return strong / Math.max(1, weak);
+  }
+
+  it("o fuzileiro derruba infantaria, mas mal arranha o blindado", () => {
+    expect(ratio("inf-fuzileiros", "inf-antitanque", "bld-tanque")).toBeGreaterThan(1.8);
+  });
+
+  it("o antitanque devasta o blindado, mas é fraco contra infantaria", () => {
+    expect(ratio("inf-antitanque", "bld-tanque", "inf-fuzileiros")).toBeGreaterThan(1.8);
+  });
+
+  it("o tanque esmaga infantaria, mas apanha do caça-tanques", () => {
+    expect(ratio("bld-tanque", "inf-fuzileiros", "bld-caca-tanques")).toBeGreaterThan(1.4);
+  });
+
+  it("a defesa antiaérea abate drone e é quase inútil contra terra", () => {
+    expect(ratio("def-aa", "rec-drone-combate", "bld-tanque")).toBeGreaterThan(2);
+  });
+});
+
+describe("motor de batalha — separar tropa", () => {
+  it("separa o grupo: cada unidade vira sua própria frente", () => {
+    const state = createBattle(testConfig({ duration: 120 }));
+    state.blue.command = 200;
+    state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    expect(
+      deployBatch(state, "blue", [{ cardId: "inf-fuzileiros", count: 3 }], { x: 60, y: 46 }).ok,
+    ).toBe(true);
+    const units = state.blue.units.filter((u) => u.alive);
+    const gid = units[0]!.groupId;
+    expect(units.every((u) => u.groupId === gid)).toBe(true);
+    expect(applyAction(state, { type: "separar", side: "blue", groupId: gid })).toEqual({
+      ok: true,
+    });
+    const ids = new Set(state.blue.units.map((u) => u.groupId));
+    expect(ids.size).toBeGreaterThan(1);
+  });
+});
+
+describe("motor de batalha — chanceler, prisão e escolta", () => {
+  function heroConfig(overrides: Partial<BattleConfig> = {}): BattleConfig {
+    const base = testConfig(overrides);
+    base.heroSetup = [
+      { side: "blue", status: "preso", x: 130, y: 46 },
+      { side: "red", status: "livre", x: 150, y: 46 },
+    ];
+    return base;
+  }
+
+  it("cria a prisão que mantém o chanceler azul cativo", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    expect(prison).toBeTruthy();
+    expect(prison.side).toBe("red"); // a prisão pertence ao adversário
+    expect(prison.captiveSide).toBe("blue");
+    expect(state.heroes.blue.state).toBe("preso");
+    // Nenhum chanceler azul em campo enquanto estiver preso.
+    expect(state.blue.units.some((u) => u.hero)).toBe(false);
+  });
+
+  it("destruir a prisão liberta o chanceler cativo em campo (fugindo até chegar em casa)", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    prison.hp = 1;
+    // Dano suficiente para derrubar a prisão.
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y);
+    expect(prison.alive).toBe(false);
+    expect(state.heroes.blue.state).toBe("fugindo");
+    expect(state.blue.units.some((u) => u.hero && u.alive)).toBe(true);
+  });
+
+  it("eliminar o chanceler adversário encerra a partida em vitória", () => {
+    // Neste cenário o NOSSO chanceler começa livre em campo (seguro para vencer).
+    const base = testConfig({ duration: 300 });
+    base.heroSetup = [
+      { side: "blue", status: "livre", x: 34, y: 46 },
+      { side: "red", status: "livre", x: 150, y: 46 },
+    ];
+    const state = createBattle(base);
+    const redHero = state.red.units.find((u) => u.hero)!;
+    expect(redHero).toBeTruthy();
+    redHero.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", redHero.x, redHero.y);
+    expect(state.running).toBe(false);
+    expect(state.outcome).toBe("vitoria");
+    expect(state.heroes.red.state).toBe("morto");
+  });
+
+  it("perder o próprio chanceler é derrota imediata", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    prison.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y); // liberta o azul
+    const blueHero = state.blue.units.find((u) => u.hero)!;
+    blueHero.hp = 1;
+    state.red.command = 999;
+    state.red.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "red", "sup-aereo", blueHero.x, blueHero.y);
+    expect(state.running).toBe(false);
+    expect(state.outcome).toBe("derrota");
+  });
+
+  it("escolta: a tropa destacada orbita o chanceler sem encostar nele", () => {
+    const state = createBattle(heroConfig());
+    // Liberta o chanceler azul e traz uma escolta.
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    prison.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y);
+    const hero = state.blue.units.find((u) => u.hero)!;
+    // Traz o herói para perto da própria base, para a escolta alcançá-lo no teste.
+    hero.x = 60;
+    hero.y = 46;
+
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    expect(
+      deploy(state, "blue", "inf-fuzileiros", 60, 46, { x: 60, y: 46, escortId: hero.id }),
+    ).toBe(true);
+    const escorts = state.blue.units.filter((u) => u.escortId === hero.id);
+    expect(escorts.length).toBeGreaterThan(0);
+    // Avança um tempo (mantendo o herói vivo): os escoltas devem fechar o cerco.
+    for (let i = 0; i < 200 && state.running; i++) {
+      keepAlive(state, "blue", hero);
+      hero.x = 60;
+      hero.y = 46;
+      stepBattle(state, 0.1);
+    }
+    for (const e of escorts.filter((u) => u.alive)) {
+      const d = dist(e.x, e.y, hero.x, hero.y);
+      expect(d).toBeLessThan(hero.radius + 8);
+      expect(d).toBeGreaterThan(hero.radius + 0.5); // não encosta no chanceler
+    }
+  });
+});
+
+describe("motor de batalha — economia de Sov finito", () => {
+  it("o Sov NÃO regenera passivamente ao longo do tempo", () => {
+    const state = createBattle(testConfig({ duration: 600 }));
+    state.blue.command = 40;
+    advance(state, 90);
+    expect(state.blue.command).toBeCloseTo(40, 5);
+  });
+
+  it("cada território sob controle paga 50 Sov por minuto", () => {
+    const state = createBattle(testConfig({ duration: 600 }));
+    state.blue.command = 0;
+    // Toma um território à força (o motor reconhece a posse real).
+    for (const t of state.territories.slice(0, 1)) {
+      t.owner = "blue";
+      t.progress = { blue: 1, red: 0 };
+    }
+    advance(state, 61);
+    expect(state.blue.command).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe("motor de batalha — resgate exige extração (fugindo → seguro)", () => {
+  function heroConfig(): BattleConfig {
+    const base = testConfig({ duration: 300 });
+    base.heroSetup = [
+      { side: "blue", status: "preso", x: 118, y: 46 }, // preso longe, no lado vermelho
+      { side: "red", status: "livre", x: 150, y: 46 },
+    ];
+    return base;
+  }
+
+  it("resgatar NÃO vence sozinho: o chanceler sai fugindo e a partida segue", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    prison.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y);
+    expect(prison.alive).toBe(false);
+    expect(state.heroes.blue.state).toBe("fugindo"); // resgatado, mas ainda longe de casa
+    // Matar o chanceler vermelho agora NÃO vence: o nosso ainda não está em segurança.
+    const redHero = state.red.units.find((u) => u.hero)!;
+    redHero.hp = 1;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", redHero.x, redHero.y);
+    expect(state.heroes.red.state).toBe("morto");
+    expect(state.running).toBe(true); // a guerra continua até a extração
+  });
+
+  it("trazer o chanceler de volta ao território controlado o torna 'seguro' e habilita a vitória", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    prison.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y);
+    const blueHero = state.blue.units.find((u) => u.hero)!;
+    // Extração: coloca o chanceler na zona de desdobramento azul.
+    blueHero.x = 20;
+    blueHero.y = 46;
+    stepBattle(state, 0.1);
+    expect(state.heroes.blue.state).toBe("seguro");
+    // Agora sim: eliminar o chanceler vermelho vence.
+    const redHero = state.red.units.find((u) => u.hero)!;
+    redHero.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", redHero.x, redHero.y);
+    expect(state.running).toBe(false);
+    expect(state.outcome).toBe("vitoria");
+  });
+});
+
+describe("motor de batalha — chanceler: atrito em marcha, regeneração parado", () => {
+  function heroConfig(): BattleConfig {
+    const base = testConfig({ duration: 300 });
+    base.heroSetup = [
+      { side: "blue", status: "livre", x: 34, y: 46 },
+      { side: "red", status: "livre", x: 150, y: 46 },
+    ];
+    return base;
+  }
+
+  it("o desgaste de campanha NÃO mata o chanceler: ele regenera quando parado", () => {
+    const state = createBattle(heroConfig());
+    const hero = state.blue.units.find((u) => u.hero)!;
+    // Longe da base e em marcha: o chanceler sofre atrito...
+    hero.x = 70;
+    hero.y = 10;
+    hero.order = "avancar";
+    hero.goalX = 70;
+    hero.goalY = 78;
+    const startHp = hero.hp;
+    for (let i = 0; i < 120 && state.running; i++) {
+      keepAlive(state, "blue", hero);
+      stepBattle(state, 0.1);
+    }
+    // ...mas nunca abaixo de 1 de vida (o atrito não é fatal para o herói).
+    expect(hero.hp).toBeGreaterThanOrEqual(1);
+
+    // Parado e fora de combate: regenera de volta.
+    delete hero.goalX;
+    delete hero.goalY;
+    hero.order = "manter";
+    const low = Math.min(hero.hp, hero.maxHp);
+    for (let i = 0; i < 200; i++) {
+      keepAlive(state, "blue", hero);
+      hero.engaged = false;
+      hero.hitFlash = 0;
+      stepBattle(state, 0.1);
+    }
+    expect(hero.hp).toBeGreaterThan(low);
+    expect(hero.hp).toBeLessThanOrEqual(hero.maxHp);
+    expect(hero.alive).toBe(true);
+    expect(startHp).toBeGreaterThan(0);
+  });
+});
+
+describe("motor de batalha — escolta automática ao derrubar a prisão", () => {
+  function heroConfig(): BattleConfig {
+    const base = testConfig({ duration: 300 });
+    base.heroSetup = [
+      { side: "blue", status: "preso", x: 118, y: 46 },
+      { side: "red", status: "livre", x: 150, y: 46 },
+    ];
+    return base;
+  }
+
+  it("a tropa que destrói a prisão passa a escoltar o chanceler resgatado", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    // Uma tropa azul já posicionada na área do resgate (vai aderir à escolta).
+    const soldier = place(state, "blue", "inf-fuzileiros", prison.x - 2, prison.y + 2);
+    expect(soldier.escortId).toBeUndefined();
+    // Dano aéreo derruba a prisão e liberta o chanceler.
+    prison.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y);
+
+    expect(state.heroes.blue.state).toBe("fugindo");
+    const heroId = state.heroes.blue.unitId!;
+    expect(soldier.escortId).toBe(heroId);
+  });
+
+  it("sem tropa na área, o resgate não cria escolta artificial", () => {
+    const state = createBattle(heroConfig());
+    const prison = state.structures.find((s) => s.kind === "prisao")!;
+    prison.hp = 1;
+    state.blue.command = 999;
+    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
+    deploy(state, "blue", "sup-aereo", prison.x, prison.y);
+    const heroId = state.heroes.blue.unitId!;
+    const escorts = state.blue.units.filter((u) => u.alive && u.escortId === heroId);
+    // Sem tropa na área não há escolta: o motor nunca inventa unidades.
+    expect(escorts).toHaveLength(0);
+  });
+});
+
+describe("motor de batalha — rota de fuga segura do chanceler", () => {
+  it("o chanceler desvia de um bolsão de inimigos em vez de seguir reto", () => {
+    const base = testConfig({ duration: 300 });
+    base.heroSetup = [
+      { side: "blue", status: "livre", x: 118, y: 46 }, // já perto do lado vermelho
+      { side: "red", status: "livre", x: 150, y: 46 },
+    ];
+    const state = createBattle(base);
+    const hero = state.blue.units.find((u) => u.hero)!;
+    // Bloqueio inimigo exatamente no caminho reto de volta para casa (oeste).
+    for (let i = 0; i < 6; i++) place(state, "red", "inf-fuzileiros", 100 - i * 4, 46);
+    state.heroes.blue = { state: "fugindo", unitId: hero.id };
+    hero.order = "avancar";
+    stepBattle(state, 0.1);
+    // O destino NÃO é uma reta direta ao oeste: a rota contorna o bloqueio (desvio em Y).
+    const dy = Math.abs((hero.goalY ?? 46) - hero.y);
+    expect(dy).toBeGreaterThan(3);
   });
 });

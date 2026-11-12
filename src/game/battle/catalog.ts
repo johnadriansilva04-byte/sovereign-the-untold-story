@@ -15,6 +15,7 @@ import type {
   StructureSpec,
   SupportCard,
   Territory,
+  UnitCategory,
 } from "./types";
 import { deepenY, spreadX } from "./world";
 
@@ -564,6 +565,36 @@ export const militaryCards: MilitaryCard[] = [
     },
     role: "Cura infantaria aliada num raio. Não dispara.",
   },
+  // --- Chanceler (herói) ---
+  {
+    id: "hero-chanceler",
+    kind: "militar",
+    name: "Chanceler",
+    short: "CHC",
+    category: INF,
+    cost: 0,
+    hp: 1400,
+    dmg: 34,
+    speed: 5.2,
+    range: 7,
+    cooldown: 0.7,
+    targets: "ambos",
+    domain: "terra",
+    radius: 2.4,
+    model: "chanceler",
+    weapon: {
+      kind: "fuzil",
+      projectileSpeed: 130,
+      splash: 0,
+      arc: false,
+      homing: false,
+      muzzle: 1.6,
+      tracer: true,
+    },
+    hero: true,
+    priority: ["infantaria", "artilharia"],
+    role: "Chefe de Estado. Anda pelo mapa sob seu comando, atira para se defender e é a peça que decide a guerra: proteja-o e elimine o chanceler adversário.",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -698,9 +729,49 @@ export const supportCards: SupportCard[] = [
   },
 ];
 
-export const allCards: Card[] = [...militaryCards, ...supportCards];
+// ---------------------------------------------------------------------------
+// CICLO DE CONTRAPESOS (pedra-papel-tesoura militar)
+// ---------------------------------------------------------------------------
+// Multiplicadores de dano por CATEGORIA do alvo. Ninguém é imbatível: cada força
+// tem uma fraqueza que a neutraliza. Aplicado no motor (damageUnit) via unit.dmgVs.
+//
+//   Fuzileiro:  derruba infantaria leve/antitanque, arranha blindado.
+//   Assalto:    tritura infantaria no corpo a corpo, sofre contra blindado/artilharia.
+//   Antitanque: mata blindado e estrutura, mas cai fácil para infantaria.
+//   Blindado:   esmaga infantaria, apanha do antitanque.
+//   Artilharia: arrasa infantaria/estruturas em área, frágil contra tudo que a alcança.
+//   Drone combate: caça infantaria/artilharia, vulnerável a antiaérea.
+//   Defesa AA:  abate aéreo, quase inútil contra terra.
+//   Sniper:     elimina infantaria de longe, inútil contra veículos.
+const COUNTERS: Record<string, Partial<Record<UnitCategory, number>>> = {
+  "inf-fuzileiros": { infantaria: 1.0, blindado: 0.35, artilharia: 1.0, reconhecimento: 1.2 },
+  "inf-assalto": { infantaria: 1.6, blindado: 0.4, artilharia: 1.2, apoio: 1.5 },
+  "inf-antitanque": { blindado: 2.4, defesa: 1.6, artilharia: 1.5, infantaria: 0.55 },
+  "inf-sniper": { infantaria: 1.9, blindado: 0.25, artilharia: 0.9, apoio: 1.4 },
+  "art-morteiro": { infantaria: 1.7, blindado: 0.7, defesa: 1.5, artilharia: 1.2 },
+  "art-canhao": { infantaria: 1.5, blindado: 1.1, defesa: 1.8, artilharia: 1.2 },
+  "art-obus": { infantaria: 1.8, blindado: 1.0, defesa: 2.0, artilharia: 1.2 },
+  "bld-tanque": { infantaria: 1.8, blindado: 1.1, artilharia: 1.6, defesa: 1.4 },
+  "bld-vbld": { infantaria: 1.5, blindado: 1.0, artilharia: 1.4, defesa: 1.2 },
+  "bld-caca-tanques": { blindado: 2.2, infantaria: 0.6, defesa: 1.3 },
+  "mss-lancador": { blindado: 1.6, defesa: 2.2, artilharia: 1.6, infantaria: 0.9 },
+  "mss-lmf": { infantaria: 1.9, artilharia: 1.8, blindado: 0.8 },
+  "rec-drone-combate": { infantaria: 1.5, artilharia: 1.5, blindado: 0.7, reconhecimento: 1.5 },
+  "def-aa": { reconhecimento: 2.4, infantaria: 0.5, blindado: 0.4 },
+  "def-fortificacao": { infantaria: 1.3, blindado: 0.8 },
+};
+
+for (const card of militaryCards) {
+  const c = COUNTERS[card.id];
+  if (c) card.dmgVs = c;
+}
+
+// O CHANCELER é uma carta-herói: existe para o motor montar a unidade, mas não entra
+// no baralho nem na coleção, então fica FORA de `allCards` (a coleção não o oferece).
+export const heroCards: MilitaryCard[] = militaryCards.filter((c) => c.hero);
+export const allCards: Card[] = [...militaryCards.filter((c) => !c.hero), ...supportCards];
 export const cardById = (id: string): Card => {
-  const c = allCards.find((x) => x.id === id);
+  const c = allCards.find((x) => x.id === id) ?? heroCards.find((x) => x.id === id);
   if (!c) throw new Error(`Carta desconhecida: ${id}`);
   return c;
 };

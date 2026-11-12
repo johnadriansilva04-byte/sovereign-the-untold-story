@@ -166,10 +166,12 @@ export function useBattle(
       targetUnitId?: string;
       targetStructureId?: string;
       targetTerritoryId?: string;
+      escortId?: string;
     } = { x, y, holdAtArrival: false };
     if (target?.unitId) order.targetUnitId = target.unitId;
     if (target?.structureId) order.targetStructureId = target.structureId;
     if (target?.territoryId) order.targetTerritoryId = target.territoryId;
+    if (target?.escortId) order.escortId = target.escortId;
     const ok = deploy(st, "blue", cardId, x, y, order);
     forceRender();
     return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
@@ -192,11 +194,13 @@ export function useBattle(
         targetUnitId?: string;
         targetStructureId?: string;
         targetTerritoryId?: string;
+        escortId?: string;
       } = { x, y, holdAtArrival: false };
       if (originStructureId) order.originStructureId = originStructureId;
       if (target?.unitId) order.targetUnitId = target.unitId;
       if (target?.structureId) order.targetStructureId = target.structureId;
       if (target?.territoryId) order.targetTerritoryId = target.territoryId;
+      if (target?.escortId) order.escortId = target.escortId;
       const res = deployBatch(st, "blue", requests, order);
       forceRender();
       return res;

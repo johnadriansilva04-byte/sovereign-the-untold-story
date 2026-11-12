@@ -10,7 +10,7 @@
 import { arenaByTerrain, allDoctrines, commanders, startingDeck } from "./catalog";
 import { computeResult, createBattle, stepBattle } from "./engine";
 import { aiTickSide, configureAi, defaultAiWeights, type AiWeights } from "./ai";
-import type { BattleConfig, Doctrine, SideConfig, TerrainKind } from "./types";
+import type { BattleConfig, Doctrine, HeroSetup, SideConfig, TerrainKind } from "./types";
 
 const TERRAINS: TerrainKind[] = [
   "Campo aberto",
@@ -35,8 +35,30 @@ function sideCfg(commanderIdx: number, doctrine: Doctrine): SideConfig {
   };
 }
 
+// Cenários de treino: além do jogo territorial clássico, o auto-jogo precisa treinar as
+// frentes do chanceler (resgate, extração, proteção e caça). Cada índice ativa um cenário.
+const HERO_SCENARIOS: (HeroSetup[] | null)[] = [
+  null, // clássico: só território e base
+  // Nós presos: a IA precisa resgatar o próprio chanceler e trazê-lo para casa.
+  [
+    { side: "blue", status: "preso", x: 118, y: 46 },
+    { side: "red", status: "livre", x: 150, y: 46 },
+  ],
+  // Eles presos: a IA precisa explorar o refém e caçar o chanceler adversário.
+  [
+    { side: "blue", status: "livre", x: 34, y: 46 },
+    { side: "red", status: "preso", x: 66, y: 46 },
+  ],
+  // Ambos livres: as duas frentes de caça e proteção disputam o campo.
+  [
+    { side: "blue", status: "livre", x: 34, y: 46 },
+    { side: "red", status: "livre", x: 150, y: 46 },
+  ],
+];
+
 function makeConfig(seed: number, terrain: TerrainKind, duration = 150): BattleConfig {
   // lados simétricos: o resultado reflete a diferença de pesos, não viés de mapa/carta
+  const heroSetup = HERO_SCENARIOS[seed % HERO_SCENARIOS.length] ?? null;
   return {
     id: "train",
     missionName: "Treino",
@@ -47,6 +69,7 @@ function makeConfig(seed: number, terrain: TerrainKind, duration = 150): BattleC
     blue: sideCfg(0, allDoctrines[0]!),
     red: sideCfg(0, allDoctrines[0]!),
     seed: seed >>> 0,
+    ...(heroSetup ? { heroSetup: heroSetup.map((h) => ({ ...h })) } : {}),
   };
 }
 

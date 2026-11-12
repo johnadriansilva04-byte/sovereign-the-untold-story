@@ -350,6 +350,9 @@ export function BattleArena({
   // transforma "clique no chão" em "clique no objetivo" — o motor recebe o alvo e a
   // força marcha direto para cima dele.
   const pickTarget = (ax: number, ay: number): DeployTarget | undefined => {
+    // Soltar sobre o PRÓPRIO chanceler: destaca a tropa para escoltá-lo.
+    const allyId = pickAllyUnit(ax, ay);
+    if (allyId && state.blue.units.find((u) => u.id === allyId)?.hero) return { escortId: allyId };
     const enemyId = pickEnemyUnit(ax, ay);
     if (enemyId) return { unitId: enemyId };
     const struct = nearestStructure(ax, ay);
@@ -873,6 +876,52 @@ function ZoneGlyph({ zone: z, portrait = false }: { zone: EffectZone; portrait?:
 // Estruturas: base principal, torres e bases avançadas
 // ---------------------------------------------------------------------------
 
+// Prisão: instalação cercada que mantém um chanceler cativo. A cerca e a marca do
+// cativo deixam claro quem está preso e que destruir a estrutura liberta o refém.
+function PrisonGlyph({ s, color }: { s: Structure; color: string }) {
+  const captive = s.captiveSide ?? s.side;
+  const captiveColor = sideColor(captive);
+  return (
+    <g>
+      <rect
+        x={s.x - s.radius}
+        y={s.y - s.radius}
+        width={s.radius * 2}
+        height={s.radius * 2}
+        rx="0.6"
+        fill="oklch(0.2 0.01 90 / 0.85)"
+        stroke={color}
+        strokeWidth="0.5"
+      />
+      {/* grades da cerca */}
+      {[-0.6, -0.2, 0.2, 0.6].map((f) => (
+        <line
+          key={f}
+          x1={s.x + f * s.radius}
+          y1={s.y - s.radius}
+          x2={s.x + f * s.radius}
+          y2={s.y + s.radius}
+          stroke={color}
+          strokeWidth="0.18"
+          opacity={0.7}
+        />
+      ))}
+      {/* cativo */}
+      <circle cx={s.x} cy={s.y} r={s.radius * 0.32} fill={captiveColor} />
+      <circle
+        cx={s.x}
+        cy={s.y}
+        r={s.radius * 0.5}
+        fill="none"
+        stroke={captiveColor}
+        strokeWidth="0.22"
+      >
+        <animate attributeName="opacity" values="0.3;0.9;0.3" dur="1.4s" repeatCount="indefinite" />
+      </circle>
+    </g>
+  );
+}
+
 function StructureGlyph({
   structure: s,
   portrait = false,
@@ -899,6 +948,8 @@ function StructureGlyph({
       )}
       {s.kind === "base-principal" ? (
         <BasePrincipalGlyph s={s} color={color} />
+      ) : s.kind === "prisao" ? (
+        <PrisonGlyph s={s} color={color} />
       ) : (
         <TowerGlyph s={s} color={color} />
       )}
@@ -1476,6 +1527,7 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
   fortificacao: 1.3,
   posto: 1.4,
   paraquedista: 1.9,
+  chanceler: 2.6,
 };
 
 // Desenha o modelo da unidade centrado na origem, com o "nariz" apontando para +x.
@@ -1757,6 +1809,25 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <rect x="-0.7" y="-0.6" width="1.7" height="1.2" rx="0.2" fill={steel} />
           <rect x="0.9" y="-0.18" width="3.1" height="0.36" rx="0.08" fill={dark} />
           <rect x="3.9" y="-0.26" width="0.5" height="0.52" rx="0.08" fill={steel} />
+        </>,
+      );
+    case "chanceler":
+      return body(
+        <>
+          {/* terno/estafe: torso escuro com faixa de comando dourada e comitiva */}
+          <rect x="-0.62" y="-0.44" width="0.8" height="0.3" rx="0.12" fill={dark} />
+          <rect x="-0.62" y="0.14" width="0.8" height="0.3" rx="0.12" fill={dark} />
+          <rect x="-0.12" y="-0.5" width="0.98" height="1.02" rx="0.24" fill={color} />
+          <rect x="0.34" y="-0.52" width="0.58" height="0.24" rx="0.1" fill={color} />
+          <rect x="0.34" y="0.28" width="0.58" height="0.24" rx="0.1" fill={color} />
+          <circle cx="0.04" cy="0" r="0.5" fill={color} stroke={dark} strokeWidth="0.14" />
+          {/* faixa dourada de chefe de Estado */}
+          <rect x="-0.3" y="-0.66" width="1.4" height="0.22" rx="0.1" fill="var(--primary)" />
+          {/* arma curta */}
+          <rect x="0.5" y="-0.13" width="1.2" height="0.26" rx="0.07" fill={dark} />
+          <circle cx="-0.35" cy="0" r="0.34" fill="var(--primary)" opacity={0.35}>
+            <animate attributeName="r" values="0.3;0.42;0.3" dur="1.6s" repeatCount="indefinite" />
+          </circle>
         </>,
       );
     default:

@@ -50,7 +50,8 @@ export type UnitModel =
   | "paraquedista"
   | "sniper"
   | "morteiro"
-  | "caca-tanques";
+  | "caca-tanques"
+  | "chanceler";
 
 // ---------------------------------------------------------------------------
 // Armas e projéteis
@@ -107,11 +108,19 @@ export interface MilitaryCard {
   builder?: boolean;
   // alvos preferenciais (IA) — ex.: antitanque prioriza blindados
   priority?: UnitCategory[];
+  // CICLO DE CONTRAPESOS: multiplicadores de dano contra cada categoria inimiga.
+  // Ex.: o tanque esmaga infantaria (×1.8) mas é presa do antitanque; o fuzileiro
+  // derruba o antitanque (×1.8) mas mal arranha o blindado (×0.35). Nenhuma unidade
+  // é imbatível — toda força tem uma fraqueza que a neutraliza.
+  dmgVs?: Partial<Record<UnitCategory, number>>;
   ability?: string;
   role: string;
   unlocksTech?: string[]; // ids de tecnologia necessária (ponte com a campanha)
   // composição da força gerada por esta carta (1 = unidade única, ex.: tanque)
   squad?: SquadSpec;
+  // CHANCELER: carta-herói. A unidade gerada é única, insubstituível e não pode ser
+  // recomprada; o lado perde se ela morrer. Não entra no baralho normal.
+  hero?: boolean;
 }
 
 export interface SupportCard {
@@ -188,7 +197,7 @@ export interface Territory {
 }
 
 // Estrutura fixa do motor (base principal, torre defensiva ou base avançada).
-export type StructureKind = "base-principal" | "torre" | "base-avancada";
+export type StructureKind = "base-principal" | "torre" | "base-avancada" | "prisao";
 
 export interface StructureSpec {
   id: string;
@@ -205,6 +214,8 @@ export interface StructureSpec {
   name: string;
   // tempo de construção de uma base avançada (segundos). 0 = já construída.
   buildTime?: number;
+  // PRISÃO: lado do chanceler cativo mantido aqui. Destruir a estrutura o liberta.
+  captiveSide?: Side;
 }
 
 export interface Structure {
@@ -230,6 +241,8 @@ export interface Structure {
   territoryId?: string;
   aim: number; // ângulo da torre/canhão (radianos)
   recoil: number; // recuo visual restante
+  // PRISÃO: lado do chanceler preso nesta estrutura (undefined nas demais).
+  captiveSide?: Side;
 }
 
 export interface Arena {
@@ -305,6 +318,12 @@ export interface BattleUnit {
   radius: number;
   targets: TargetProfile;
   domain: Domain;
+  // CHANCELER: unidade-herói única e insubstituível. Não vem de carta; é protegida e
+  // perde a guerra se morrer. Controlada pelo jogador como qualquer outra unidade.
+  hero?: boolean;
+  // multiplicadores de dano contra cada categoria (ciclo de contrapesos). Copiado da
+  // carta no lançamento; aplicado em damageUnit conforme a categoria do alvo.
+  dmgVs?: Partial<Record<UnitCategory, number>>;
   order: Order;
   objectiveId?: string;
   targetId?: string; // alvo atual (unidade)
@@ -316,6 +335,16 @@ export interface BattleUnit {
   // o objetivo automático enquanto a força não chega nem encontra combate.
   goalX?: number;
   goalY?: number;
+  // true quando o destino foi escolhido pelo MOTOR (objetivo automático). Nesse caso
+  // o destino é PEGAJOSO: não é consumido ao chegar (a força permanece para capturar
+  // o ponto/território) e só troca quando outro objetivo fica bem mais perto. Sem
+  // isso a unidade recalculava o alvo a cada quadro e oscilava entre pontos vizinhos,
+  // parecendo travada. Destinos do jogador/IA não marcam esta flag e são consumidos.
+  goalAuto?: boolean;
+  // ESCOLTA: id do chanceler aliado que esta unidade acompanha. Quando definido, a
+  // unidade abandona o avanço automático e passa a orbitar o chanceler, formando um
+  // cerco pelo lado da ameaça — sem encostar nele.
+  escortId?: string;
   // estrutura/território que o grupo deve atacar (ordem sobre um alvo do mapa)
   attackStructureId?: string;
   attackTerritoryId?: string;
@@ -365,6 +394,9 @@ export interface Projectile {
   splash: number;
   arc: boolean;
   homing: boolean;
+  // multiplicadores de contrapeso herdados do atirador: aplicados no alvo atingido
+  // (canhões/mísseis carregam a matriz junto com o projétil).
+  dmgVs?: Partial<Record<UnitCategory, number>>;
   targetId?: string;
   targetKind?: "unit" | "structure";
   targetX: number;
@@ -476,6 +508,16 @@ export interface BattleConfig {
   operationalTarget?: { controlPointId: string; seconds: number };
   // ajuste do comandante adversário (dificuldade)
   aiDifficulty?: AiDifficulty;
+  // CHANCELERES: onde cada herói começa. "livre" = unidade em campo desde o início;
+  // "preso" = cativo dentro de uma PRISÃO inimiga, libertado quando ela é destruída.
+  heroSetup?: HeroSetup[];
+}
+
+export interface HeroSetup {
+  side: Side;
+  status: "livre" | "preso";
+  x: number;
+  y: number;
 }
 
 export interface AiDifficulty {
@@ -528,8 +570,25 @@ export interface BattleState {
   reason: string;
   nextId: number;
   aiTimer: number;
+  tick: number; // contador de passos: alterna a ordem de atualização dos lados
   rng: number; // estado do gerador determinístico (mulberry32)
   holds: Record<string, number>; // tempo de manutenção por condição (vitória)
+  // Estado do chanceler de cada lado. Sem heroSetup, ambos começam "livre" em campo.
+  heroes: Record<Side, HeroStatus>;
+}
+
+export interface HeroStatus {
+  unitId?: string;
+  /**
+   * Ciclo de vida do chanceler:
+   *  - "livre":   em campo sob comando (livre para ir e vir).
+   *  - "preso":   cativo numa prisão adversária; só entra em campo se for resgatado.
+   *  - "fugindo": recém-resgatado, ainda em território hostil. PRECISA voltar para casa.
+   *  - "seguro":  resgatado E de volta ao território controlado — só então pode vencer.
+   *  - "morto":   eliminado; o lado perdeu a guerra.
+   */
+  state: "livre" | "preso" | "fugindo" | "seguro" | "morto";
+  prisonId?: string;
 }
 
 export interface BattleResult {
@@ -572,6 +631,8 @@ export interface DeployTarget {
   unitId?: string | undefined;
   structureId?: string | undefined;
   territoryId?: string | undefined;
+  /** Soltar a carta sobre o PRÓPRIO chanceler destaca a tropa para escoltá-lo. */
+  escortId?: string | undefined;
 }
 
 export interface SupportAction {
@@ -585,7 +646,9 @@ export interface SupportAction {
 export interface OrderAction {
   type: "ordem";
   side: Side;
+  /** Unidade avulsa, OU o grupo (tropa) inteiro quando `groupId` é informado. */
   unitId?: string;
+  groupId?: string;
   order: Order;
   objectiveId?: string;
 }
@@ -606,4 +669,13 @@ export interface RepositionAction {
   holdAtArrival?: boolean;
 }
 
-export type BattleAction = DeployAction | SupportAction | OrderAction | RepositionAction;
+// Quebra uma tropa (grupo) em unidades independentes: cada uma passa a caçar o
+// alvo que sua função neutraliza melhor.
+export interface SeparateAction {
+  type: "separar";
+  side: Side;
+  groupId: string;
+}
+
+export type BattleAction =
+  DeployAction | SupportAction | OrderAction | RepositionAction | SeparateAction;

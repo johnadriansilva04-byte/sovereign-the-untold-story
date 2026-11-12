@@ -18,11 +18,14 @@ import type {
   BattleResult,
   Commander,
   Doctrine,
+  HeroSetup,
   ObjectiveKind,
+  Side,
   SideConfig,
   SideModifiers,
   TerrainKind,
 } from "./types";
+import { HOME_POINT } from "./world";
 
 // ---------------------------------------------------------------------------
 // Estado da nação (protótipo local; no jogo final vira tabela do back-end)
@@ -119,6 +122,12 @@ export interface MissionDef {
   enemyCountry: { id: string; name: string; flag: string; commanderId: string; doctrine: Doctrine };
   operational?: { controlPointId: string; seconds: number };
   militaryThreshold?: number;
+  /**
+   * Cenário de CHANCELER: quando definido, a operação gira em torno dos chefes de
+   * Estado — resgatar o nosso, proteger o nosso, ou eliminar o adversário. Sem este
+   * campo, a missão usa as regras clássicas (destruir a base principal).
+   */
+  heroScenario?: "resgatar-nosso" | "eles-tem-o-nosso" | "nos-temos-o-deles" | "civis";
 }
 
 // Cada missão nasce de um capítulo da campanha. O terreno vem da narrativa
@@ -577,6 +586,7 @@ export const missions: MissionDef[] = [
     terrain: "Floresta",
     objectiveKind: "operacional",
     objectiveText: "Impeça a operação de desestabilização na região.",
+    heroScenario: "eles-tem-o-nosso",
     duration: 300,
     missionNote: "O roteiro do golpe foi escrito na Guatemala antes de ser lido no Brasil.",
     brief:
@@ -729,6 +739,7 @@ export const missions: MissionDef[] = [
     terrain: "Cidade",
     objectiveKind: "militar",
     objectiveText: "Defenda a vizinhança e negue o plano que a apaga.",
+    heroScenario: "civis",
     duration: 300,
     missionNote: "A cidade viva é uma forma de resistência.",
     brief: "O plano quer apagar a vizinhança. Defenda as ruas vivas e negue o avanço.",
@@ -920,6 +931,7 @@ export const missions: MissionDef[] = [
     terrain: "Cidade",
     objectiveKind: "militar",
     objectiveText: "Derrube a fábrica de propaganda estatal.",
+    heroScenario: "nos-temos-o-deles",
     duration: 300,
     missionNote: "A mentira industrializada é uma arma de Estado.",
     brief: "Uma agência industrializa a mentira. Derrube os núcleos que inflamam a divisão.",
@@ -1069,6 +1081,7 @@ export const missions: MissionDef[] = [
     terrain: "Região fortificada",
     objectiveKind: "territorial",
     objectiveText: "Vença a batalha final com a Doutrina de Montanha da FEB desbloqueada.",
+    heroScenario: "resgatar-nosso",
     duration: 360,
     missionNote: "A guerra nunca acabou. Só trocou de uniforme.",
     brief:
@@ -1212,6 +1225,51 @@ export interface BuildBattleOptions {
   redCardLevels?: Record<string, number>;
 }
 
+// Traduz o cenário narrativo da missão no posicionamento dos chanceleres. A PRISÃO do
+// chanceler cativo fica no território do captor, adiantada na direção do centro — o
+// resgate exige uma ofensiva real, não um passeio até o fundo do mapa inimigo.
+function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
+  const scen = mission.heroScenario;
+  if (!scen) return null;
+  const baseOf = (side: Side): { x: number; y: number } => {
+    const b = arena.structures.find((s) => s.side === side && s.kind === "base-principal");
+    return b ? { x: b.x, y: b.y } : HOME_POINT[side];
+  };
+  const blueBase = baseOf("blue");
+  const redBase = baseOf("red");
+  const mid = { x: (blueBase.x + redBase.x) / 2, y: (blueBase.y + redBase.y) / 2 };
+  const toward = (from: { x: number; y: number }, to: { x: number; y: number }, t: number) => ({
+    x: from.x + (to.x - from.x) * t,
+    y: from.y + (to.y - from.y) * t,
+  });
+  switch (scen) {
+    case "resgatar-nosso":
+    case "eles-tem-o-nosso": {
+      // O chanceler azul está preso no lado vermelho; o vermelho começa com o seu livre.
+      const prison = toward(redBase, mid, 0.45);
+      return [
+        { side: "blue", status: "preso", x: prison.x, y: prison.y },
+        { side: "red", status: "livre", x: redBase.x, y: redBase.y },
+      ];
+    }
+    case "nos-temos-o-deles": {
+      // Nós capturamos o chanceler vermelho: ele está preso perto da NOSSA base.
+      const prison = toward(blueBase, mid, 0.45);
+      return [
+        { side: "blue", status: "livre", x: blueBase.x, y: blueBase.y },
+        { side: "red", status: "preso", x: prison.x, y: prison.y },
+      ];
+    }
+    case "civis":
+    default:
+      // Sem reféns: os dois chanceleres começam em campo, protegidos pela própria base.
+      return [
+        { side: "blue", status: "livre", x: blueBase.x, y: blueBase.y },
+        { side: "red", status: "livre", x: redBase.x, y: redBase.y },
+      ];
+  }
+}
+
 export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   const arena = cloneArena(arenaByTerrain(opts.mission.terrain));
   const red = sideFromMission(opts.mission);
@@ -1237,6 +1295,8 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   };
   if (opts.mission.militaryThreshold !== undefined)
     config.militaryThreshold = opts.mission.militaryThreshold;
+  const heroSetup = heroSetupFor(opts.mission, arena);
+  if (heroSetup) config.heroSetup = heroSetup;
   if (opts.mission.operational !== undefined) config.operationalTarget = opts.mission.operational;
   if (opts.aiDifficulty !== undefined) config.aiDifficulty = opts.aiDifficulty;
   return config;

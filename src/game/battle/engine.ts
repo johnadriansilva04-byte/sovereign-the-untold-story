@@ -33,6 +33,7 @@ import type {
   Card,
   ControlPoint,
   EffectZone,
+  HeroStatus,
   Obstacle,
   Order,
   Projectile,
@@ -66,17 +67,24 @@ const FORT_COVER_RADIUS = 10; // raio da cobertura concedida
 // passivamente — só volta a ter Sov conquistando território (base avançada operacional
 // paga um lote periódico) ou destruindo o inimigo (abate paga o valor do alvo + 50%).
 // Sem conquista, o lado quebra e perde: a guerra acaba quando o recurso acaba.
-const SOV_START = 100; // Sov inicial e teto por lado (finito; cartas caras o tornam decisivo)
-const SOV_PER_BASE = 50; // Sov pagos por cada base avançada operacional...
-const SOV_BASE_INTERVAL = 45; // ...a cada 45 segundos
-const SOV_KILL_BONUS = 0.5; // abate rende o custo da carta do alvo + 50%
+const SOV_START = 1000; // Sov inicial e teto por lado: FINITO, NUNCA regenera sozinho
+const SOV_PER_TERRITORY = 50; // cada território sob controle paga...
+const SOV_TERRITORY_INTERVAL = 60; // ...50 Sov a cada 60 segundos (1 minuto)
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
 const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
+// Raio em volta da prisão em que a tropa aliada adere à escolta do chanceler resgatado.
+const RESCUE_ESCORT_RADIUS = 16;
+// Raio em que uma unidade inimiga conta como ameaça ao avaliar a rota de fuga do herói.
+const HERO_THREAT_RADIUS = 18;
 // ATRITO DE CAMPANHA: a vida da unidade cai continuamente em campo. Marchar cansa mais
 // que manter posição, e operar longe de uma base aliada (linha de suprimento longa)
 // acelera o desgaste. O campo é grande: mandar tropa sem plano custa caro, porque a
 // coluna chega debilitada — e quem fica espalhado definha. É a mecânica que faz a
 // EXPANSÃO territorial valer: uma base avançada encurta a linha de suprimento.
+// Regeneração do chanceler parado (% da vida máxima por segundo). Compensa o atrito
+// em marcha e faz o herói se recuperar ao segurar posição — o desgaste não o mata.
+const HERO_REGEN = 0.03;
+
 const WEAR_IDLE = 0.001; // fração da vida máxima perdida por segundo parado
 const WEAR_MOVE = 0.006; // fração extra por segundo em deslocamento
 const WEAR_FIELD = 40; // distância (mundo) em que o fator de suprimento dobra o atrito
@@ -142,6 +150,7 @@ function makeStructure(spec: StructureSpec): Structure {
     buildProgress: underConstruction ? 0 : 100,
     aim: HOME_AIM[spec.side],
     recoil: 0,
+    ...(spec.captiveSide ? { captiveSide: spec.captiveSide } : {}),
   };
 }
 
@@ -154,7 +163,7 @@ export function createBattle(config: BattleConfig): BattleState {
   // (o mesmo objeto de arena é reutilizado em todas as partidas do mesmo terreno).
   const arena = cloneArena(config.arena);
   const battleConfig: BattleConfig = { ...config, arena };
-  return {
+  const state: BattleState = {
     config: battleConfig,
     t: 0,
     phase: "mobilizacao",
@@ -171,9 +180,328 @@ export function createBattle(config: BattleConfig): BattleState {
     reason: "",
     nextId: 1,
     aiTimer: 0,
+    tick: 0,
     rng: config.seed >>> 0,
     holds: {},
+    heroes: { blue: { state: "livre" }, red: { state: "livre" } },
   };
+  initHeroes(state);
+  return state;
+}
+
+// ---------------------------------------------------------------------------
+// Chanceleres e prisões
+// ---------------------------------------------------------------------------
+//
+// O CHANCELER é o herói de cada lado: uma unidade única, controlada pelo jogador, que
+// decide a guerra. Ele pode começar LIVRE em campo ou PRESO numa instalação inimiga —
+// nesse caso só entra no jogo quando a prisão é destruída (resgate). Eliminar o
+// chanceler adversário vence; perder o seu é a derrota.
+
+export const HERO_CARD = "hero-chanceler";
+
+/** true quando o lado ainda tem um chanceler em jogo ou vivo (livre/preso). */
+export function sideHasChancellor(state: BattleState, side: Side): boolean {
+  return state.heroes[side].state !== "morto";
+}
+
+function spawnChancellor(
+  state: BattleState,
+  side: Side,
+  x: number,
+  y: number,
+  initial: HeroStatus["state"] = "livre",
+): BattleUnit {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const u = spawnUnit(state, side, HERO_CARD, x, y, {
+    name: `${cfg.countryName} · Chanceler`,
+    groupId: `hero-${side}`,
+  });
+  u.hero = true;
+  // O chanceler NÃO avança sozinho: fica onde está até receber ordem explícita.
+  u.order = "manter";
+  cfg.units.push(u);
+  state.heroes[side] = { state: initial, unitId: u.id };
+  pushLog(state, side, "evento", `Chanceler ${cfg.countryName} entrou em campo.`);
+  return u;
+}
+
+// Cria os chanceleres conforme o cenário: LIVRE (em campo desde o início) ou PRESO
+// (dentro de uma prisão do adversário, que precisa ser destruída para libertá-lo).
+function initHeroes(state: BattleState): void {
+  const setups = state.config.heroSetup;
+  // Sem cenário de herói, a batalha não tem chanceler: as regras antigas valem (base
+  // principal). O chanceler é um OBJETIVO de missão, definido pelo cenário da operação.
+  if (!setups || setups.length === 0) return;
+  for (const setup of setups) {
+    if (setup.status === "livre") {
+      spawnChancellor(state, setup.side, setup.x, setup.y);
+    } else {
+      // Preso: a prisão pertence ao ADVERSÁRIO e mantém o chanceler cativo.
+      const owner = other(setup.side);
+      const captiveCfg = setup.side === "blue" ? state.blue : state.red;
+      const spec: StructureSpec = {
+        id: `prisao-${setup.side}`,
+        kind: "prisao",
+        side: owner,
+        name: `Prisão · ${captiveCfg.countryName}`,
+        x: setup.x,
+        y: setup.y,
+        radius: 4.6,
+        hp: 1600,
+        dmg: 0,
+        range: 0,
+        cooldown: 2,
+        targets: "terra",
+        captiveSide: setup.side,
+      };
+      const prison = makeStructure(spec);
+      prison.captiveSide = setup.side;
+      state.structures.push(prison);
+      state.heroes[setup.side] = { state: "preso", prisonId: prison.id };
+      pushLog(
+        state,
+        owner,
+        "evento",
+        `Chanceler ${captiveCfg.countryName} mantido preso em ${prison.name}.`,
+      );
+    }
+  }
+}
+
+// Destruiu a prisão: liberta o chanceler cativo, que nasce em campo ao lado. Ele sai
+// FUGINDO — recém-solto e ainda em território hostil. Só vence quem o trouxer de volta
+// para o próprio território (aí sim "seguro").
+function liberatePrison(state: BattleState, prison: Structure, liberator: BattleUnit | null): void {
+  const captive = prison.captiveSide;
+  if (!captive) return;
+  const st = state.heroes[captive];
+  if (st.state !== "preso") return;
+  const cfg = captive === "blue" ? state.blue : state.red;
+  const home = inFriendlyTerritory(state, captive, prison.x, prison.y);
+  const hero = spawnChancellor(state, captive, prison.x, prison.y + 2, home ? "seguro" : "fugindo");
+  pushLog(state, captive, "evento", `Chanceler ${cfg.countryName} foi resgatado!`);
+  if (home) return;
+
+  // ESCOLTA AUTOMÁTICA: quem derrubou a prisão passa a escoltar o resgatado — junto com
+  // a tropa aliada que está na área do resgate. A extração começa imediatamente, sem
+  // precisar de uma segunda ordem do jogador.
+  const escorts = new Set<BattleUnit>();
+  if (liberator && liberator.alive && liberator.side === captive && !liberator.hero)
+    escorts.add(liberator);
+  for (const u of cfg.units) {
+    if (!u.alive || u.hero || u.escortId) continue;
+    if (dist(u.x, u.y, prison.x, prison.y) <= RESCUE_ESCORT_RADIUS) escorts.add(u);
+  }
+  for (const u of escorts) {
+    u.escortId = hero.id;
+    u.order = "avancar";
+    delete u.goalX;
+    delete u.goalY;
+    delete u.attackStructureId;
+    delete u.attackTerritoryId;
+    delete u.targetId;
+  }
+  pushLog(
+    state,
+    captive,
+    "evento",
+    escorts.size > 0
+      ? `${escorts.size} unidade(s) formaram a escolta automática do chanceler ${cfg.countryName}.`
+      : `Escolte o chanceler ${cfg.countryName} de volta ao território controlado.`,
+  );
+}
+
+// Morreu um chanceler. A morte NÃO decide sozinha: só vence quem também já tem o
+// PRÓPRIO chanceler em segurança (livre ou resgatado e em casa). Um lado com o
+// chanceler preso ou fugindo elimina o adversário, mas a guerra segue até ele voltar.
+function heroDied(state: BattleState, unit: BattleUnit): void {
+  const side = unit.side;
+  state.heroes[side] = { state: "morto", unitId: unit.id };
+  const cfg = side === "blue" ? state.blue : state.red;
+  pushLog(state, other(side), "evento", `Chanceler ${cfg.countryName} foi eliminado.`);
+  if (!checkHeroVictory(state)) {
+    // O outro lado ainda não pode vencer (chanceler preso ou fugindo): continua.
+    const foe = other(side);
+    if (state.heroes[foe].state === "preso")
+      pushLog(state, foe, "evento", "Resgate o seu chanceler antes de reivindicar a vitória.");
+    else if (state.heroes[foe].state === "fugindo")
+      pushLog(
+        state,
+        foe,
+        "evento",
+        "Traga o seu chanceler em segurança antes de reivindicar a vitória.",
+      );
+  }
+}
+
+// Um lado só pode VENCER com o próprio chanceler seguro: "livre" (nunca foi capturado)
+// ou "seguro" (resgatado e de volta ao território controlado). "preso" e "fugindo" não
+// contam. Decide o fim quando um chanceler morre; devolve true se encerrou a partida.
+function checkHeroVictory(state: BattleState): boolean {
+  const blueDead = state.heroes.blue.state === "morto";
+  const redDead = state.heroes.red.state === "morto";
+  if (!blueDead && !redDead) return false;
+  const blueOk = canClaimVictory(state, "blue");
+  const redOk = canClaimVictory(state, "red");
+  if (blueDead && redDead) {
+    finish(state, "empate", "Os dois chanceleres foram eliminados.");
+    return true;
+  }
+  if (redDead && blueOk) {
+    finish(
+      state,
+      "vitoria",
+      "Chanceler adversário eliminado com o seu em segurança — guerra vencida.",
+    );
+    return true;
+  }
+  if (blueDead && redOk) {
+    finish(state, "derrota", "Seu chanceler foi eliminado com o adversário em segurança.");
+    return true;
+  }
+  return false;
+}
+
+// O chanceler do lado está em segurança para reivindicar a vitória?
+function canClaimVictory(state: BattleState, side: Side): boolean {
+  const st = state.heroes[side].state;
+  return st === "livre" || st === "seguro";
+}
+
+// O ponto está em território CONTROLADO pelo lado? Vale a zona de desdobramento, um
+// território conquistado no raio, ou a proximidade de uma base aliada (principal ou
+// avançada operacional).
+function inFriendlyTerritory(state: BattleState, side: Side, x: number, y: number): boolean {
+  const zone = state.config.arena.deployZone[side];
+  if (x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h) return true;
+  for (const t of state.territories) {
+    if (t.owner === side && dist(x, y, t.x, t.y) <= t.radius + 2) return true;
+  }
+  for (const s of state.structures) {
+    if (!s.alive || s.side !== side) continue;
+    const isBase =
+      s.kind === "base-principal" || (s.kind === "base-avancada" && !s.underConstruction);
+    if (isBase && dist(x, y, s.x, s.y) <= s.radius + 6) return true;
+  }
+  return false;
+}
+
+// Atualiza o estado dos chanceleres a cada passo: um chanceler FUGINDO corre sozinho
+// para a base aliada mais próxima e, ao alcançar território controlado, fica SEGURO —
+// é a "extração" que habilita a vitória. Também reavalia a vitória quando ele chega.
+function updateHeroes(state: BattleState): void {
+  for (const side of ["blue", "red"] as Side[]) {
+    const st = state.heroes[side];
+    if (st.state !== "fugindo" || !st.unitId) continue;
+    const cfg = side === "blue" ? state.blue : state.red;
+    const hero = cfg.units.find((u) => u.id === st.unitId && u.alive);
+    if (!hero) continue;
+    if (inFriendlyTerritory(state, side, hero.x, hero.y)) {
+      state.heroes[side] = { state: "seguro", unitId: hero.id };
+      pushLog(state, side, "evento", `Chanceler ${cfg.countryName} alcançou território seguro.`);
+      checkHeroVictory(state);
+      continue;
+    }
+    // Fuga automática: o chanceler ESCOLHE A ROTA mais segura até o território aliado
+    // (não a mais curta), desviando dos bolsões de inimigos no caminho.
+    const goal = heroEscapeGoal(state, side, hero);
+    hero.goalX = goal.x;
+    hero.goalY = goal.y;
+    hero.holdAtGoal = true;
+    hero.order = "avancar";
+  }
+}
+
+// Ameaça inimiga num ponto: soma ponderada das unidades adversárias por perto (as mais
+// próximas e mais letais pesam mais). Usada para avaliar rotas de fuga.
+function threatAt(state: BattleState, side: Side, x: number, y: number): number {
+  const enemy = other(side);
+  const cfg = enemy === "blue" ? state.blue : state.red;
+  let t = 0;
+  for (const e of cfg.units) {
+    if (!e.alive) continue;
+    const d = dist(x, y, e.x, e.y);
+    if (d >= HERO_THREAT_RADIUS) continue;
+    t += (1 - d / HERO_THREAT_RADIUS) * (1 + e.dmg / 40);
+  }
+  return t;
+}
+
+// ROTA DE FUGA: escolhe o destino que minimiza risco + distância. Os candidatos são as
+// bases e territórios aliados (âncoras seguras); a rota de cada um é amostrada em passos
+// e penalizada pela ameaça inimiga ao longo do caminho. Se o caminho direto passa por um
+// bolsão de inimigos, um ponto de contorno lateral vence — o chanceler dá a volta.
+function heroEscapeGoal(
+  state: BattleState,
+  side: Side,
+  hero: BattleUnit,
+): { x: number; y: number } {
+  const anchors: { x: number; y: number }[] = [];
+  for (const s of state.structures) {
+    if (s.alive && s.side === side && s.kind !== "prisao") anchors.push({ x: s.x, y: s.y });
+  }
+  for (const t of state.territories) {
+    if (t.owner === side) anchors.push({ x: t.x, y: t.y });
+  }
+  if (anchors.length === 0) {
+    const zone = state.config.arena.deployZone[side];
+    return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };
+  }
+
+  // Só as âncoras mais próximas importam para a fuga: cortar o resto mantém o cálculo
+  // barato (isto roda a cada quadro para cada chanceler em fuga).
+  const near = anchors
+    .slice()
+    .sort((a, b) => dist(hero.x, hero.y, a.x, a.y) - dist(hero.x, hero.y, b.x, b.y))
+    .slice(0, 5);
+
+  const routeCost = (to: { x: number; y: number }): number => {
+    const steps = 6;
+    let threat = 0;
+    for (let i = 1; i <= steps; i++) {
+      const p = i / steps;
+      threat += threatAt(state, side, hero.x + (to.x - hero.x) * p, hero.y + (to.y - hero.y) * p);
+    }
+    const length = dist(hero.x, hero.y, to.x, to.y);
+    return threat * 1.6 + length * 0.25;
+  };
+
+  let best = near[0]!;
+  let bestCost = Infinity;
+  for (const a of near) {
+    const c = routeCost(a);
+    if (c < bestCost) {
+      bestCost = c;
+      best = a;
+    }
+  }
+
+  // Contorno local: se o trecho imediato até o destino ainda é perigoso, testa desvios
+  // laterais (±45°/±90°) e segue o mais seguro — a rota deixa de ser uma linha reta.
+  const direct = Math.atan2(best.y - hero.y, best.x - hero.x);
+  const here = threatAt(state, side, hero.x, hero.y);
+  const ahead = threatAt(state, side, hero.x + Math.cos(direct) * 8, hero.y + Math.sin(direct) * 8);
+  if (ahead > here && ahead > 0.4) {
+    let bestAngle = direct;
+    let bestAhead = ahead;
+    for (const off of [0.7, -0.7, 1.4, -1.4]) {
+      const a = direct + off;
+      const t = threatAt(state, side, hero.x + Math.cos(a) * 8, hero.y + Math.sin(a) * 8);
+      if (t < bestAhead) {
+        bestAhead = t;
+        bestAngle = a;
+      }
+    }
+    if (bestAngle !== direct) {
+      const r = Math.min(dist(hero.x, hero.y, best.x, best.y), 10);
+      return {
+        x: clamp(hero.x + Math.cos(bestAngle) * r, WORLD_X_MIN, WORLD_X_MAX),
+        y: clamp(hero.y + Math.sin(bestAngle) * r, WORLD_Y_MIN, WORLD_Y_MAX),
+      };
+    }
+  }
+  return best;
 }
 
 // Cópia profunda da arena: listas e objetos internos deixam de ser compartilhados
@@ -349,6 +677,8 @@ export interface DeployOrder {
   skipRecharge?: boolean | undefined;
   /** Grupo compartilhado por todas as unidades do lote (permite reposicioná-las juntas). */
   groupId?: string | undefined;
+  /** ESCOLTA: id do chanceler aliado que a força deve acompanhar (cerco de proteção). */
+  escortId?: string | undefined;
   /** Deslocamento de FORMAÇÃO aplicado ao nascimento e ao destino (coluna de marcha). */
   offsetX?: number | undefined;
   offsetY?: number | undefined;
@@ -526,11 +856,30 @@ export function deployBatch(
   // destino, sem deslocamento — nada de "o soldado nasce torto".
   const distinct = new Set(requests.filter((r) => r.count > 0).map((r) => r.cardId));
   const formed = distinct.size > 1;
+  // ORDEM DE MARCHA: os mais RESISTENTES vão à frente e os frágeis atrás, protegidos.
+  // O tanque puxa a coluna; fuzileiros/artilharia marcham na retaguarda. Empate desfaz-se
+  // pela velocidade (mais rápido na frente). Determinístico.
+  const depthByCard = new Map<string, number>();
+  if (formed) {
+    const stats = (id: string): { hp: number; speed: number } => {
+      const c = cardById(id);
+      return c.kind === "militar" ? { hp: c.hp, speed: c.speed } : { hp: 0, speed: 0 };
+    };
+    const ordered = [...distinct].sort((a, b) => {
+      const ca = stats(a);
+      const cb = stats(b);
+      if (cb.hp !== ca.hp) return cb.hp - ca.hp;
+      return cb.speed - ca.speed;
+    });
+    ordered.forEach((id, i) => depthByCard.set(id, 8 - i * 5));
+  }
   let deployed = 0;
   let spent = 0;
   for (const r of requests) {
     const n = Math.max(0, Math.floor(r.count));
-    const offset = formed ? formationOffset(state, side, r.cardId, order, groupId) : { x: 0, y: 0 };
+    const offset = formed
+      ? formationOffset(state, side, r.cardId, order, groupId, depthByCard)
+      : { x: 0, y: 0 };
     const before = deployed;
     const made = deployRepeat(state, side, r.cardId, order.x, order.y, n, {
       ...order,
@@ -557,6 +906,7 @@ function formationOffset(
   cardId: string,
   order: DeployOrder,
   groupId: string,
+  depthByCard: Map<string, number>,
 ): { x: number; y: number } {
   const card = cardById(cardId);
   // Eixo de avanço = da origem (base) ao destino; perpendicular = largura do front.
@@ -582,16 +932,9 @@ function formationOffset(
   };
   const lane = laneByCategory[card.category] ?? 3;
   const width = (lane - 2) * 6.5; // −13..+13 unidades pela largura do front
-  // Profundidade por categoria: positivo = mais à frente (perto do inimigo).
-  const depthByCategory: Record<string, number> = {
-    blindado: 7,
-    reconhecimento: 5,
-    infantaria: 2,
-    defesa: 0,
-    artilharia: -4,
-    apoio: -7,
-  };
-  const base = depthByCategory[card.category] ?? 0;
+  // Profundidade: positivo = mais à frente (perto do inimigo). A frente é ocupada
+  // pelos mais resistentes (depthByCard, montado por vida/velocidade da carta).
+  const base = depthByCard.get(cardId) ?? 0;
   // Cartas repetidas no mesmo lote empilham um pouco mais atrás.
   const rank = rankInGroup(state, groupId);
   const depth = base - rank * 2.5;
@@ -664,6 +1007,15 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
     if (order.targetStructureId) u.attackStructureId = order.targetStructureId;
     if (order.targetTerritoryId) u.attackTerritoryId = order.targetTerritoryId;
     u.order = "avancar";
+    // Escolta: a tropa destacada larga o destino e passa a orbitar o chanceler.
+    if (order.escortId) {
+      const hero = cfg.units.find((h) => h.id === order.escortId && h.alive && h.hero);
+      if (hero) {
+        u.escortId = hero.id;
+        delete u.goalX;
+        delete u.goalY;
+      }
+    }
     cfg.units.push(u);
   }
   return count;
@@ -768,6 +1120,8 @@ function spawnUnit(
     radius: card.radius,
     targets: card.targets,
     domain: card.domain,
+    ...(card.hero ? { hero: true } : {}),
+    ...(card.dmgVs ? { dmgVs: card.dmgVs } : {}),
     order: "avancar",
     groupId: opts.groupId ?? `g${state.nextId}`,
     aim: HOME_AIM[side],
@@ -803,6 +1157,96 @@ function unitsForSelection(
   return cfg.units.filter((u) => u.alive);
 }
 
+// Quebra uma tropa em unidades independentes: cada uma passa a ter o próprio grupo e,
+// portanto, escolhe sozinha o alvo que neutraliza melhor (selectTarget por prioridade).
+// Devolve quantas unidades foram separadas (0 = nada a fazer).
+export function separate(state: BattleState, side: Side, groupId: string): number {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const members = cfg.units.filter((u) => u.alive && u.groupId === groupId);
+  if (members.length < 2) return 0;
+  for (const u of members) u.groupId = `g${state.nextId++}`;
+  return members.length;
+}
+
+// ESCOLTA: manda as unidades selecionadas acompanharem um chanceler aliado. A tropa
+// abandona o avanço automático e passa a orbitar o herói, fechando o cerco pelo lado
+// da ameaça — mas SEM encostar nele (cada uma guarda um posto no anel de proteção).
+export function assignEscort(
+  state: BattleState,
+  side: Side,
+  heroUnitId: string,
+  sel: { groupId?: string; unitId?: string } = {},
+): number {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const hero = cfg.units.find((u) => u.id === heroUnitId && u.alive && u.hero);
+  if (!hero) return 0;
+  const targets = unitsForSelection(state, side, sel).filter((u) => !u.hero);
+  if (targets.length === 0) return 0;
+  for (const u of targets) {
+    u.escortId = hero.id;
+    u.order = "avancar";
+    delete u.goalX;
+    delete u.goalY;
+    delete u.attackStructureId;
+    delete u.attackTerritoryId;
+    delete u.targetId;
+  }
+  pushLog(
+    state,
+    side,
+    "ordem",
+    `${cfg.countryName}: ${targets.length} unidade(s) destacada(s) para escoltar o chanceler.`,
+  );
+  return targets.length;
+}
+
+// Posto de escolta: um anel em volta do chanceler, de frente para a AMEAÇA mais
+// próxima, com o raio calculado para NÃO encostar nele.
+function escortGoal(state: BattleState, u: BattleUnit, hero: BattleUnit): { x: number; y: number } {
+  const cfg = u.side === "blue" ? state.blue : state.red;
+  const mates = cfg.units.filter((x) => x.alive && x.escortId === hero.id);
+  const idx = Math.max(0, mates.indexOf(u));
+  const n = Math.max(1, mates.length);
+  const R = hero.radius + 3.2; // folga: o cerco nunca cola no chanceler
+  const threat = nearestEnemy(state, u.side, hero.x, hero.y);
+  const baseAngle = threat
+    ? Math.atan2(threat.y - hero.y, threat.x - hero.x)
+    : u.side === "blue"
+      ? 0
+      : Math.PI;
+  // Distribui os escoltas num arco de ~210° voltado para a ameaça (não em círculo
+  // completo: ninguém fica "atrás" exposto, todos barram a aproximação).
+  const spread = (Math.PI * 2 * 0.58) / n;
+  const angle = baseAngle + (idx - (n - 1) / 2) * spread;
+  return { x: hero.x + Math.cos(angle) * R, y: hero.y + Math.sin(angle) * R };
+}
+
+function nearestEnemy(
+  state: BattleState,
+  side: Side,
+  x: number,
+  y: number,
+): { x: number; y: number } | null {
+  const enemy = other(side);
+  const cfg = enemy === "blue" ? state.blue : state.red;
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (const e of cfg.units) {
+    if (!e.alive) continue;
+    const d = dist(x, y, e.x, e.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { x: e.x, y: e.y };
+    }
+  }
+  if (best) return best;
+  // Sem inimigo em campo, aponta para a base adversária (direção geral da ameaça).
+  const base = state.structures.find(
+    (s) => s.alive && s.side === enemy && s.kind === "base-principal",
+  );
+  return base ? { x: base.x, y: base.y } : null;
+}
+
 // Reposiciona uma força existente para um novo destino/alvo no mapa.
 export function reposition(
   state: BattleState,
@@ -816,6 +1260,7 @@ export function reposition(
   for (const u of targets) {
     u.goalX = clamp(order.x, WORLD_X_MIN, WORLD_X_MAX);
     u.goalY = clamp(order.y, WORLD_Y_MIN, WORLD_Y_MAX);
+    delete u.escortId; // uma ordem manual desfaz a escolta
     delete u.attackStructureId;
     delete u.attackTerritoryId;
     delete u.targetId;
@@ -1112,9 +1557,11 @@ export function issueOrder(
   opts: { preserveGoals?: boolean } = {},
 ): boolean {
   const cfg = side === "blue" ? state.blue : state.red;
+  // Ordens GLOBAIS (sem alvo) não arrastam o chanceler: o herói só se move por ordem
+  // direta ao próprio (unitId), para o jogador não jogá-lo na frente de batalha sem querer.
   const targets = unitId
     ? cfg.units.filter((u) => u.id === unitId && u.alive)
-    : cfg.units.filter((u) => u.alive);
+    : cfg.units.filter((u) => u.alive && !u.hero);
   if (targets.length === 0) return false;
   for (const u of targets) {
     u.order = order;
@@ -1149,11 +1596,19 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   state.phase = state.t < MOBILIZACAO_SECONDS ? "mobilizacao" : pressao ? "pressao" : "combate";
 
   updateEconomy(state, dt);
+  // A recarga das CARTAS continua: é o freio de curto prazo contra o spam. O Sov (finito)
+  // é o freio de longo prazo — não regenera, só volta de território conquistado.
   tickRecharge(state.blue, dt);
   tickRecharge(state.red, dt);
 
   updateZones(state, dt);
-  for (const side of ["blue", "red"] as Side[]) {
+  // ORDEM JUSTA: quem atualiza primeiro dispara primeiro. Com o azul fixo na frente, ele
+  // levava o primeiro tiro de TODO engajamento — com o tiro "parado no alcance" essa
+  // iniciativa virava vitória automática. Alternamos a ordem a cada passo (determinístico)
+  // para que a iniciativa se divida igualmente entre os lados.
+  state.tick += 1;
+  const updateOrder: Side[] = state.tick % 2 === 0 ? ["blue", "red"] : ["red", "blue"];
+  for (const side of updateOrder) {
     const cfg = side === "blue" ? state.blue : state.red;
     for (const u of cfg.units) {
       if (!u.alive) continue;
@@ -1169,6 +1624,7 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   updateEffects(state, dt);
   updateCapture(state, dt);
   updateVisibility(state);
+  updateHeroes(state);
   cleanup(state);
   updateScore(state);
   checkVictory(state, dt);
@@ -1178,24 +1634,23 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
 // Economia da partida: cada base avançada operacional gera renda (energia/s) e
 // moeda. Destruir bases inimigas corta a renda do adversário — a expansão paga.
 function updateEconomy(state: BattleState, dt: number): void {
+  // O Sov só volta de TERRITÓRIO: cada ponto conquistado paga um lote a cada 60 s.
+  // Não há regeneração passiva nem recompensa por abate — se o recurso acabar e não
+  // houver território rendendo, a operação quebra (é o relógio da guerra).
   for (const side of ["blue", "red"] as Side[]) {
     const cfg = side === "blue" ? state.blue : state.red;
-    let bases = 0;
-    for (const s of state.structures) {
-      if (s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction) bases++;
-    }
-    // Renda por LOTE (não contínua): cada base operacional paga a cada 45 s. O bônus
-    // econômico da nação aumenta o valor do lote, nunca a frequência.
-    const perBase = SOV_PER_BASE * (1 + cfg.economyBonus);
-    cfg.income = (bases * perBase) / SOV_BASE_INTERVAL; // Sov/s (para o HUD)
-    if (bases === 0) {
+    let held = 0;
+    for (const t of state.territories) if (t.owner === side) held += 1;
+    const perTerritory = SOV_PER_TERRITORY * (1 + cfg.economyBonus);
+    cfg.income = (held * perTerritory) / SOV_TERRITORY_INTERVAL; // Sov/s (para o HUD)
+    if (held === 0) {
       cfg.incomeTimer = 0;
       continue;
     }
     cfg.incomeTimer += dt;
-    while (cfg.incomeTimer >= SOV_BASE_INTERVAL) {
-      cfg.incomeTimer -= SOV_BASE_INTERVAL;
-      const grant = Math.round(bases * perBase);
+    while (cfg.incomeTimer >= SOV_TERRITORY_INTERVAL) {
+      cfg.incomeTimer -= SOV_TERRITORY_INTERVAL;
+      const grant = Math.round(held * perTerritory);
       cfg.command = Math.min(cfg.commandMax, cfg.command + grant);
       cfg.coins += grant;
     }
@@ -1277,7 +1732,11 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
       fireWeapon(state, u, target);
       u.readyIn = u.cooldown;
     }
-    if (u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > u.range * 0.7) {
+    // ZONA DE ALCANCE: quando o alvo entra no perímetro de tiro, a unidade PARA e
+    // atira dali — não avança até encostar nele. O alcance é medido até a BORDA do
+    // alvo (igual a selectTarget), então ela estaciona no limite da zona de tiro.
+    const reach = u.range + (target.radius ?? 0);
+    if (u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > reach) {
       moveToward(state, u, target.x, target.y, dt, slow);
     }
     return;
@@ -1305,6 +1764,18 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
 function applyWear(state: BattleState, u: BattleUnit, moved: number, dt: number): void {
   const base = nearestFriendlyBase(state, u.side, u.x, u.y);
   const supplyDist = base ? dist(u.x, u.y, base.x, base.y) : WEAR_FIELD * 2;
+  if (u.hero) {
+    // O CHANCELER sofre o atrito de campanha em marcha, mas REGENERA quando para (e
+    // fora de combate) — por isso o desgaste nunca o mata sozinho: ele só cai sob fogo.
+    if (moved > 0.02) {
+      const sf = 1 + Math.min(2, Math.max(0, supplyDist - SUPPLY_RADIUS) / WEAR_FIELD);
+      u.hp = Math.max(1, u.hp - u.maxHp * WEAR_MOVE * sf * dt);
+    } else if (!u.engaged && u.hitFlash <= 0) {
+      u.hp = Math.min(u.maxHp, u.hp + u.maxHp * HERO_REGEN * dt);
+    }
+    u.wear = u.maxHp - u.hp;
+    return;
+  }
   if (supplyDist <= SUPPLY_RADIUS) {
     // Na zona de suprimento de uma base aliada a tropa se reabastece: sem desgaste.
     u.wear = 0;
@@ -1350,6 +1821,7 @@ function killByAttrition(state: BattleState, u: BattleUnit): void {
   const cfg = u.side === "blue" ? state.blue : state.red;
   cfg.losses += 1;
   pushLog(state, u.side, "baixa", `${cfg.countryName} perde ${u.name} por desgaste.`);
+  if (u.hero) heroDied(state, u);
 }
 
 // Remove ordens cujo alvo explícito já foi destruído, para a força voltar ao
@@ -1386,6 +1858,12 @@ function objectiveFor(state: BattleState, u: BattleUnit): { x: number; y: number
   }
   if (u.goalX !== undefined && u.goalY !== undefined) {
     return { x: u.goalX, y: u.goalY };
+  }
+  // Escolta: sem destino próprio, a unidade toma posição no cerco em volta do chanceler.
+  if (u.escortId) {
+    const hero = findUnit(state, u.escortId);
+    if (hero && hero.alive) return escortGoal(state, u, hero);
+    delete u.escortId; // chanceler caiu: volta ao comportamento normal
   }
   return goalFor(state, u);
 }
@@ -1670,7 +2148,7 @@ function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void 
 
   if (w.tracer) {
     addEffect(state, "tracer", mx, my, 0, { x2: target.x, y2: target.y, side: u.side });
-    applyHit(state, u, target, dmg, target.x, target.y);
+    applyHit(state, u, target, dmg, target.x, target.y, u.dmgVs);
     return;
   }
 
@@ -1694,6 +2172,7 @@ function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void 
       splash: w.splash,
       arc: w.arc,
       homing: w.homing,
+      ...(u.dmgVs ? { dmgVs: u.dmgVs } : {}),
       targetId: target.id,
       targetKind: target.kind,
       targetX: tx,
@@ -1723,11 +2202,12 @@ function applyHit(
   dmg: number,
   hx: number,
   hy: number,
+  dmgVs?: Partial<Record<UnitCategory, number>>,
 ): void {
   if (target.kind === "unit") {
     const e = findUnit(state, target.id);
     if (e && e.alive) {
-      damageUnit(state, e, dmg, source);
+      damageUnit(state, e, dmg, source, dmgVs);
       addEffect(state, "impact", e.x, e.y, e.radius * 0.6);
     }
   } else {
@@ -1815,7 +2295,7 @@ function explode(state: BattleState, p: Projectile): void {
     if (dist(p.x, p.y, u.x, u.y) <= radius + u.radius) {
       const falloff =
         p.splash > 0 ? Math.max(0.45, 1 - dist(p.x, p.y, u.x, u.y) / (radius + u.radius)) : 1;
-      damageUnit(state, u, p.dmg * falloff, null);
+      damageUnit(state, u, p.dmg * falloff, null, p.dmgVs);
     }
   }
   for (const s of state.structures) {
@@ -1969,6 +2449,7 @@ function damageUnit(
   target: BattleUnit,
   dmg: number,
   from: BattleUnit | null,
+  dmgVs?: Partial<Record<UnitCategory, number>>,
 ): void {
   const ob = obstacleAt(state.config.arena, target.x, target.y);
   const fort = coverBonusAt(state, target);
@@ -1976,6 +2457,11 @@ function damageUnit(
   // Resistência de veterano: a unidade de nível alto ignora parte do dano. Combinada
   // com a cobertura, o dano final nunca fica negativo.
   let final = dmg * (1 - cover) * (1 - Math.min(0.6, target.armor));
+  // Contrapesos: multiplicador do atirador contra a CATEGORIA do alvo. Vale para armas
+  // de projétil (canhão, míssil, foguete) e para o fuzil, além da regra de ouro do
+  // antitanque contra blindado.
+  const vs = dmgVs?.[target.category];
+  if (vs) final *= vs;
   if (
     from &&
     from.category === "infantaria" &&
@@ -1999,26 +2485,11 @@ function damageUnit(
     const victimCfg = target.side === "blue" ? state.blue : state.red;
     killerCfg.kills += 1;
     victimCfg.losses += 1;
-    // Recompensa por combate: proporcional ao valor do alvo. Eliminar um veículo
-    // pesado paga mais que eliminar um soldado.
-    const reward = rewardForKill(target);
-    killerCfg.command = Math.min(killerCfg.commandMax, killerCfg.command + reward.command);
-    killerCfg.coins += reward.coins;
+    // Sem recompensa por abate: o Sov é FINITO e só volta de território conquistado.
     pushLog(state, killerSide, "baixa", `${victimCfg.countryName} perde ${target.name}.`);
+    // O chanceler é a peça que decide a guerra: perder o seu ou eliminar o outro encerra.
+    if (target.hero) heroDied(state, target);
   }
-}
-
-// Recompensa econômica por abate: o valor da CARTA do alvo + 50%. Cada unidade em
-// campo É a carta inteira (um soldado, um tanque), então o abate devolve o valor cheio.
-function rewardForKill(target: BattleUnit): { command: number; coins: number } {
-  let cost = 10;
-  try {
-    cost = cardById(target.cardId).cost;
-  } catch {
-    /* alvos de habilidade sem carta: usa custo mínimo */
-  }
-  const value = Math.max(1, Math.round(cost * (1 + SOV_KILL_BONUS)));
-  return { command: value, coins: value };
 }
 
 // Cobertura concedida pela Fortificação de Campanha aliada próxima (não se aplica a alvos aéreos).
@@ -2048,15 +2519,10 @@ function damageStructure(
     const killerCfg = killerSide === "blue" ? state.blue : state.red;
     const victimCfg = target.side === "blue" ? state.blue : state.red;
     killerCfg.structuresDestroyed += 1;
-    // Destruir uma base avançada paga em moeda; derrubar a base principal encerra o jogo.
-    if (target.kind === "base-avancada") {
-      killerCfg.command = Math.min(killerCfg.commandMax, killerCfg.command + 80);
-      killerCfg.coins += 80;
-    } else if (target.kind === "torre") {
-      killerCfg.command = Math.min(killerCfg.commandMax, killerCfg.command + 120);
-      killerCfg.coins += 120;
-    }
+    // Sem pagamento em Sov por estrutura: conquistar TERRITÓRIO é a única fonte de renda.
     pushLog(state, killerSide, "destruicao", `${victimCfg.countryName} perde ${target.name}.`);
+    // Derrubar uma PRISÃO liberta o chanceler cativo (o resgate é o objetivo da campanha).
+    if (target.kind === "prisao") liberatePrison(state, target, from);
     if (target.kind === "base-principal") {
       finish(
         state,
@@ -2366,6 +2832,36 @@ function checkVictory(state: BattleState, dt: number): void {
   // (tratado em damageStructure). Objetivos alternativos só valem quando a MISSÃO os
   // define explicitamente — nunca por controle parcial, primeiro ponto ou metade do campo.
 
+  // CENÁRIO DE CHANCELER: a guerra gira em torno dos chefes de Estado. O relógio NÃO
+  // decide por vida de base aqui — quem perde o chanceler perde a guerra (tratado em
+  // heroDied). Só restam o colapso de recursos e a destruição da base principal.
+  if (state.config.heroSetup && state.config.heroSetup.length > 0) {
+    const blueStuck = sideIsBankrupt(state, "blue");
+    const redStuck = sideIsBankrupt(state, "red");
+    if (blueStuck && !redStuck)
+      return finish(state, "derrota", "Recursos esgotados: sem Sov nem tropas, a operação parou.");
+    if (redStuck && !blueStuck)
+      return finish(state, "vitoria", "Recursos esgotados: o adversário ficou sem como reagir.");
+    if (blueStuck && redStuck)
+      return finish(state, "empate", "Recursos esgotados nos dois lados: a guerra travou.");
+    // Janela da operação encerrada sem eliminação: decide quem está mais perto de
+    // vencer a guerra de chanceleres — quem tem o seu em campo e mais saudável.
+    if (state.t >= duration) {
+      const blue = heroHealthFraction(state, "blue");
+      const red = heroHealthFraction(state, "red");
+      if (red < blue - 0.02)
+        return finish(
+          state,
+          "vitoria",
+          "Janela encerrada: o chanceler adversário está mais exposto.",
+        );
+      if (blue < red - 0.02)
+        return finish(state, "derrota", "Janela encerrada: seu chanceler ficou mais exposto.");
+      return finish(state, "empate", "Janela encerrada: os dois chanceleres seguem em campo.");
+    }
+    return;
+  }
+
   // Objetivo "militar": neutralizar a capacidade de combate do adversário. Exige
   // EVIDÊNCIA de colapso real, não uma razão de baixas acumuladas — perder 70% de
   // tudo que já entrou em campo é o custo normal de uma ofensiva e não pode encerrar
@@ -2481,11 +2977,23 @@ function sideIsBankrupt(state: BattleState, side: Side): boolean {
   );
   if (cfg.command >= cheapest) return false;
   if (cfg.units.some((u) => u.alive)) return false;
-  const hasIncome = state.structures.some(
-    (s) => s.alive && s.side === side && s.kind === "base-avancada" && !s.underConstruction,
-  );
+  // Com o Sov finito, a ÚNICA renda é territorial: um território sob controle devolve
+  // recurso a cada minuto, então o lado ainda tem como reagir.
+  const hasIncome = state.territories.some((t) => t.owner === side);
   if (hasIncome) return false;
   return true;
+}
+
+// "Saúde" do chanceler de um lado para o desempate por tempo: 0 quando morto, 1 quando
+// vivo em campo com vida cheia, e 0.5 quando preso (ainda recuperável, mas sob risco).
+function heroHealthFraction(state: BattleState, side: Side): number {
+  const h = state.heroes[side];
+  if (h.state === "morto") return 0;
+  if (h.state === "preso") return 0.5;
+  const unit = (side === "blue" ? state.blue : state.red).units.find(
+    (u) => u.id === h.unitId && u.alive,
+  );
+  return unit ? Math.max(0, unit.hp / unit.maxHp) : 0.5;
 }
 
 // Fração de vida restante da Base Principal de um lado (1 = intacta).
@@ -2585,6 +3093,10 @@ export function applyAction(state: BattleState, action: BattleAction): ActionRes
     if (action.holdAtArrival !== undefined) opts.holdAtArrival = action.holdAtArrival;
     const ok = reposition(state, action.side, sel, order, opts);
     return ok ? { ok: true } : { ok: false, error: "Nenhuma força selecionada." };
+  }
+  if (action.type === "separar") {
+    const n = separate(state, action.side, action.groupId);
+    return n > 0 ? { ok: true } : { ok: false, error: "Nenhuma tropa para separar." };
   }
   const ok = issueOrder(state, action.side, action.order, action.unitId, action.objectiveId);
   return ok ? { ok: true } : { ok: false, error: "Nenhuma unidade para receber a ordem." };

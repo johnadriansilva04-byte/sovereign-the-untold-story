@@ -17,6 +17,7 @@ import { deploy, dist, effectiveCost, isVisibleTo, issueOrder, nextRandom, other
 import { WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   BattleState,
+  BattleUnit,
   Card,
   CommanderPersonality,
   ControlPoint,
@@ -66,6 +67,9 @@ interface AiMemory {
   cooldown: number;
   weights: AiWeights;
   lastOrderAt: number;
+  lastHeroMoveAt: number;
+  /** Última recalibração de destino das tropas já em campo (perseguição de alvo móvel). */
+  lastRecalAt: number;
 }
 
 // Estado interno por batalha: cada lado tem o seu.
@@ -75,8 +79,20 @@ function memFor(state: BattleState, side: Side): AiMemory {
   let both = memory.get(state);
   if (!both) {
     both = {
-      blue: { cooldown: 0, weights: trainedAiWeights, lastOrderAt: -999 },
-      red: { cooldown: 0, weights: trainedAiWeights, lastOrderAt: -999 },
+      blue: {
+        cooldown: 0,
+        weights: trainedAiWeights,
+        lastOrderAt: -999,
+        lastHeroMoveAt: -999,
+        lastRecalAt: -999,
+      },
+      red: {
+        cooldown: 0,
+        weights: trainedAiWeights,
+        lastOrderAt: -999,
+        lastHeroMoveAt: -999,
+        lastRecalAt: -999,
+      },
     };
     memory.set(state, both);
   }
@@ -131,9 +147,11 @@ function stepAi(
       y: number;
       targetStructureId?: string;
       targetTerritoryId?: string;
+      targetUnitId?: string;
     } = { x: d.x, y: d.y };
     if (d.targetStructureId) order.targetStructureId = d.targetStructureId;
     if (d.targetTerritoryId) order.targetTerritoryId = d.targetTerritoryId;
+    if (d.targetUnitId) order.targetUnitId = d.targetUnitId;
     if (deploy(state, side, d.cardId, d.x, d.y, order)) {
       spent += cost;
       pushAiLog(state, side, d.reason);
@@ -144,10 +162,111 @@ function stepAi(
     // A IA define a postura geral, mas preserva os destinos que já atribuiu às forças.
     issueOrder(state, side, plan.order, undefined, undefined, { preserveGoals: true });
   }
+
+  // O chanceler da IA se move como qualquer força: avança com a linha, mas fica um
+  // pouco atrás dela para não ser abatido à toa. Se ele está FUGINDO (recém-resgatado),
+  // a IA destaca tropa para escoltá-lo de volta ao território controlado.
+  moveChancellor(state, side, mem);
+  escortRetreatingHero(state, side);
+  recalibrateIntent(state, side, mem);
+}
+
+// RECALIBRAÇÃO: o alvo do chanceler se MOVE (fuga, recuo). A IA revisa o destino das
+// tropas já em campo a cada poucos segundos para que elas persigam o alvo atual, em vez
+// de marchar para a posição congelada do momento do deploy. Só as frentes de alvo móvel
+// (caça, extração, guarda, resgate) recalculam — as demais mantêm o destino planejado.
+function recalibrateIntent(state: BattleState, side: Side, mem: AiMemory): void {
+  if (state.t - mem.lastRecalAt < 5) return;
+  const read = readBattle(state, side);
+  const cfg = sideState(state, side);
+  const defensive = isDefensive(
+    state,
+    side,
+    read,
+    chooseTarget(state, side, read, cfg.commander.personality, mem.weights),
+  );
+  const strat = aiStrategy(state, side, read, defensive, mem.weights);
+  if (strat.intent !== "hunt" && strat.intent !== "extract" && strat.intent !== "guard") return;
+  mem.lastRecalAt = state.t;
+
+  const allies = cfg.units
+    .filter((u) => u.alive && !u.hero && !u.escortId)
+    .sort(
+      (a, b) =>
+        dist(a.x, a.y, strat.point.x, strat.point.y) - dist(b.x, b.y, strat.point.x, strat.point.y),
+    )
+    .slice(0, 6);
+  for (const u of allies) {
+    u.goalX = clampToWorld({ x: strat.point.x, y: strat.point.y }).x;
+    u.goalY = clampToWorld({ x: strat.point.x, y: strat.point.y }).y;
+    u.holdAtGoal = false; // chegando lá, volta a caçar em vez de congelar
+    if (strat.targetUnitId) u.targetId = strat.targetUnitId;
+    u.order = "avancar";
+  }
+}
+
+// Protege a extração do chanceler: com o herói FUGINDO, marca até 4 unidades aliadas
+// próximas como escolta. O motor conduz o herói para casa e a escolta fecha o cerco.
+function escortRetreatingHero(state: BattleState, side: Side): void {
+  if (state.heroes[side].state !== "fugindo") return;
+  const cfg = sideState(state, side);
+  const heroId = state.heroes[side].unitId;
+  if (!heroId) return;
+  const hero = cfg.units.find((u) => u.id === heroId && u.alive);
+  if (!hero) return;
+  const free = cfg.units
+    .filter((u) => u.alive && !u.hero && u.escortId !== heroId)
+    .sort((a, b) => dist(a.x, a.y, hero.x, hero.y) - dist(b.x, b.y, hero.x, hero.y))
+    .slice(0, 4);
+  for (const u of free) {
+    u.escortId = heroId;
+    delete u.goalX;
+    delete u.goalY;
+  }
+}
+
+// Move o chanceler do lado para uma posição tática: atrás da própria linha de frente,
+// na direção do objetivo. Se o chanceler está preso (não está em campo), nada acontece.
+function moveChancellor(state: BattleState, side: Side, mem: AiMemory): void {
+  const st = state.heroes[side];
+  if (st.state !== "livre" || !st.unitId) return;
+  const hero = sideState(state, side).units.find((u) => u.id === st.unitId && u.alive);
+  if (!hero) return;
+  if (state.t - mem.lastHeroMoveAt < 6) return;
+  mem.lastHeroMoveAt = state.t;
+
+  const enemy = other(side);
+  const front = frontCentroid(state, side);
+  const target = chooseTarget(
+    state,
+    side,
+    readBattle(state, side),
+    sideState(state, side).commander.personality,
+    mem.weights,
+  );
+  // Recuo tático: mantém-se ~10 unidades ATRÁS do próprio ponto mais avançado.
+  const dir = side === "blue" ? 1 : -1;
+  const gx = clampToWorld({ x: front.x - dir * 10, y: front.y }).x;
+  const gy = clampToWorld({ x: gx, y: (front.y + target.y) / 2 }).y;
+  // Nunca avança além da própria linha (evita correr para dentro do inimigo).
+  const safeX = side === "blue" ? Math.min(gx, front.x) : Math.max(gx, front.x);
+  void enemy;
+  issueOrder(state, side, "avancar", hero.id, undefined, {});
+  repositionHero(state, hero, clampToWorld({ x: safeX, y: gy }));
+}
+
+// Reposiciona o herói para um ponto, mantendo o comando direto (sem arrastar tropas).
+function repositionHero(state: BattleState, hero: BattleUnit, p: { x: number; y: number }): void {
+  hero.goalX = clamp(p.x, WORLD_X_MIN, WORLD_X_MAX);
+  hero.goalY = clamp(p.y, WORLD_Y_MIN, WORLD_Y_MAX);
+  hero.order = "avancar";
+  hero.holdAtGoal = true;
 }
 
 interface AiDecision {
   cardId: string;
+  /** Alvo móvel (ex.: o chanceler adversário em fuga) — a força persegue o id. */
+  targetUnitId?: string;
   x: number;
   y: number;
   reason: string;
@@ -156,6 +275,8 @@ interface AiDecision {
 }
 
 interface AiPlan {
+  /** Intenção estratégica do turno (para leitura e depuração). */
+  intent?: AiIntent;
   deploys: AiDecision[];
   order: Order;
 }
@@ -239,6 +360,8 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
 
   const target = chooseTarget(state, side, read, personality, weights);
   const defensive = isDefensive(state, side, read, target);
+  // O "cérebro" do turno define a intenção; o alvo militar real passa a ser o ponto dela.
+  const strategy = aiStrategy(state, side, read, defensive, weights);
 
   const affordable = hand.filter((id) => {
     const cost = effectiveCost(cardById(id), cfg.doctrine);
@@ -247,7 +370,8 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
   const pool = affordable.length
     ? affordable
     : hand.filter((id) => cfg.command >= effectiveCost(cardById(id), cfg.doctrine));
-  if (pool.length === 0) return { deploys: [], order: defensive ? "defender" : "avancar" };
+  if (pool.length === 0)
+    return { deploys: [], order: defensive ? "defender" : "avancar", intent: strategy.intent };
 
   const scored = pool
     .map((id) => ({
@@ -258,9 +382,12 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
     .sort((a, b) => b.score - a.score);
 
   const best = scored[0]!;
-  if (best.score <= -1) return { deploys: [], order: defensive ? "defender" : "avancar" };
+  if (best.score <= -1)
+    return { deploys: [], order: defensive ? "defender" : "avancar", intent: strategy.intent };
 
-  const deployList: AiDecision[] = [makeDecision(state, side, best.card, target, read, defensive)];
+  const deployList: AiDecision[] = [
+    makeDecision(state, side, best.card, target, read, defensive, strategy),
+  ];
 
   const wantsCombo =
     weights.coord * (cfg.commandMax - cfg.command < cfg.commandMax * 0.35 ? 1 : 0.4) > 0.5 &&
@@ -271,15 +398,226 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
       const cost1 = effectiveCost(best.card, cfg.doctrine);
       const cost2 = effectiveCost(second.card, cfg.doctrine);
       if (cfg.command - cost1 - cost2 >= reserve * 0.4) {
-        deployList.push(makeDecision(state, side, second.card, target, read, defensive));
+        deployList.push(makeDecision(state, side, second.card, target, read, defensive, strategy));
       }
     }
   }
 
-  return { deploys: deployList, order: defensive ? "defender" : "avancar" };
+  return {
+    deploys: deployList,
+    order: defensive ? "defender" : "avancar",
+    intent: strategy.intent,
+  };
 }
 
-function readBattle(state: BattleState, side: Side): BattleRead {
+// FRENTES DE GUERRA: a IA luta em várias frentes ao mesmo tempo. Em vez de uma única
+// "postura", ela pontua cada frente conforme o estado do tabuleiro e usa esses pesos
+// para escolher cartas e destinos. As frentes são:
+//   expand  — conquistar território (a ÚNICA fonte de Sov)
+//   rescue  — destruir a prisão que mantém o NOSSO chanceler cativo
+//   extract — escoltar o NOSSO chanceler recém-resgatado (fugindo) de volta para casa
+//   guard   — manter o NOSSO chanceler vivo (cerco defensivo)
+//   hunt    — caçar o chanceler ADVERSÁRIO (mais forte quando ele foge)
+//   defend  — segurar posição ameaçada
+//   push    — pressionar as estruturas inimigas
+// INTENÇÃO ESTRATÉGICA: o "pensamento" da IA num turno. Ela escolhe UMA frente
+// principal (com justificativa) e as cartas/destinos são derivados dela. A cada turno
+// a intenção é RECALIBRADA: se o chanceler adversário se move, o ponto de caça segue o
+// movimento; se o nosso foge, muda para extração; se o Sov aperta, prioriza território.
+type AiIntent = "rescue" | "extract" | "hunt" | "guard" | "expand" | "push" | "defend";
+
+interface AiStrategy {
+  intent: AiIntent;
+  point: { x: number; y: number };
+  reason: string;
+  targetStructureId?: string;
+  targetUnitId?: string;
+  targetTerritoryId?: string;
+}
+
+// Ponto atual do chanceler adversário EM CAMPO (alvo móvel a ser perseguido).
+function enemyHeroOnField(state: BattleState, side: Side): BattleUnit | null {
+  const foe = other(side);
+  const st = state.heroes[foe];
+  if (st.state !== "livre" && st.state !== "fugindo") return null;
+  if (!st.unitId) return null;
+  const cfg = foe === "blue" ? state.blue : state.red;
+  return cfg.units.find((u) => u.id === st.unitId && u.alive) ?? null;
+}
+
+// Ponto mais ameaçador para o NOSSO chanceler (inimigo mais próximo dele), usado para
+// posicionar a guarda entre a ameaça e o herói — em vez de deixar a escolta parada.
+function heroThreatPoint(
+  state: BattleState,
+  side: Side,
+  hero: BattleUnit,
+): { x: number; y: number } | null {
+  const enemy = other(side);
+  const cfg = enemy === "blue" ? state.blue : state.red;
+  let best: BattleUnit | null = null;
+  let bestD = Infinity;
+  for (const e of cfg.units) {
+    if (!e.alive) continue;
+    const d = dist(hero.x, hero.y, e.x, e.y);
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  return best ? { x: best.x, y: best.y } : null;
+}
+
+// O "cérebro" do turno. Ordem de prioridade (recalibrada a cada chamada):
+//   1. RESGATE   — o nosso chanceler está preso: a guerra depende de soltá-lo.
+//   2. EXTRAÇÃO  — ele foi solto e está fugindo: escoltar de volta para casa.
+//   3. CAÇA      — o chanceler adversário está em campo: perseguir (alvo móvel).
+//   4. GUARDA    — o nosso está em campo e há ameaça: fechar o cerco protetor.
+//   5. EXPANDIR  — garantir Sov (a renda territorial é a única fonte de recurso).
+//   6. DEFENDER/EMpurrar — postura geral do resto da partida.
+export function aiStrategy(
+  state: BattleState,
+  side: Side,
+  read: BattleRead,
+  defensive: boolean,
+  weights: AiWeights,
+): AiStrategy {
+  const cfg = sideState(state, side);
+  const mine = state.heroes[side];
+
+  // 1. RESGATE — destruir a prisão que mantém o nosso chanceler.
+  if (mine.state === "preso") {
+    const prisao = state.structures.find(
+      (s) => s.alive && s.kind === "prisao" && s.captiveSide === side,
+    );
+    if (prisao)
+      return {
+        intent: "rescue",
+        point: { x: prisao.x, y: prisao.y },
+        reason: "Resgatar o chanceler preso",
+        targetStructureId: prisao.id,
+      };
+  }
+
+  // 2. EXTRAÇÃO — o nosso chanceler fugiu e precisa voltar ao território controlado.
+  if (mine.state === "fugindo" && mine.unitId) {
+    const hero = cfg.units.find((u) => u.id === mine.unitId && u.alive);
+    if (hero)
+      return {
+        intent: "extract",
+        point: { x: hero.x, y: hero.y },
+        reason: "Escoltar o chanceler de volta para casa",
+        targetUnitId: hero.id,
+      };
+  }
+
+  // 2.5 ECONOMIA — sem Sov não há guerra: se a renda territorial está escassa (poucos
+  // territórios e caixa baixa), EXPANDIR passa à frente da caça/guarda. É o "vou pegar
+  // esses territórios pra garantir Sov" — a expansão financia o resto da partida. Mas
+  // NUNCA sobrepõe a defesa: sob pressão imediata, segurar a posição vem primeiro.
+  const freeTerr = read.freeTerritories;
+  const poor = cfg.command < cfg.commandMax * 0.2;
+  if (!defensive && !read.behind && freeTerr > 0 && read.myTerritories === 0 && poor) {
+    const terr = buildTerritory(state, side);
+    if (terr)
+      return {
+        intent: "expand",
+        point: { x: terr.x, y: terr.y },
+        reason: "Conquistar território para garantir Sov",
+        targetTerritoryId: terr.id,
+      };
+  }
+
+  // 3. CAÇA — perseguir o chanceler adversário (alvo móvel: recalculado a cada turno).
+  const foeHero = enemyHeroOnField(state, side);
+  if (foeHero) {
+    // Fuga do adversário = janela de ouro; herói parado = alvo prioritário se temos
+    // meios de longo alcance/blindados. A agressividade calibrada decide o empenho.
+    const urgency = state.heroes[other(side)].state === "fugindo" ? 1.35 : 1;
+    if (weights.aggression * urgency >= 0.75)
+      return {
+        intent: "hunt",
+        point: { x: foeHero.x, y: foeHero.y },
+        reason: "Caçar o chanceler adversário",
+        targetUnitId: foeHero.id,
+      };
+  }
+
+  // 4. GUARDA — proteger o nosso chanceler: cerrar o cerco pelo lado da ameaça.
+  if (mine.state === "livre" && mine.unitId) {
+    const hero = cfg.units.find((u) => u.id === mine.unitId && u.alive);
+    const threat = hero ? heroThreatPoint(state, side, hero) : null;
+    if (hero && threat && read.visible.length >= 2) {
+      // Ponto à frente do herói, na direção da ameaça (a tropa barra a aproximação).
+      const dx = threat.x - hero.x;
+      const dy = threat.y - hero.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const r = hero.radius + 5;
+      return {
+        intent: "guard",
+        point: { x: hero.x + (dx / len) * r, y: hero.y + (dy / len) * r },
+        reason: "Proteger o chanceler",
+        targetUnitId: hero.id,
+      };
+    }
+  }
+
+  // 5. EXPANDIR — Sov é FINITO e só volta de território: garantir a renda primeiro.
+  const needsIncome = cfg.command < cfg.commandMax * 0.5 || read.freeTerritories > 0;
+  if (needsIncome && read.freeTerritories > 0 && read.myTerritories < 5) {
+    const terr = buildTerritory(state, side);
+    if (terr)
+      return {
+        intent: "expand",
+        point: { x: terr.x, y: terr.y },
+        reason: "Conquistar território (renda de Sov)",
+        targetTerritoryId: terr.id,
+      };
+  }
+
+  // 6. Postura geral: defender a posição ameaçada ou empurrar para a base inimiga.
+  if (defensive) {
+    const p = chooseTarget(state, side, read, cfg.commander.personality, weights);
+    return { intent: "defend", point: { x: p.x, y: p.y }, reason: "Segurar a posição" };
+  }
+  const p = chooseTarget(state, side, read, cfg.commander.personality, weights);
+  return { intent: "push", point: { x: p.x, y: p.y }, reason: "Empurrar para a base inimiga" };
+}
+
+interface AiFronts {
+  expand: number;
+  rescue: number;
+  extract: number;
+  guard: number;
+  hunt: number;
+  defend: number;
+  push: number;
+}
+
+function assessFronts(
+  state: BattleState,
+  side: Side,
+  read: BattleRead,
+  defensive: boolean,
+): AiFronts {
+  const mine = state.heroes[side].state;
+  const foe = state.heroes[other(side)].state;
+  const expand = read.freeTerritories > 0 ? (read.myTerritories < 4 ? 1 : 0.5) : 0.15;
+  const rescue = mine === "preso" ? 1 : 0;
+  const extract = mine === "fugindo" ? 1 : 0;
+  const guard = mine === "livre" ? (read.visible.length >= 2 ? 0.6 : 0.25) : 0;
+  const hunt = foe === "fugindo" ? 1 : foe === "livre" ? 0.55 : 0;
+  return {
+    expand,
+    rescue,
+    extract,
+    guard,
+    hunt,
+    defend: defensive ? 1 : 0.3,
+    push: defensive ? 0.25 : 1,
+  };
+}
+
+export function readBattle(state: BattleState, side: Side): BattleRead {
   const enemy = other(side);
   const enemyCfg = sideState(state, enemy);
   const visible = enemyCfg.units
@@ -351,6 +689,7 @@ function scoreCard(
   const card = cardById(cardId);
   const cfg = sideState(state, side);
   const cost = effectiveCost(card, cfg.doctrine);
+  const fronts = assessFronts(state, side, read, defensive);
   let score = 1;
 
   if (card.kind === "militar") {
@@ -370,19 +709,35 @@ function scoreCard(
       score += 0.7;
     if (m.category === "reconhecimento")
       score += (read.visible.length < 2 ? 1.3 : 0.2) * weights.objective;
-    // engenheiros valem mais quando há território livre para expandir
+    // Engenheiros: o território é a ÚNICA fonte de Sov — a frente "expand" domina.
     if (m.builder) {
-      const expand = read.freeTerritories > 0 && read.myTerritories < 3 ? 1.6 : -0.4;
-      score += expand * weights.objective;
+      score += (fronts.expand > 0.2 ? fronts.expand * 2.4 : -0.6) * weights.objective;
     }
     if (read.enemyStructures > 1 && m.priority && m.priority.includes("blindado")) score += 0.5;
+    // FRENTE "hunt": caçar o chanceler adversário. Unidades de longo alcance e blindados
+    // são os melhores executores; quando ele FOGE, a janela é ainda mais valiosa.
+    if (
+      fronts.hunt > 0 &&
+      (m.range > 8 || m.category === "blindado" || m.category === "reconhecimento")
+    )
+      score += fronts.hunt * 0.7 * weights.aggression;
+    // FRENTE "rescue": derrubar a prisão que mantém o nosso chanceler — ofensiva dedicada.
+    if (fronts.rescue > 0 && !m.builder && m.dmg > 0)
+      score += fronts.rescue * 0.6 * weights.objective;
+    // FRENTE "extract"/"guard": proteger o NOSSO chanceler (fugindo ou em campo).
+    if (
+      (fronts.extract > 0 || fronts.guard > 0) &&
+      (m.category === "infantaria" || m.category === "defesa")
+    )
+      score += Math.max(fronts.extract, fronts.guard) * 0.6 * weights.objective;
     score -= (cost / 10) * 0.4 * weights.economy;
     if (cfg.command - cost < cost) score -= 0.3;
   } else {
     score = scoreSupport(state, side, card as SupportCard, read, weights, defensive);
   }
 
-  score += weights.objective * (defensive ? 0.4 : 0.5);
+  // FRENTES "push"/"defend": a postura geral empurra para o ataque ou a contenção.
+  score += weights.objective * (fronts.defend > fronts.push ? 0.45 : 0.5);
   if (personality === "Agressivo") score += defensive ? 0 : 0.5 * weights.aggression;
   if (personality === "Cauteloso") score += defensive ? 0.6 : -0.2;
   if (personality === "Econômico") score -= cost * 0.06 * weights.economy;
@@ -563,21 +918,34 @@ function makeDecision(
   target: ControlPoint,
   read: BattleRead,
   defensive: boolean,
+  strategy?: AiStrategy,
 ): AiDecision {
+  // O objetivo efetivo é o ponto da INTENÇÃO (resgate, caça, extração, expansão...),
+  // não o ponto de controle genérico — é assim que o pensamento vira ação no mapa.
+  const aim: ControlPoint = strategy
+    ? { ...target, x: strategy.point.x, y: strategy.point.y }
+    : target;
   if (card.kind === "apoio") {
     const s = card as SupportCard;
-    const pos = supportTarget(state, side, s, read, target, defensive);
-    return { cardId: card.id, x: pos.x, y: pos.y, reason: reasoning(card, target, read) };
+    const pos = supportTarget(state, side, s, read, aim, defensive);
+    return {
+      cardId: card.id,
+      x: pos.x,
+      y: pos.y,
+      reason: strategy?.reason ?? reasoning(card, target, read),
+      ...(strategy?.targetUnitId ? { targetUnitId: strategy.targetUnitId } : {}),
+    };
   }
   const m = card as MilitaryCard;
-  const decision = placement(state, side, m, target, read, defensive);
+  const decision = placement(state, side, m, aim, read, defensive, strategy);
   return {
     cardId: card.id,
     x: decision.x,
     y: decision.y,
-    reason: reasoning(card, target, read),
+    reason: strategy?.reason ?? reasoning(card, target, read),
     ...(decision.targetStructureId ? { targetStructureId: decision.targetStructureId } : {}),
     ...(decision.targetTerritoryId ? { targetTerritoryId: decision.targetTerritoryId } : {}),
+    ...(strategy?.targetUnitId ? { targetUnitId: strategy.targetUnitId } : {}),
   };
 }
 
@@ -653,6 +1021,7 @@ function placement(
   target: ControlPoint,
   read: BattleRead,
   defensive: boolean,
+  strategy?: AiStrategy,
 ): { x: number; y: number; targetStructureId?: string; targetTerritoryId?: string } {
   // Engenheiros: destino = território a conquistar/construir.
   if (card.builder) {
@@ -661,8 +1030,49 @@ function placement(
     return { x: target.x, y: target.y };
   }
 
+  // A INTENÇÃO ESTRATÉGICA manda: resgate (prisão), caça (chanceler móvel), extração
+  // (nosso chanceler em fuga), guarda (cerco) e expansão (território) definem o destino
+  // antes da ofensiva genérica. A defesa só se sobrepõe quando não há frente de herói.
+  if (strategy) {
+    switch (strategy.intent) {
+      case "rescue":
+        return {
+          x: strategy.point.x,
+          y: strategy.point.y,
+          ...(strategy.targetStructureId ? { targetStructureId: strategy.targetStructureId } : {}),
+        };
+      // Frentes de CHANCELER: a força larga o objetivo genérico e vai ao ponto exato
+      // (prisão, chanceler móvel, cerco de extração).
+      case "hunt":
+      case "guard":
+      case "extract":
+        return clampToWorld({ x: strategy.point.x, y: strategy.point.y });
+      // EXPANDIR: quem conquista território é o ENGENHEIRO (a carta de construção).
+      // Tropas de combate seguem a ofensiva normal — desviá-las para um círculo neutro
+      // diluía o ataque e deixava a base exposta (quebrava a curva de dificuldade).
+      case "expand": {
+        if (card.builder) {
+          const terr = buildTerritory(state, side);
+          if (terr) return { x: terr.x, y: terr.y, targetTerritoryId: terr.id };
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   // Defesa: mantém posição perto do objetivo ameaçado.
   if (defensive) return clampToWorld({ x: target.x, y: target.y });
+
+  // RESGATE: se o próprio chanceler está preso, a prioridade militar é a PRISÃO que o
+  // mantém — destruí-la liberta o refém (é o objetivo central da campanha).
+  if (state.heroes[side].state === "preso") {
+    const prisao = state.structures.find(
+      (s) => s.alive && s.kind === "prisao" && s.captiveSide === side,
+    );
+    if (prisao) return { x: prisao.x, y: prisao.y, targetStructureId: prisao.id };
+  }
 
   // Ofensiva: atacar estrutura inimiga mais próxima do objetivo, se houver.
   const enemy = other(side);
