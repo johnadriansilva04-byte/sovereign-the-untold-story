@@ -56,6 +56,12 @@ const MOBILIZACAO_SECONDS = 15;
 const PRESSAO_SECONDS = 60;
 const CAPTURE_RATE = 9; // progresso por segundo (0-100) de uma unidade padrão
 const ENGAGE_RADIUS = 26; // raio em que unidades avançam para atacar
+// DISTÂNCIA DE ENGAJAMENTO: a unidade para e atira quando o alvo entra neste percentual
+// do próprio alcance, mantendo 20% de folga. Sem isto ela avançava até a BORDA do
+// alcance (encostando no alvo) — tanques e canhões colavam um no outro e ficavam girando
+// em vez de trocar fogo à distância. Com a folga, cada arma estaciona na sua posição de
+// tiro natural e a separação nunca precisa empurrar contra o alvo.
+const ENGAGE_STANDOFF = 0.8;
 const SIGHT_BASE = 16;
 const CONTACT_RANGE = 6; // abaixo disso, fumaça não oculta
 const BUILD_RANGE = 8; // distância máxima do engenheiro ao território em obra
@@ -103,14 +109,23 @@ export const MAX_UNITS_PER_SIDE = 33;
 // Separação entre unidades: quantas vezes a soma dos raios elas mantêm de distância
 // e quanto do excesso é corrigido por passo. O empurrão é TOTAL (1.0): com o
 // relaxamento em passadas, cada par resolve a sobreposição no mesmo tick em vez de
-// ficar "vazando" por vários quadros. O fator fica perto de 1 para não abrir a
-// formação além do alcance de tiro (fuzil = 6) e travar o combate.
-const SEPARATION_FACTOR = 1.05;
+// ficar "vazando" por vários quadros.
+//
+// FOLGA OBRIGATÓRIA: o fator é 1.3 — as unidades mantêm 30% da soma dos raios como
+// espaço vazio entre elas. Com o fator perto de 1 (o antigo 1.05) a tropa ficava
+// "colada": os corpos se tocavam, a distância entre centros ia a quase zero e o ângulo
+// de mira (atan2 de um alvo praticamente sobreposto) oscilava — era o efeito de
+// "girar amontoado". Com folga real, cada corpo tem espaço próprio e a mira estabiliza.
+const SEPARATION_FACTOR = 1.3;
 const SEPARATION_PUSH = 1.0;
 // Lado da célula da grade espacial usada na separação. Precisa ser ≥ a MAIOR distância
-// mínima possível entre dois corpos (raio máx. 3,6 × 2 × fator ≈ 8), senão um par
+// mínima possível entre dois corpos (raio máx. 3,6 × 2 × 1,3 ≈ 9,4), senão um par
 // separado por duas células ainda poderia se sobrepor sem ser detectado.
-const SEPARATION_CELL = 10;
+const SEPARATION_CELL = 12;
+// Giro máximo da mira por segundo (rad/s). A mira NÃO salta de um alvo para outro
+// instantaneamente: ela roda até a direção desejada. Sem este limite, dois corpos muito
+// próximos trocavam o ângulo a cada quadro e a unidade "girava" no lugar.
+const AIM_TURN_RATE = 6.0;
 
 export const other = (s: Side): Side => (s === "blue" ? "red" : "blue");
 
@@ -2014,16 +2029,16 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   u.engaged = false;
   if (target && u.jammed <= 0 && canShoot(u)) {
     u.engaged = true;
-    u.aim = Math.atan2(target.y - u.y, target.x - u.x);
+    turnAim(u, target.x, target.y, dt);
     if (u.readyIn <= 0) {
       fireWeapon(state, u, target);
       u.readyIn = u.cooldown;
     }
-    // ZONA DE ALCANCE: quando o alvo entra no perímetro de tiro, a unidade PARA e
-    // atira dali — não avança até encostar nele. O alcance é medido até a BORDA do
-    // alvo (igual a selectTarget), então ela estaciona no limite da zona de tiro.
-    const reach = u.range + (target.radius ?? 0);
-    if (!driving && u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > reach) {
+    // ZONA DE ALCANCE COM FOLGA: a unidade avança até ficar a ENGAGE_STANDOFF do
+    // alcance e PARA ali para atirar — não encosta no alvo. O alcance é medido até a
+    // BORDA do alvo (igual a selectTarget); a folga evita o "amontoa e gira".
+    const stopDist = (u.range + (target.radius ?? 0)) * ENGAGE_STANDOFF;
+    if (!driving && u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > stopDist) {
       moveToward(state, u, target.x, target.y, dt, slow);
     }
     return;
@@ -2693,7 +2708,11 @@ function applySeparation(state: BattleState): void {
     for (const u of cfg.units) if (u.alive) list.push(u);
   }
   if (list.length < 2) return;
-  const immovable = (u: BattleUnit) => u.order === "manter" && !u.engaged;
+  // Quem está PARADO e atirando (engajado) ou segurando posição cede menos no empurrão:
+  // ele já está na posição de tiro e não deve ser arrastado para fora do alcance. Quem
+  // marcha cede mais e contorna. Sem isto, duas tropas em fogo trocavam empurrões e
+  // ficavam "girando coladas".
+  const immovable = (u: BattleUnit) => (u.order === "manter" || u.engaged) && !u.hero;
   // Passadas de relaxamento: uma única correção deixa pares muito sobrepostos ainda
   // colados por vários quadros. A grade espacial abaixo mantém cada passada quase
   // linear, então iterar é barato mesmo com o exército cheio.
@@ -3196,6 +3215,18 @@ function applyDrive(state: BattleState, u: BattleUnit, dt: number, slow: number)
   moveToward(state, u, u.x + (dx / len) * 12, u.y + (dy / len) * 12, dt, slow);
 }
 
+// Vira a mira em direção a (tx, ty) a uma taxa LIMITADA. Evita o "giro no lugar":
+// quando dois corpos estão quase sobrepostos, o ângulo desejado oscila a cada quadro;
+// rodando devagar até o alvo, a unidade gira de forma suave e estável.
+function turnAim(u: BattleUnit, tx: number, ty: number, dt: number): void {
+  const desired = Math.atan2(ty - u.y, tx - u.x);
+  let diff = desired - u.aim;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const max = AIM_TURN_RATE * dt;
+  u.aim += Math.max(-max, Math.min(max, diff));
+}
+
 function moveToward(
   state: BattleState,
   u: BattleUnit,
@@ -3232,8 +3263,7 @@ function moveToward(
       // Sinal PERSISTENTE: sem memorizar o lado, o desvio trocava de sentido a cada
       // quadro perto da borda do obstáculo e a unidade oscilava no mesmo lugar.
       const s =
-        u.stallSign ??
-        (Math.sign(perp.x * (blocked.x - u.x) + perp.y * (blocked.y - u.y)) || 1);
+        u.stallSign ?? (Math.sign(perp.x * (blocked.x - u.x) + perp.y * (blocked.y - u.y)) || 1);
       u.stallSign = s;
       u.x = clamp(u.x + perp.x * u.speed * slow * dt * s, WORLD_X_MIN, WORLD_X_MAX);
       u.y = clamp(u.y + perp.y * u.speed * slow * dt * s, WORLD_Y_MIN, WORLD_Y_MAX);

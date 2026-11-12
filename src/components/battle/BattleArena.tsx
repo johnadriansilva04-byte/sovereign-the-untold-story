@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -8,6 +9,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { originFor } from "@/game/battle/engine";
+import { polygonCentroid, polygonPath, voronoiRegions, type Polygon } from "@/game/battle/regions";
 
 import {
   cameraFor,
@@ -251,6 +253,19 @@ export function BattleArena({
   const portrait = cam.orientation === "portrait";
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
+  // REGIÕES TERRITORIAIS: cada ponto de expansão vira uma ÁREA COMPLETA (polígono de
+  // Voronoi do marcador), então o campo fica particionado e conquistar pinta a região
+  // inteira — não um "ponto" solto. O recorte usa a beirada do campo (área de manobra).
+  const regionPolys = useMemo<Polygon[]>(
+    () =>
+      voronoiRegions(
+        state.territories.map((t) => ({ x: t.x, y: t.y })),
+        { x: FIELD_MARGIN_X, y: FIELD_MARGIN_Y, w: FIELD_W, h: FIELD_H },
+      ),
+    // A geometria só depende da ARENA (marcadores fixos), não do estado de posse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [arena.id],
+  );
   // Pré-visualização do posicionamento: segue o cursor, mostra validade e a rota da força.
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
@@ -609,17 +624,15 @@ export function BattleArena({
               />
             ))}
 
-            {/* FRONTEIRAS: traços no ponto médio de cada par de territórios vizinhos.
-                É a "linha de mapa-múndi" que separa um território do outro. */}
-            <g stroke="oklch(1 0 0 / 0.22)" strokeWidth="0.35" strokeDasharray="1.6 1.4">
-              {(arena.frontiers ?? []).map((f, i) => (
-                <line key={`frontier${i}`} x1={f.from[0]} y1={f.from[1]} x2={f.to[0]} y2={f.to[1]} />
-              ))}
-            </g>
-
-            {/* Territórios de expansão */}
-            {state.territories.map((t) => (
-              <TerritoryGlyph key={t.id} territory={t} portrait={portrait} />
+            {/* REGIÕES TERRITORIAIS: o campo inteiro particionado em áreas completas
+                (um polígono por ponto de expansão). Conquistar pinta a área toda. */}
+            {state.territories.map((t, i) => (
+              <TerritoryGlyph
+                key={t.id}
+                territory={t}
+                region={regionPolys[i] ?? []}
+                portrait={portrait}
+              />
             ))}
 
             {/* Pontos de controle */}
@@ -899,7 +912,15 @@ function PrisonGlyph({ s, color }: { s: Structure; color: string }) {
   return (
     <g>
       <circle cx={x} cy={y} r={R * 1.06} fill="oklch(0.24 0.03 75)" opacity="0.92" />
-      <circle cx={x} cy={y} r={R * 1.06} fill="none" stroke={color} strokeWidth="0.3" opacity="0.6" />
+      <circle
+        cx={x}
+        cy={y}
+        r={R * 1.06}
+        fill="none"
+        stroke={color}
+        strokeWidth="0.3"
+        opacity="0.6"
+      />
       {Array.from({ length: 16 }).map((_, i) => {
         const a0 = (i * 2 * Math.PI) / 16;
         const a1 = ((i + 1) * 2 * Math.PI) / 16;
@@ -910,7 +931,15 @@ function PrisonGlyph({ s, color }: { s: Structure; color: string }) {
         return (
           <g key={i}>
             <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={woodDark} strokeWidth="0.55" />
-            <line x1={x0} y1={y0 - 0.5} x2={x1} y2={y1 - 0.5} stroke={wood} strokeWidth="0.18" opacity="0.85" />
+            <line
+              x1={x0}
+              y1={y0 - 0.5}
+              x2={x1}
+              y2={y1 - 0.5}
+              stroke={wood}
+              strokeWidth="0.18"
+              opacity="0.85"
+            />
           </g>
         );
       })}
@@ -927,8 +956,22 @@ function PrisonGlyph({ s, color }: { s: Structure; color: string }) {
         const ty = y + dy * R * 0.72;
         return (
           <g key={`t${i}`} transform={`translate(${tx} ${ty})`}>
-            <rect x="-0.8" y="-0.6" width="1.6" height="1.7" fill={woodDark} stroke={wood} strokeWidth="0.14" />
-            <polygon points="-1,-0.6 0,-2.3 1,-0.6" fill={color} opacity="0.8" stroke={woodDark} strokeWidth="0.12" />
+            <rect
+              x="-0.8"
+              y="-0.6"
+              width="1.6"
+              height="1.7"
+              fill={woodDark}
+              stroke={wood}
+              strokeWidth="0.14"
+            />
+            <polygon
+              points="-1,-0.6 0,-2.3 1,-0.6"
+              fill={color}
+              opacity="0.8"
+              stroke={woodDark}
+              strokeWidth="0.12"
+            />
           </g>
         );
       })}
@@ -1053,7 +1096,15 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
         return (
           <g key={i}>
             <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={woodDark} strokeWidth="0.55" />
-            <line x1={x0} y1={y0 - 0.45} x2={x1} y2={y1 - 0.45} stroke={wood} strokeWidth="0.18" opacity="0.8" />
+            <line
+              x1={x0}
+              y1={y0 - 0.45}
+              x2={x1}
+              y2={y1 - 0.45}
+              stroke={wood}
+              strokeWidth="0.18"
+              opacity="0.8"
+            />
           </g>
         );
       })}
@@ -1065,7 +1116,15 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
         const h = 2.7 * sc;
         return (
           <g key={`h${i}`} transform={`translate(${px} ${py}) rotate(${(rot * 180) / Math.PI})`}>
-            <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={wood} stroke={woodDark} strokeWidth="0.16" />
+            <rect
+              x={-w / 2}
+              y={-h / 2}
+              width={w}
+              height={h}
+              fill={wood}
+              stroke={woodDark}
+              strokeWidth="0.16"
+            />
             <polygon
               points={`${-w / 2 - 0.4},${-h / 2} 0,${-h / 2 - 1.2 * sc} ${w / 2 + 0.4},${-h / 2}`}
               fill={thatch}
@@ -1079,8 +1138,21 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
       })}
       {/* casa do chefe / centro de comando */}
       <g transform={`translate(${x} ${y})`}>
-        <rect x="-2.7" y="-2" width="5.4" height="4" fill={wood} stroke={woodDark} strokeWidth="0.2" />
-        <polygon points="-3.1,-2 0,-4.2 3.1,-2" fill={thatch} stroke={woodDark} strokeWidth="0.14" />
+        <rect
+          x="-2.7"
+          y="-2"
+          width="5.4"
+          height="4"
+          fill={wood}
+          stroke={woodDark}
+          strokeWidth="0.2"
+        />
+        <polygon
+          points="-3.1,-2 0,-4.2 3.1,-2"
+          fill={thatch}
+          stroke={woodDark}
+          strokeWidth="0.14"
+        />
         <rect x="-0.6" y="0.5" width="1.2" height="1.5" fill={woodDark} />
         <line x1="0" y1="-4.2" x2="0" y2="-6.2" stroke={woodDark} strokeWidth="0.18" />
         <polygon points="0,-6.2 2.2,-5.6 0,-5" fill={color} />
@@ -1098,8 +1170,22 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
         const ty = y + dy * R * 0.6;
         return (
           <g key={`w${i}`} transform={`translate(${tx} ${ty})`}>
-            <rect x="-0.9" y="-0.6" width="1.8" height="1.9" fill={woodDark} stroke={wood} strokeWidth="0.14" />
-            <polygon points="-1.2,-0.6 0,-2.6 1.2,-0.6" fill={thatch} opacity="0.85" stroke={woodDark} strokeWidth="0.12" />
+            <rect
+              x="-0.9"
+              y="-0.6"
+              width="1.8"
+              height="1.9"
+              fill={woodDark}
+              stroke={wood}
+              strokeWidth="0.14"
+            />
+            <polygon
+              points="-1.2,-0.6 0,-2.6 1.2,-0.6"
+              fill={thatch}
+              opacity="0.85"
+              stroke={woodDark}
+              strokeWidth="0.12"
+            />
           </g>
         );
       })}
@@ -1133,7 +1219,14 @@ function TowerGlyph({ s, color }: { s: Structure; color: string }) {
           [1, 1],
         ] as [number, number][]
       ).map(([dx, dy], i) => (
-        <circle key={i} cx={x + dx * R * 0.7} cy={y + dy * R * 0.7} r="0.6" fill={wood} opacity="0.55" />
+        <circle
+          key={i}
+          cx={x + dx * R * 0.7}
+          cy={y + dy * R * 0.7}
+          r="0.6"
+          fill={wood}
+          opacity="0.55"
+        />
       ))}
       {/* base da torre */}
       <rect
@@ -1244,9 +1337,11 @@ function NeutralBaseArt({
 
 function TerritoryGlyph({
   territory: t,
+  region,
   portrait = false,
 }: {
   territory: Territory;
+  region: Polygon;
   portrait?: boolean;
 }) {
   const owned = t.owner !== "neutro";
@@ -1255,20 +1350,39 @@ function TerritoryGlyph({
   const progress = Math.max(t.progress.blue, t.progress.red) / 100;
   const ringColor = t.progress.blue >= t.progress.red ? ALLY : ENEMY;
   const claim = owned ? color : "oklch(1 0 0 / 0.5)";
+  const path = polygonPath(region);
+  const c = polygonCentroid(region, { x: t.x, y: t.y });
   return (
     <g>
+      {/* REGIÃO: a ÁREA INTEIRA do território (polígono de Voronoi). A cor de posse
+          cobre o polígono — conquistar pinta a região, não um ponto solto. A borda
+          clara é a "linha de mapa" que separa um território do vizinho. */}
+      {path && (
+        <>
+          <path
+            d={path}
+            fill={owned ? color : "oklch(0.2 0.01 90)"}
+            fillOpacity={owned ? 0.16 : 0.1}
+            stroke="oklch(1 0 0 / 0.3)"
+            strokeWidth="0.3"
+            strokeLinejoin="round"
+          />
+          {owned && (
+            <path
+              d={path}
+              fill="none"
+              stroke={color}
+              strokeOpacity="0.55"
+              strokeWidth="0.45"
+              strokeLinejoin="round"
+            />
+          )}
+        </>
+      )}
       {/* Base neutra: instalação militar já erguida no meio do mapa. Além do
           marcador de captura, desenha a estrutura (quem a toma assume a posição). */}
       {t.base && <NeutralBaseArt x={t.x} y={t.y} r={t.radius} color={color} owned={owned} />}
-      {/* Disco de posse pintado no chão: leitura de território SEM halo neon. */}
-      <circle
-        cx={t.x}
-        cy={t.y}
-        r={t.radius}
-        fill={owned ? color : "oklch(0.1 0 0)"}
-        opacity={owned ? 0.14 : 0.14}
-      />
-      {/* Marcador circular de captura (o "ponto branco" luminoso do chão). */}
+      {/* MARCADOR DE CAPTURA no centro da região (o "ponto branco" luminoso do chão). */}
       <circle
         cx={t.x}
         cy={t.y}
@@ -1327,6 +1441,20 @@ function TerritoryGlyph({
           DISPUTA
         </text>
       )}
+      {/* NOME do território no centroide da região (leitura de mapa). */}
+      <text
+        x={c.x}
+        y={c.y}
+        textAnchor="middle"
+        fontSize="1.7"
+        fontFamily="var(--font-mono)"
+        fill={owned ? color : "oklch(1 1 1 / 0.55)"}
+        fillOpacity="0.85"
+        fontWeight={600}
+        transform={uprightText(portrait, c.x, c.y)}
+      >
+        {t.name.toUpperCase()}
+      </text>
       {!owned && (t.progress.blue > 0 || t.progress.red > 0) && (
         <>
           <rect
@@ -1978,7 +2106,12 @@ function ProjectileGlyph({ projectile: p }: { projectile: Projectile }) {
   if (p.kind === "rocket") {
     return (
       <g>
-        <line {...tail(4.5)} stroke="oklch(0.75 0 0 / 0.35)" strokeWidth="0.7" strokeLinecap="round" />
+        <line
+          {...tail(4.5)}
+          stroke="oklch(0.75 0 0 / 0.35)"
+          strokeWidth="0.7"
+          strokeLinecap="round"
+        />
         <circle cx={p.x} cy={p.y} r="1.2" fill="var(--doc)" opacity={0.3} />
         <circle cx={p.x} cy={p.y} r="0.5" fill={color} />
       </g>
@@ -1987,7 +2120,12 @@ function ProjectileGlyph({ projectile: p }: { projectile: Projectile }) {
   // Projétil de canhão/morteiro: rastro fino quente.
   return (
     <g>
-      <line {...tail(2.6)} stroke="oklch(0.9 0.12 70 / 0.5)" strokeWidth="0.3" strokeLinecap="round" />
+      <line
+        {...tail(2.6)}
+        stroke="oklch(0.9 0.12 70 / 0.5)"
+        strokeWidth="0.3"
+        strokeLinecap="round"
+      />
       <circle cx={p.x} cy={p.y} r="0.45" fill={color} />
     </g>
   );
@@ -2016,7 +2154,13 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
             strokeLinecap="round"
             opacity={life * 0.9}
           />
-          <circle cx={e.x} cy={e.y} r={0.5 * life + 0.2} fill="oklch(0.98 0.16 85)" opacity={life} />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={0.5 * life + 0.2}
+            fill="oklch(0.98 0.16 85)"
+            opacity={life}
+          />
         </g>
       );
     }
@@ -2024,8 +2168,20 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
       // Clarão na boca do cano: estrela quente que apaga rápido.
       return (
         <g>
-          <circle cx={e.x} cy={e.y} r={1.1 * life + 0.35} fill="oklch(0.95 0.16 80)" opacity={life * 0.95} />
-          <circle cx={e.x} cy={e.y} r={0.55 * life + 0.2} fill="oklch(1 0 0)" opacity={life * 0.85} />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={1.1 * life + 0.35}
+            fill="oklch(0.95 0.16 80)"
+            opacity={life * 0.95}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={0.55 * life + 0.2}
+            fill="oklch(1 0 0)"
+            opacity={life * 0.85}
+          />
         </g>
       );
     }
@@ -2037,10 +2193,34 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
       const grow = 1.35 - life * 0.55;
       return (
         <g>
-          <circle cx={e.x} cy={e.y} r={e.radius * (grow + 0.5)} fill="oklch(0.6 0.02 90)" opacity={life * 0.18} />
-          <circle cx={e.x} cy={e.y} r={e.radius * grow} fill="oklch(0.7 0.19 45)" opacity={life * 0.7} />
-          <circle cx={e.x} cy={e.y} r={e.radius * grow * 0.62} fill="oklch(0.85 0.18 75)" opacity={life * 0.8} />
-          <circle cx={e.x} cy={e.y} r={e.radius * grow * 0.3} fill="oklch(0.98 0.05 90)" opacity={life * 0.95} />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * (grow + 0.5)}
+            fill="oklch(0.6 0.02 90)"
+            opacity={life * 0.18}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * grow}
+            fill="oklch(0.7 0.19 45)"
+            opacity={life * 0.7}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * grow * 0.62}
+            fill="oklch(0.85 0.18 75)"
+            opacity={life * 0.8}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * grow * 0.3}
+            fill="oklch(0.98 0.05 90)"
+            opacity={life * 0.95}
+          />
         </g>
       );
     }
@@ -2111,8 +2291,20 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
       // Impacto no solo/metal: clarão pequeno com levantamento de poeira.
       return (
         <g>
-          <circle cx={e.x} cy={e.y} r={e.radius * life * 1.2 + 0.3} fill="oklch(0.75 0.1 70)" opacity={life * 0.6} />
-          <circle cx={e.x} cy={e.y} r={e.radius * life + 0.25} fill="oklch(0.98 0.06 85)" opacity={life * 0.85} />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * life * 1.2 + 0.3}
+            fill="oklch(0.75 0.1 70)"
+            opacity={life * 0.6}
+          />
+          <circle
+            cx={e.x}
+            cy={e.y}
+            r={e.radius * life + 0.25}
+            fill="oklch(0.98 0.06 85)"
+            opacity={life * 0.85}
+          />
         </g>
       );
   }
