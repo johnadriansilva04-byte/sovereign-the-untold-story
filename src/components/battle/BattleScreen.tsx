@@ -28,6 +28,8 @@ import {
   type MissionDef,
 } from "@/game/battle/missions";
 import { useBattle } from "@/game/battle/useBattle";
+import { useBattleAudio } from "@/game/battle/useBattleAudio";
+import { isAudioMuted, primeAudio, setAudioMuted } from "@/game/battle/audio";
 import type {
   BattleConfig,
   BattleResult,
@@ -180,6 +182,9 @@ export function LiveBattle({
 }: LiveProps) {
   const battle = useBattle(config, { llmCommander });
   const { state, result } = battle;
+  // Som de combate ligado aos eventos REAIS do motor (explosão/impacto/disparo).
+  const [soundOn, setSoundOn] = useState(() => !isAudioMuted());
+  useBattleAudio(state, soundOn && !battle.paused);
   // Seleção da OPERAÇÃO: quantas unidades de cada carta (1 clique = +1). O envio é
   // em lote, de uma base escolhida para um destino clicado. Nada de mão rotativa.
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -465,6 +470,18 @@ export function LiveBattle({
               >
                 Relatório
               </button>
+              <GameButton
+                variant="ghost"
+                aria-label={soundOn ? "Desligar som" : "Ligar som"}
+                onClick={() => {
+                  const next = !soundOn;
+                  setSoundOn(next);
+                  setAudioMuted(!next);
+                  if (next) primeAudio();
+                }}
+              >
+                {soundOn ? "🔊" : "🔇"}
+              </GameButton>
               <GameButton
                 variant="ghost"
                 aria-label={battle.paused ? "Retomar" : "Pausar"}

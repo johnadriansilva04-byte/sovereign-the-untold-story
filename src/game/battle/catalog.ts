@@ -23,6 +23,112 @@ import { deepenY, spreadX } from "./world";
 // Cartas militares — cada categoria tem identidade visual e balística própria
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// GUIA DAS CARTAS — função e conduta de cada uma
+// ---------------------------------------------------------------------------
+//
+// Este bloco é a referência de projeto: o que cada carta FAZ no motor (não só o que
+// parece fazer na tela) e COMO a unidade se comporta em campo. A conduta é executada
+// pelo motor (engine.ts: updateUnit/objectiveFor/selectTarget) e pela IA (ai.ts), e é
+// verificada por teste (src/test/cards-audit.test.ts prova que toda carta causa efeito
+// real; src/test/stall-regression.test.ts prova que nenhuma unidade empaca).
+//
+// COMO LER UMA CARTA NO MOTOR
+// - Arma (`weapon`): define a balística. `tracer: true` = raio instantâneo com traçante
+//   visual e dano no mesmo quadro (fuzil/automática). Sem tracer, o disparo gera um
+//   PROJÉTIL real (kind em types.ts) com trajetória, colisão e explosão no impacto.
+// - `projectileSpeed`: velocidade do projétil (0 = arma sem projétil, ex.: posto).
+// - `splash`: raio de dano em área no impacto (0 = alvo único).
+// - `arc`: trajetória balística (morteiro/obus) — o projétil sobe e cai por cima de
+//   obstáculos; `homing`: persegue o alvo em movimento (ATGM, mísseis).
+// - `priority` (na carta): categorias que a unidade escolhe primeiro (bônus no alvo).
+// - `builder`: unidade de engenharia. Não atira em unidade, não conta como tropa de
+//   combate e é quem captura território e constrói base avançada.
+// - `squad`: quantas unidades a carta lança (cresce com o nível, com teto rígido).
+//
+// CONDUTA PADRÃO (vale para toda unidade de combate): marcha pelo objetivo; ao ter
+// inimigo DENTRO DO ALCANCE, para, mira e dispara até ele morrer ou sair de alcance;
+// depois RETOMA a marcha. Nunca fica parada sem motivo, nunca atira fora de alcance e
+// nunca atravessa obstáculo bloqueante (contorna).
+//
+// --- 5.1/5.2/5.3 INFANTARIA ---
+// FUZ   Fuzileiros ................. Pelotão barato de linha de frente. Arma `fuzil`
+//       com traçante: dano rápido de alvo único, alcance curto (6). Conduta: avança,
+//       captura e SEGURA posição (peso 1,2 na captura). É a tropa de ocupação — não a
+//       de assalto. Fraco contra blindado, ótimo para saturar e tomar marcadores.
+// ASSALTO Infantaria de Assalto ..... Infantaria pesada com arma `automatica`: cadência
+//       altíssima (0,32 s), alcance curto (5,5), mais vida e mais lenta. Conduta: fecha
+//       distância e domina o combate PRÓXIMO; derrete infantaria e estruturas leves.
+// AT    Infantaria Antitanque ....... Equipe com ATGM `atgm`: foguete GUADO (homing),
+//       lento, com explosão em área (splash 3) e dano altíssimo (95) — prioriza
+//       BLINDADO. Conduta: fica atrás, dispara no veículo/estrutura e recarrega (2,6 s);
+//       inútil contra infantaria dispersa. O foguete é projétil real, não animação.
+// SNIP  Atiradores de Precisão ...... Tiro único de altíssimo dano (62) e alcance longo
+//       (16) com traçante. Conduta: elimina infantaria e artilharia À DISTÂNCIA; frágil
+//       e indefeso no corpo a corpo. Prioriza infantaria e artilharia.
+// ENG   Engenheiros Militares ....... BUILDER. Não atira em unidade. Conduta: vai ao
+//       marcador NEUTRO/inimigo, captura (peso 1,4, o maior) e ergue BASE AVANÇADA ali;
+//       depois segue para reparar estrutura aliada danificada dentro do alcance. É a
+//       carta que cria novas linhas de lançamento de tropas.
+//
+// --- 6 ARTILHARIA (peças, não soldados) ---
+// MORT  Morteiro de Apoio .......... Arma `obus` com `arc`: bomba em PARÁBOLA por cima
+//       de obstáculos, alcance médio (18), área (splash). Conduta: fica atrás da linha e
+//       bombardeia alvos agrupados; lento para reposicionar.
+// CANHÃO Canhão de Campanha ....... Peça de fogo DIRETO: projétil `shell` reto, alcance
+//       24 (maior que infantaria), cadência menor (2,4 s). Conduta: gira, eleva, dispara
+//       e SOFRE RECUO visual; dano alto em alvo único/área pequena.
+// OBUS  Artilharia Pesada 155 mm ... Fogo indireto de LONGO alcance (38) com grande
+//       explosão em área. Conduta: atira de trás do mapa sobre posições fixas; é a
+//       resposta a bases avançadas e agrupamentos. Lenta e cara.
+// LM    Lançador de Mísseis ........ Caminhão lançador: `missil` com homing, alcance 34,
+//       explosão grande. Conduta: para, eleva o lançador, dispara o míssil (que voa de
+//       verdade e explode no impacto) e recarrega. Atinge alvo atrás de obstáculo.
+// LMF   Lançador Múltiplo de Foguetes SALVA de 5 foguetes (`lmf`): o dano TOTAL é
+//       dividido entre eles e espalhado em leque. Conduta: saturação de ÁREA — cobre um
+//       setor, não um ponto. Ótimo contra agrupamento; fraco contra alvo único.
+//
+// --- 8 BLINDADOS ---
+// CT    Caça-Tanques ............... Blindado com canhão de alta penetração (110),
+//       prioriza BLINDADO. Conduta: caça tanques e fortificações; sobrevive a tiro leve.
+// CC    Carro de Combate .......... Torre giratória e canhão principal. Conduta: avança,
+//       gira a torre para o alvo, dispara com recuo e explosão; prioriza alvos
+//       estratégicos (estruturas/veículos). Vida alta, resiste a arma leve, mais lento
+//       que a infantaria.
+// VBTP  Veículo Blindado ......... Blindado leve e RÁPIDO com `automatica`. Conduta:
+//       metralha infantaria e reconhecimento, escolta e ocupa terreno depressa.
+//
+// --- 9 AÉREAS (domínio "aereo": sobrevoam terreno e só são atingidas por AA) ---
+// DRN-R Drone de Reconhecimento ... Voa, projeta sombra e enxerga 1,6× mais longe que
+//       as tropas de terra (fog of war). Conduta: inteligência — circula, marca inimigos,
+//       dano baixo (6), prioriza infantaria e artilharia.
+// DRN-C Drone de Combate ......... Voa e ataca ALVOS TERRESTRES com arma própria.
+//       Conduta: pairado ofensivo; imune a armas terrestres (só AA o abate).
+//
+// --- 4/5 DEFESA E APOIO ---
+// AA    Defesa Antiaérea ......... Só atira em AÉREO (`targets: aereo`). Conduta: nega o
+//       espaço aéreo a drones; NÃO atinge alvo terrestre — não desperdiça tiro em solo.
+// FORT  Fortificação de Campanha . Estrutura estática que ancora posição: atira em
+//       ambos, alcance curto; serve de âncora defensiva e cobertura aliada.
+// SOC   Posto de Socorro ......... Não dispara (dmg 0). Conduta: CURA infantaria aliada
+//       num raio por pulso. Alvo prioritário do inimigo, indefeso.
+// CHC   Chanceler ................ Herói: anda sob comando direto, atira para se defender
+//       e é a peça que decide a guerra — proteja-o e elimine o adversário.
+//
+// --- CARTAS DE APOIO (efeito instantâneo/zone, aplicadas por applySupport) ---
+// AEREO  Ataque Aéreo ........... bombardeio em área, dano alto e imediato.
+// GÁS    Bomba Lacrimogêneo ..... nuvem que DRENA a vida de toda unidade TERRESTRE na
+//        área até a morte (não distingue aliado de inimigo).
+// REFORÇO Reforços .............. desembarca na hora dois pelotões de fuzileiros.
+// REPARO Reparação de Veículos .. restaura blindados/veículos num raio.
+// BARR   Barricada .............. ergue obstáculo que BLOQUEIA o avanço (o motor o
+//        respeita no caminho — a unidade contorna).
+// EW     Interferência Eletrônica silencia drones (jammed: não atacam por um tempo).
+// EVAC   Evacuação Aeromédica ... retira e cura uma unidade própria em risco.
+// REC+   Reconhecimento Avançado  revela uma área inteira por tempo limitado.
+// PQD    Paraquedistas .......... infiltração: lança pelotões ATRÁS das linhas inimigas.
+// BOMB   Bombardeiro Tático ..... passagem longa com sequência de impactos (o mais caro).
+
 const INF = "infantaria";
 const BLD = "blindado";
 const ART = "artilharia";

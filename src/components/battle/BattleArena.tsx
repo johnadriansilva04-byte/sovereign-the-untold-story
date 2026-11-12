@@ -1951,24 +1951,46 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
 
 function ProjectileGlyph({ projectile: p }: { projectile: Projectile }) {
   const color = sideColor(p.side);
+  // Rastro proporcional ao movimento: um traço curto atrás do projétil dá a leitura de
+  // velocidade e direção (mísseis/foguetes deixam coluna de fumaça).
+  const speed = Math.hypot(p.vx, p.vy) || 1;
+  const ux = p.vx / speed;
+  const uy = p.vy / speed;
+  const tail = (len: number) => ({
+    x1: p.x,
+    y1: p.y,
+    x2: p.x - ux * len,
+    y2: p.y - uy * len,
+  });
   if (p.kind === "missile") {
     const ang = (Math.atan2(p.vy, p.vx) * 180) / Math.PI;
     return (
-      <g transform={`translate(${p.x} ${p.y}) rotate(${ang})`}>
-        <rect x="-0.9" y="-0.35" width="1.8" height="0.7" fill={color} rx="0.2" />
-        <line x1="-1.6" y1="0" x2="-0.9" y2="0" stroke="var(--doc)" strokeWidth="0.5" />
+      <g>
+        <line {...tail(6)} stroke="oklch(0.7 0 0 / 0.4)" strokeWidth="0.9" strokeLinecap="round" />
+        <line {...tail(3.2)} stroke="oklch(0.85 0.15 60)" strokeWidth="0.4" opacity={0.7} />
+        <g transform={`translate(${p.x} ${p.y}) rotate(${ang})`}>
+          <rect x="-0.9" y="-0.35" width="1.8" height="0.7" fill={color} rx="0.2" />
+          <line x1="-1.6" y1="0" x2="-0.9" y2="0" stroke="var(--doc)" strokeWidth="0.5" />
+        </g>
       </g>
     );
   }
   if (p.kind === "rocket") {
     return (
       <g>
+        <line {...tail(4.5)} stroke="oklch(0.75 0 0 / 0.35)" strokeWidth="0.7" strokeLinecap="round" />
+        <circle cx={p.x} cy={p.y} r="1.2" fill="var(--doc)" opacity={0.3} />
         <circle cx={p.x} cy={p.y} r="0.5" fill={color} />
-        <circle cx={p.x} cy={p.y} r="1.1" fill="var(--doc)" opacity={0.35} />
       </g>
     );
   }
-  return <circle cx={p.x} cy={p.y} r="0.45" fill={color} />;
+  // Projétil de canhão/morteiro: rastro fino quente.
+  return (
+    <g>
+      <line {...tail(2.6)} stroke="oklch(0.9 0.12 70 / 0.5)" strokeWidth="0.3" strokeLinecap="round" />
+      <circle cx={p.x} cy={p.y} r="0.45" fill={color} />
+    </g>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1978,41 +2000,50 @@ function ProjectileGlyph({ projectile: p }: { projectile: Projectile }) {
 function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
   const life = Math.max(0, e.remaining / e.ttl);
   switch (e.kind) {
-    case "tracer":
-      return (
-        <line
-          x1={e.x}
-          y1={e.y}
-          x2={e.x2 ?? e.x}
-          y2={e.y2 ?? e.y}
-          stroke="var(--doc)"
-          strokeWidth="0.28"
-          opacity={life}
-        />
-      );
-    case "muzzle":
-      return (
-        <circle cx={e.x} cy={e.y} r={0.9 * life + 0.3} fill="var(--doc)" opacity={life * 0.9} />
-      );
-    case "explosion":
+    case "tracer": {
+      // Traçante de fuzil/automática: linha fina e rápida, com um clarão na saída e um
+      // risco quente ao longo do trajeto. "life" cai rápido (ttl curto), então o risco
+      // some no mesmo instante do disparo — leitura de bala, não de raio permanente.
       return (
         <g>
-          <circle
-            cx={e.x}
-            cy={e.y}
-            r={e.radius * (1.2 - life * 0.5)}
-            fill="var(--enemy)"
-            opacity={life * 0.55}
+          <line
+            x1={e.x}
+            y1={e.y}
+            x2={e.x2 ?? e.x}
+            y2={e.y2 ?? e.y}
+            stroke="oklch(0.95 0.14 80)"
+            strokeWidth={0.16 + life * 0.16}
+            strokeLinecap="round"
+            opacity={life * 0.9}
           />
-          <circle
-            cx={e.x}
-            cy={e.y}
-            r={e.radius * (0.6 - life * 0.3)}
-            fill="var(--doc)"
-            opacity={life * 0.7}
-          />
+          <circle cx={e.x} cy={e.y} r={0.5 * life + 0.2} fill="oklch(0.98 0.16 85)" opacity={life} />
         </g>
       );
+    }
+    case "muzzle": {
+      // Clarão na boca do cano: estrela quente que apaga rápido.
+      return (
+        <g>
+          <circle cx={e.x} cy={e.y} r={1.1 * life + 0.35} fill="oklch(0.95 0.16 80)" opacity={life * 0.95} />
+          <circle cx={e.x} cy={e.y} r={0.55 * life + 0.2} fill="oklch(1 0 0)" opacity={life * 0.85} />
+        </g>
+      );
+    }
+    case "explosion": {
+      // Explosão em três camadas: clarão branco-quente que se abre, bola de fogo laranja
+      // e anel de choque cinza que expande e desaparece. O raio é o RAIO REAL do efeito
+      // (herdado do splash da arma), então uma granada de morte é pequena e um obus é
+      // enorme — a leitura casa com o dano aplicado pelo motor.
+      const grow = 1.35 - life * 0.55;
+      return (
+        <g>
+          <circle cx={e.x} cy={e.y} r={e.radius * (grow + 0.5)} fill="oklch(0.6 0.02 90)" opacity={life * 0.18} />
+          <circle cx={e.x} cy={e.y} r={e.radius * grow} fill="oklch(0.7 0.19 45)" opacity={life * 0.7} />
+          <circle cx={e.x} cy={e.y} r={e.radius * grow * 0.62} fill="oklch(0.85 0.18 75)" opacity={life * 0.8} />
+          <circle cx={e.x} cy={e.y} r={e.radius * grow * 0.3} fill="oklch(0.98 0.05 90)" opacity={life * 0.95} />
+        </g>
+      );
+    }
     case "fire":
       return (
         <circle cx={e.x} cy={e.y} r={e.radius * 0.7} fill="var(--enemy)" opacity={life * 0.4}>
@@ -2044,8 +2075,23 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
         </g>
       );
     case "spark":
+      // Faíscas metálicas: punhado de pontos que se abrem e caem.
       return (
-        <circle cx={e.x} cy={e.y} r={e.radius * life} fill="var(--primary)" opacity={life * 0.8} />
+        <g opacity={life * 0.9}>
+          {[0, 1, 2, 3, 4, 5].map((i) => {
+            const a = (i / 6) * Math.PI * 2;
+            const d = e.radius * (1 - life) * 1.4;
+            return (
+              <circle
+                key={i}
+                cx={e.x + Math.cos(a) * d}
+                cy={e.y + Math.sin(a) * d}
+                r={0.22}
+                fill="oklch(0.95 0.16 80)"
+              />
+            );
+          })}
+        </g>
       );
     case "build":
       return (
@@ -2062,14 +2108,12 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
       );
     case "impact":
     default:
+      // Impacto no solo/metal: clarão pequeno com levantamento de poeira.
       return (
-        <circle
-          cx={e.x}
-          cy={e.y}
-          r={e.radius * life + 0.3}
-          fill="var(--doc)"
-          opacity={life * 0.7}
-        />
+        <g>
+          <circle cx={e.x} cy={e.y} r={e.radius * life * 1.2 + 0.3} fill="oklch(0.75 0.1 70)" opacity={life * 0.6} />
+          <circle cx={e.x} cy={e.y} r={e.radius * life + 0.25} fill="oklch(0.98 0.06 85)" opacity={life * 0.85} />
+        </g>
       );
   }
 }
