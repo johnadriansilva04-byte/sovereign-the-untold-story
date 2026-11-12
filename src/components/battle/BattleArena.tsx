@@ -1759,6 +1759,7 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
   tanque: 1.7,
   vbld: 1.7,
   "caca-tanques": 1.7,
+  comboio: 1.8,
   "drone-recon": 1.5,
   "drone-combate": 1.5,
   aa: 1.4,
@@ -1951,6 +1952,21 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <circle cx="-0.1" cy="0" r="0.72" fill={steel} />
           <circle cx="-0.1" cy="0" r="0.36" fill={dark} />
           <rect x="1.1" y="-0.16" width="1.7" height="0.32" rx="0.08" fill={dark} />
+        </>,
+      );
+    // COMBOIO DE CARGA: caminhão de transporte com contêiner, NÃO combate nem anda.
+    // Silhueta própria (cabine + caçamba + contêiner) para não ser confundido com um
+    // blindado parado no meio do mapa.
+    case "comboio":
+      return body(
+        <>
+          <rect x="-2.6" y="-1.5" width="5.2" height="0.6" rx="0.1" fill={dark} />
+          <rect x="-2.6" y="0.9" width="5.2" height="0.6" rx="0.1" fill={dark} />
+          <rect x="-2.4" y="-1.35" width="3.6" height="2.7" rx="0.2" fill={color} />
+          <rect x="1.3" y="-1.2" width="1.5" height="2.4" rx="0.28" fill={steel} />
+          <rect x="1.45" y="-1.0" width="0.5" height="2" rx="0.12" fill={dark} opacity={0.6} />
+          <rect x="-2.1" y="-1.0" width="3" height="2" rx="0.12" fill={steel} opacity={0.55} />
+          <rect x="-2.1" y="-0.16" width="3" height="0.32" fill={dark} opacity={0.5} />
         </>,
       );
     case "drone-recon":

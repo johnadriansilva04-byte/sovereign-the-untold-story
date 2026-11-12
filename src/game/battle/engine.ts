@@ -248,7 +248,7 @@ function initPrize(state: BattleState): void {
     name: "Comboio de Carga",
     short: "CGA",
     category: "blindado",
-    model: "vbld",
+    model: "comboio",
     weapon: { kind: "fuzil", projectileSpeed: 0, splash: 0, arc: false, homing: false, muzzle: 0 },
     builder: false,
     x,

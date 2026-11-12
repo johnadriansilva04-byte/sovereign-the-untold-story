@@ -51,6 +51,7 @@ export type UnitModel =
   | "sniper"
   | "morteiro"
   | "caca-tanques"
+  | "comboio"
   | "chanceler";
 
 // ---------------------------------------------------------------------------

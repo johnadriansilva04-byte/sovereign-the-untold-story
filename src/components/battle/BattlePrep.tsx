@@ -14,7 +14,11 @@ import {
   type MissionDef,
 } from "@/game/battle/missions";
 import type { Commander, Doctrine } from "@/game/battle/types";
-import { difficultyForChapter, modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
+import {
+  difficultyForChapter,
+  modsFromAccessories,
+  type Difficulty,
+} from "@/game/progress/catalog";
 import {
   activeAccessories,
   effectiveDeck,
@@ -68,16 +72,20 @@ export function BattlePrep({
     profile.decks[0]?.doctrine ?? commander.doctrine,
   );
   // Dificuldade AUTOMÁTICA: derivada do capítulo da missão (sem seletor manual).
-  const chapterNumber = useMemo(
-    () => chapterNumberForMission(mission.id) ?? 1,
-    [mission.id],
-  );
+  const chapterNumber = useMemo(() => chapterNumberForMission(mission.id) ?? 1, [mission.id]);
   const difficulty = useMemo<Difficulty>(
     () => initialDifficulty ?? difficultyForChapter(chapterNumber),
     [initialDifficulty, chapterNumber],
   );
   const scale = useMemo(() => enemyScalingForChapter(chapterNumber), [chapterNumber]);
   const [showMissions, setShowMissions] = useState(false);
+  const [missionPage, setMissionPage] = useState(0);
+  const MISSION_PAGE = 8;
+  const missionPages = Math.max(1, Math.ceil(missions.length / MISSION_PAGE));
+  const missionSlice = missions.slice(
+    missionPage * MISSION_PAGE,
+    missionPage * MISSION_PAGE + MISSION_PAGE,
+  );
 
   const locked = deck.length !== 8;
 
@@ -287,7 +295,7 @@ export function BattlePrep({
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
               <div className="grid gap-2 sm:grid-cols-2">
-                {missions.map((m) => {
+                {missionSlice.map((m) => {
                   const n = chapterNumberForMission(m.id) ?? 1;
                   const d = enemyScalingForChapter(n);
                   const active = m.id === missionId;
@@ -315,6 +323,25 @@ export function BattlePrep({
                     </button>
                   );
                 })}
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+                <button
+                  onClick={() => setMissionPage((p) => Math.max(0, p - 1))}
+                  disabled={missionPage === 0}
+                  className="border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-30"
+                >
+                  ← Anterior
+                </button>
+                <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                  {missionPage + 1} / {missionPages}
+                </span>
+                <button
+                  onClick={() => setMissionPage((p) => (p + 1 < missionPages ? p + 1 : p))}
+                  disabled={missionPage + 1 >= missionPages}
+                  className="border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-30"
+                >
+                  Próximo →
+                </button>
               </div>
             </div>
             <div className="space-y-1 border-t border-border pt-3">

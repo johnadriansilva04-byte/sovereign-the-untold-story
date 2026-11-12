@@ -1293,35 +1293,28 @@ function standardStructures(): StructureSpec[] {
   ];
 }
 
-// Pontos de expansão do mapa padrão. Malha enxuta (posições e contagem) para manter o
-// campo legível sem poluir: 11 pontos por lado + 3 no centro, todos espelhados
+// Pontos de expansão do mapa padrão. Malha ENXUTA (posições e contagem) para manter o
+// campo legível sem poluir: 5 pontos por lado + 3 no centro, todos espelhados
 // (x → 100 − x) para que os dois lados nasçam com as mesmas oportunidades.
 function standardTerritories(): Territory[] {
+  // MAPA LIMPO: cinco territórios por lado, bem espaçados. Menos marcadores significa
+  // menos "quebras" no terreno e áreas de captura maiores — dá para ler o campo de
+  // relance. As posições são as ORIGINAIS (nada de reposicionar o que já era lido): só
+  // a QUANTIDADE caiu pela metade. A malha cobre o lado inteiro — um ponto colado na
+  // base (renda garantida), um ao norte, um central, um ao sul e um avançado.
   const blue: [string, string, number, number, number][] = [
-    ["t-nw", "Colina Noroeste", 20, 7, 4],
-    ["t-n2", "Bosque Norte", 36, 8, 4],
-    ["t-n3", "Posto Norte", 45, 14, 3.8],
     ["t-w1", "Ancoradouro", 16, 21, 4],
+    ["t-nw", "Colina Noroeste", 20, 7, 4],
     ["t-w2", "Encruzilhada Oeste", 30, 24, 4.2],
-    ["t-w3", "Fronteira Oeste", 43, 24, 4],
     ["t-sw", "Vau Sudoeste", 19, 38, 4],
-    ["t-s2", "Mata Sul", 35, 39, 4],
-    ["t-s3", "Depósito Sul", 45, 33, 3.8],
-    ["t-w4", "Vale Oeste", 27, 31, 4],
-    ["t-w5", "Mata Central", 31, 16, 3.8],
+    ["t-w3", "Fronteira Oeste", 43, 24, 4],
   ];
   const redNames: Record<string, [string, string]> = {
-    "t-nw": ["t-ne", "Colina Nordeste"],
-    "t-n2": ["t-n4", "Bosque Nordeste"],
-    "t-n3": ["t-n5", "Posto Nordeste"],
     "t-w1": ["t-e1", "Depósito Leste"],
+    "t-nw": ["t-ne", "Colina Nordeste"],
     "t-w2": ["t-e2", "Encruzilhada Leste"],
-    "t-w3": ["t-e3", "Fronteira Leste"],
     "t-sw": ["t-se", "Cume Sudeste"],
-    "t-s2": ["t-s4", "Mata Sudeste"],
-    "t-s3": ["t-s5", "Ponte Leste"],
-    "t-w4": ["t-e4", "Vale Leste"],
-    "t-w5": ["t-e5", "Mata Central Leste"],
+    "t-w3": ["t-e3", "Fronteira Leste"],
   };
   const list: Territory[] = [
     // BASES NEUTRAS no meio do mapa: instalações militares já erguidas, de ninguém.
