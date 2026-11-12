@@ -56,6 +56,8 @@ export interface UseBattle {
   issueOrder: (order: Order, unitId?: string, objectiveId?: string) => void;
   /** Manda a unidade selecionada para um ponto do mapa, ou para cima de um alvo. */
   moveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => boolean;
+  /** Vetor de comando em tempo real do chanceler (setas/analógico); (0,0) solta. */
+  driveUnit: (unitId: string, dx: number, dy: number) => boolean;
   restart: () => void;
   cardMeta: (cardId: string) => Card;
   costOf: (cardId: string) => number;
@@ -245,6 +247,19 @@ export function useBattle(
     forceRender();
   }, []);
 
+  // CONTROLE DIRETO: define o vetor de comando do chanceler (setas/analógico). Fica
+  // gravado na unidade e é lido a cada passo do motor; (0,0) solta o volante.
+  const driveUnit = useCallback((unitId: string, dx: number, dy: number) => {
+    const st = stateRef.current;
+    for (const u of st.blue.units) {
+      if (u.id !== unitId) continue;
+      u.driveX = dx;
+      u.driveY = dy;
+      return true;
+    }
+    return false;
+  }, []);
+
   const restart = useCallback(() => {
     stateRef.current = createBattle(config);
     llmFailedRef.current = false;
@@ -276,6 +291,7 @@ export function useBattle(
     sendBatch,
     issueOrder,
     moveSelected,
+    driveUnit,
     restart,
     cardMeta,
     costOf,

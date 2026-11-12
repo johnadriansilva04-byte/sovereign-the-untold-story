@@ -1293,11 +1293,9 @@ function standardStructures(): StructureSpec[] {
   ];
 }
 
-// Pontos de expansão: uma MALHA de territórios que cria rotas de avanço (três
-// corredores — norte, centro e sul) em vez de uma linha reta. São 25 pontos: 11 de
-// cada lado + 3 no centro (as duas bases neutras e o nó central). Cada posição do azul
-// tem uma equivalente espelhada do vermelho (x → 100 − x); sem isso um lado nasce com
-// posições melhores e o resultado passa a depender do lado, não da jogada.
+// Pontos de expansão do mapa padrão. Malha enxuta (posições e contagem) para manter o
+// campo legível sem poluir: 11 pontos por lado + 3 no centro, todos espelhados
+// (x → 100 − x) para que os dois lados nasçam com as mesmas oportunidades.
 function standardTerritories(): Territory[] {
   const blue: [string, string, number, number, number][] = [
     ["t-nw", "Colina Noroeste", 20, 7, 4],
@@ -1342,9 +1340,8 @@ function standardTerritories(): Territory[] {
   return list;
 }
 
-// Corredores de avanço: três rotas (norte, centro, sul) ligando as bases principais
-// passando pelos territórios. Servem de CAMINHOS desenhados no terreno e de leitura
-// estratégica: o jogador vê por onde pode atacar em vez de encarar um campo vazio.
+// Corredores de avanço: ligam a base principal aos territórios e desenham o CAMINHO
+// no terreno. Servem de leitura estratégica e de trilha de marcha.
 function standardRoutes(): { from: [number, number]; to: [number, number] }[] {
   const seg = (x1: number, y1: number, x2: number, y2: number) => ({
     from: [x1, y1] as [number, number],
@@ -1377,6 +1374,32 @@ function standardRoutes(): { from: [number, number]; to: [number, number] }[] {
     seg(65, 39, 81, 38),
     seg(81, 38, 92, 23),
   ];
+}
+
+// FRONTEIRAS: traço perpendicular no ponto médio de cada par de territórios PRÓXIMOS
+// (≤ MIN_FRONTIER_GAP). Pares distantes não geram linha — a fronteira nº 2 não toca a
+// nº 6. É a "linha de mapa-múndi" que separa um território do vizinho imediato.
+function standardFrontiers(t: Territory[]): { from: [number, number]; to: [number, number] }[] {
+  const MIN_FRONTIER_GAP = 14;
+  const segs: { from: [number, number]; to: [number, number] }[] = [];
+  for (let i = 0; i < t.length; i++) {
+    for (let j = i + 1; j < t.length; j++) {
+      const a = t[i]!;
+      const b = t[j]!;
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d > MIN_FRONTIER_GAP || d < 0.1) continue;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const px = -(b.y - a.y) / d;
+      const py = (b.x - a.x) / d;
+      const len = Math.min(20, d * 0.9);
+      segs.push({
+        from: [mx - px * (len / 2), my - py * (len / 2)],
+        to: [mx + px * (len / 2), my + py * (len / 2)],
+      });
+    }
+  }
+  return segs;
 }
 
 // Geometria padrão do teatro: oeste = azul, leste = vermelho. Cada arena troca
@@ -1441,6 +1464,7 @@ export const arenas: Arena[] = [
       },
     ],
     routes: standardRoutes(),
+    frontiers: standardFrontiers(standardTerritories()),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1499,6 +1523,7 @@ export const arenas: Arena[] = [
       },
     ],
     routes: standardRoutes(),
+    frontiers: standardFrontiers(standardTerritories()),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1537,6 +1562,7 @@ export const arenas: Arena[] = [
       },
     ],
     routes: standardRoutes(),
+    frontiers: standardFrontiers(standardTerritories()),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1595,6 +1621,7 @@ export const arenas: Arena[] = [
       },
     ],
     routes: standardRoutes(),
+    frontiers: standardFrontiers(standardTerritories()),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1634,6 +1661,7 @@ export const arenas: Arena[] = [
       },
     ],
     routes: standardRoutes(),
+    frontiers: standardFrontiers(standardTerritories()),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
   {
@@ -1681,6 +1709,7 @@ export const arenas: Arena[] = [
       },
     ],
     routes: standardRoutes(),
+    frontiers: standardFrontiers(standardTerritories()),
     deployZone: { blue: { ...BLUE_ZONE }, red: { ...RED_ZONE } },
   },
 ];
@@ -1701,6 +1730,10 @@ function toWorldArena(a: Arena): Arena {
     routes: a.routes.map((r) => ({
       from: [sx(r.from[0]), dy(r.from[1])] as [number, number],
       to: [sx(r.to[0]), dy(r.to[1])] as [number, number],
+    })),
+    frontiers: (a.frontiers ?? []).map((f) => ({
+      from: [sx(f.from[0]), dy(f.from[1])] as [number, number],
+      to: [sx(f.to[0]), dy(f.to[1])] as [number, number],
     })),
     deployZone: {
       blue: {

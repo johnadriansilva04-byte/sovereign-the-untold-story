@@ -688,6 +688,7 @@ export function cloneArena(arena: Arena): Arena {
     structures: arena.structures.map((s) => ({ ...s })),
     obstacles: arena.obstacles.map((o) => ({ ...o })),
     routes: arena.routes.map((r) => ({ ...r })),
+    frontiers: (arena.frontiers ?? []).map((f) => ({ ...f })),
     deployZone: { blue: { ...arena.deployZone.blue }, red: { ...arena.deployZone.red } },
   };
 }
@@ -1995,6 +1996,13 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   const obstacle = obstacleAt(state.config.arena, u.x, u.y);
   const slow = u.domain === "aereo" ? 1 : (obstacle?.slow ?? 1);
 
+  // CONTROLE DIRETO DO CHANCELER: com o vetor de comando ativo, o herói anda na direção
+  // pedida (setas/analógico) a cada passo — com o MESMO contorno de obstáculo das outras
+  // tropas — e continua atirando para se defender. Enquanto dirige, a IA não o puxa para
+  // objetivo nenhum: o jogador tem a mão no volante.
+  const driving = (u.driveX ?? 0) !== 0 || (u.driveY ?? 0) !== 0;
+  if (driving) applyDrive(state, u, dt, slow);
+
   // Descarta alvos explícitos que já morreram — a força nunca fica travada
   // perseguindo algo que não existe mais.
   clearDeadOrders(state, u);
@@ -2015,13 +2023,16 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
     // atira dali — não avança até encostar nele. O alcance é medido até a BORDA do
     // alvo (igual a selectTarget), então ela estaciona no limite da zona de tiro.
     const reach = u.range + (target.radius ?? 0);
-    if (u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > reach) {
+    if (!driving && u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > reach) {
       moveToward(state, u, target.x, target.y, dt, slow);
     }
     return;
   }
   delete u.targetId;
   delete u.targetStructureId;
+
+  // Dirigindo, o chanceler NÃO segue objetivo automático: só o que o jogador mandar.
+  if (driving) return;
 
   const goal = objectiveFor(state, u);
   if (goal) {
@@ -3172,6 +3183,17 @@ function nearestPoint(
   if (pts.length === 0) return null;
   const ranked = pts.map((p) => ({ p, d: dist(u.x, u.y, p.x, p.y) })).sort((a, b) => a.d - b.d);
   return ranked[0]?.p ?? null;
+}
+
+// Comando em tempo real do chanceler: converte o vetor (driveX, driveY) em deslocamento
+// do passo. Reaproveita `moveToward`, então o herói contorna obstáculo e nunca sai do
+// mundo. Um pequeno "ponto à frente" dá a direção; a velocidade é a da própria unidade.
+function applyDrive(state: BattleState, u: BattleUnit, dt: number, slow: number): void {
+  const dx = u.driveX ?? 0;
+  const dy = u.driveY ?? 0;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.01) return;
+  moveToward(state, u, u.x + (dx / len) * 12, u.y + (dy / len) * 12, dt, slow);
 }
 
 function moveToward(

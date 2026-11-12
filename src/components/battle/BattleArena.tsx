@@ -159,8 +159,8 @@ function terrainDetails(terrain: string): TerrainDetail[] {
           : ["tuft", "tuft", "rock"];
   // Grade irregular que cobre todo o campo (não é grade visual: o deslocamento
   // pseudoaleatório quebra o alinhamento). Escala junto com as dimensões do mundo.
-  const cols = 11;
-  const rows = 7;
+  const cols = 6;
+  const rows = 4;
   for (let gy = 0; gy < rows; gy++) {
     for (let gx = 0; gx < cols; gx++) {
       const n = gy * cols + gx;
@@ -533,24 +533,25 @@ export function BattleArena({
               fill="url(#enemyZone)"
             />
 
-            {/* Moldura do tabuleiro: leitura de "mesa de guerra" e borda nítida */}
+            {/* Moldura do tabuleiro: a "linha de fora a fora" que fecha o mapa (como o
+                contorno de um mapa-múndi). Dupla: brilho interno + traço escuro externo. */}
             <rect
-              x="0.6"
-              y="0.6"
-              width={WORLD_W - 1.2}
-              height={WORLD_H - 1.2}
+              x="0.9"
+              y="0.9"
+              width={WORLD_W - 1.8}
+              height={WORLD_H - 1.8}
               fill="none"
-              stroke="oklch(1 0 0 / 0.12)"
-              strokeWidth="0.5"
+              stroke="oklch(1 0 0 / 0.28)"
+              strokeWidth="0.7"
             />
             <rect
-              x="1.4"
-              y="1.4"
-              width={WORLD_W - 2.8}
-              height={WORLD_H - 2.8}
+              x="2"
+              y="2"
+              width={WORLD_W - 4}
+              height={WORLD_H - 4}
               fill="none"
-              stroke="oklch(0 0 0 / 0.18)"
-              strokeWidth="0.25"
+              stroke="oklch(0 0 0 / 0.25)"
+              strokeWidth="0.3"
             />
 
             {/* Linha divisória das metades (vertical: frente oeste↔leste) */}
@@ -607,6 +608,14 @@ export function BattleArena({
                 strokeWidth="0.3"
               />
             ))}
+
+            {/* FRONTEIRAS: traços no ponto médio de cada par de territórios vizinhos.
+                É a "linha de mapa-múndi" que separa um território do outro. */}
+            <g stroke="oklch(1 0 0 / 0.22)" strokeWidth="0.35" strokeDasharray="1.6 1.4">
+              {(arena.frontiers ?? []).map((f, i) => (
+                <line key={`frontier${i}`} x1={f.from[0]} y1={f.from[1]} x2={f.to[0]} y2={f.to[1]} />
+              ))}
+            </g>
 
             {/* Territórios de expansão */}
             {state.territories.map((t) => (
@@ -1428,17 +1437,8 @@ function ControlPointGlyph({
       >
         {point.sector.toUpperCase()}
       </text>
-      <text
-        x={point.x}
-        y={point.y + point.radius + 2.6}
-        textAnchor="middle"
-        fontSize="1.9"
-        fontFamily="var(--font-mono)"
-        fill="oklch(0.9 0.01 90)"
-        transform={uprightText(portrait, point.x, point.y + point.radius + 2.6)}
-      >
-        {point.name}
-      </text>
+      {/* Rótulo do setor basta: o nome completo do ponto poluía o campo. */}
+      <title>{point.name}</title>
     </g>
   );
 }

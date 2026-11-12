@@ -158,6 +158,7 @@ function cloneArena(arena: Arena): Arena {
     })),
     obstacles: arena.obstacles.map((o) => ({ ...o })),
     routes: arena.routes.map((r) => ({ ...r })),
+    frontiers: (arena.frontiers ?? []).map((f) => ({ ...f })),
     deployZone: { blue: { ...arena.deployZone.blue }, red: { ...arena.deployZone.red } },
   };
 }

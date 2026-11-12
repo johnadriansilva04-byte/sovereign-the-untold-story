@@ -256,6 +256,9 @@ export interface Arena {
   obstacles: Obstacle[];
   // rotas sugeridas (linhas de deslocamento) — usadas só para desenho e IA
   routes: { from: [number, number]; to: [number, number] }[];
+  // fronteiras entre territórios vizinhos (traços no ponto médio) — a "linha de mapa"
+  // que separa um território do outro. Só pares PRÓXIMOS entram aqui.
+  frontiers?: { from: [number, number]; to: [number, number] }[];
   deployZone: { blue: Rect; red: Rect };
 }
 
@@ -321,6 +324,13 @@ export interface BattleUnit {
   // CHANCELER: unidade-herói única e insubstituível. Não vem de carta; é protegida e
   // perde a guerra se morrer. Controlada pelo jogador como qualquer outra unidade.
   hero?: boolean;
+  // CONTROLE DIRETO (chanceler): vetor de comando em tempo real, -1..1 por eixo.
+  // Enquanto for diferente de zero, o motor move a unidade NESSA direção a cada passo
+  // (velocidade própria, com contorno de obstáculo) em vez de seguir a IA — é o
+  // "joystick": setas do teclado no desktop, analógico no celular. Sem o vetor, o
+  // chanceler volta ao comportamento normal (parado até receber ordem).
+  driveX?: number;
+  driveY?: number;
   // multiplicadores de dano contra cada categoria (ciclo de contrapesos). Copiado da
   // carta no lançamento; aplicado em damageUnit conforme a categoria do alvo.
   dmgVs?: Partial<Record<UnitCategory, number>>;

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { BattleArena } from "./BattleArena";
 import { AiCommanderPanel, BattleLogPanel } from "./BattlePanels";
 import { BattlePrep } from "./BattlePrep";
+import { BattleJoystick } from "./BattleJoystick";
 import { BattleResultScreen } from "./BattleResult";
 import { BattleTopBar, ObjectiveStrip } from "./BattleTopBar";
 import {
@@ -289,11 +290,47 @@ export function LiveBattle({
     [battle, counts, destination, originId, totalUnits, clearSelection],
   );
 
+  // CHANCELER em campo (aliado): habilita o CONTROLE DIRETO (setas no PC, analógico no
+  // celular). Sem ele em campo, não há volante para dirigir.
+  const blueHero = state.blue.units.find((u) => u.hero && u.alive) ?? null;
+  const drive = useCallback(
+    (dx: number, dy: number) => {
+      if (blueHero) battle.driveUnit(blueHero.id, dx, dy);
+    },
+    [battle, blueHero],
+  );
+
+  // Teclas direcionais seguradas viram um VETOR (permite diagonal). Ao soltar todas, o
+  // vetor zera e o chanceler para. Recalculado a cada evento para refletir combinações.
+  const heldKeys = useRef<Set<string>>(new Set());
+  const applyKeys = useCallback(() => {
+    const h = heldKeys.current;
+    const dx = (h.has("ARROWRIGHT") ? 1 : 0) - (h.has("ARROWLEFT") ? 1 : 0);
+    const dy = (h.has("ARROWDOWN") ? 1 : 0) - (h.has("ARROWUP") ? 1 : 0);
+    drive(dx, dy);
+  }, [drive]);
+
   // Atalhos de teclado (PC): Z X C V B N M somam uma unidade da carta; 1-6 escolhem a
-  // base de origem; ENTER envia; ESC limpa. Os handlers vivem em refs para o listener
-  // não ser re-registrado a cada frame da batalha.
-  const keyRef = useRef({ addCard, handleSend, clearSelection, bases, deck: state.blue.deck.hand });
-  keyRef.current = { addCard, handleSend, clearSelection, bases, deck: state.blue.deck.hand };
+  // base de origem; ENTER envia; ESC limpa; SETAS dirigem o chanceler. Os handlers
+  // vivem em refs para o listener não ser re-registrado a cada frame da batalha.
+  const keyRef = useRef({
+    addCard,
+    handleSend,
+    clearSelection,
+    bases,
+    deck: state.blue.deck.hand,
+    heldKeys,
+    applyKeys,
+  });
+  keyRef.current = {
+    addCard,
+    handleSend,
+    clearSelection,
+    bases,
+    deck: state.blue.deck.hand,
+    heldKeys,
+    applyKeys,
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -331,10 +368,27 @@ export function LiveBattle({
       if (k === "ESCAPE") {
         clear();
         setSelectedUnitId(null);
+        return;
+      }
+      if (k.startsWith("ARROW")) {
+        e.preventDefault();
+        keyRef.current.heldKeys.current.add(k);
+        keyRef.current.applyKeys();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const k = e.key.toUpperCase();
+      if (k.startsWith("ARROW")) {
+        keyRef.current.heldKeys.current.delete(k);
+        keyRef.current.applyKeys();
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, []);
 
   const handleMoveSelected = useCallback(
@@ -429,6 +483,16 @@ export function LiveBattle({
           onPickOrigin={setOriginId}
           onPickDestination={handlePickDestination}
         />
+
+        {/* ANALÓGICO do chanceler: só aparece com o herói em campo. No PC as setas fazem
+            o mesmo; no celular este disco é o volante. */}
+        {blueHero && !operationActive && (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10">
+            <div className="pointer-events-auto">
+              <BattleJoystick onChange={drive} />
+            </div>
+          </div>
+        )}
 
         {/* Aviso de comandante LLM, sobreposto no topo do campo */}
         {battle.llmActive && (
