@@ -72,6 +72,13 @@ const SOV_PER_TERRITORY = 50; // cada território sob controle paga...
 const SOV_TERRITORY_INTERVAL = 60; // ...50 Sov a cada 60 segundos (1 minuto)
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
 const GOAL_ARRIVAL = 2.5; // distância em que a força "chega" ao destino da ordem
+// ANTI-TRAVAMENTO: se uma unidade em marcha fica praticamente imóvel por este tempo
+// (presa em obstáculo, espremida na separação ou perseguindo um alvo que não alcança),
+// o motor aciona um CONTORNO lateral persistente até ela voltar a progredir. Sem isto
+// as tropas empacam no caminho e a partida parece congelada.
+const STALL_SECONDS = 2.5; // tempo sem progredir antes de acionar o desvio
+const STALL_BYPASS_SECONDS = 1.2; // duração do contorno lateral enquanto travada
+const STALL_PROGRESS = 1.4; // distância (mundo) que a unidade precisa vencer da âncora
 // Raio em volta da prisão em que a tropa aliada adere à escolta do chanceler resgatado.
 const RESCUE_ESCORT_RADIUS = 16;
 // Raio em que uma unidade inimiga conta como ameaça ao avaliar a rota de fuga do herói.
@@ -1783,7 +1790,9 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
       const px = u.x;
       const py = u.y;
       updateUnit(state, u, dt);
-      applyWear(state, u, Math.hypot(u.x - px, u.y - py), dt);
+      const moved = Math.hypot(u.x - px, u.y - py);
+      updateStall(state, u, moved, dt);
+      applyWear(state, u, moved, dt);
     }
   }
   applySeparation(state);
@@ -1990,7 +1999,10 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   // perseguindo algo que não existe mais.
   clearDeadOrders(state, u);
 
-  const target = selectTarget(state, u);
+  // O ENGENHEIRO não combate: não deve escolher unidade como alvo, senão ele "persegue"
+  // um inimigo que não pode atacar e para colado nele (travamento). Ele só repara e
+  // constrói — o passo dele é resolvido em updateBuilder.
+  const target = u.builder ? null : selectTarget(state, u);
   u.engaged = false;
   if (target && u.jammed <= 0 && canShoot(u)) {
     u.engaged = true;
@@ -2021,6 +2033,64 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
       delete u.goalY;
       if (u.holdAtGoal) u.order = "manter";
     }
+  }
+}
+
+// ANTI-TRAVAMENTO: observa o deslocamento efetivo de uma unidade em marcha. Se ela
+// passa STALL_SECONDS praticamente imóvel (obstáculo, aperto na separação, alvo
+// inalcançável), aciona um contorno lateral persistente por STALL_BYPASS_SECONDS e
+// memoriza o lado do desvio. Enquanto progride, o contador zera e o desvio é liberado.
+function updateStall(state: BattleState, u: BattleUnit, moved: number, dt: number): void {
+  void moved;
+  if (!u.alive) return;
+  if (u.stallBypass !== undefined && u.stallBypass > 0) {
+    u.stallBypass = Math.max(0, u.stallBypass - dt);
+  }
+  // Estados em que ficar parado é CORRETO: segurar posição, engajado atirando, sob
+  // interferência, rendido ou TRABALHANDO (engenheiro construindo/reparando). Só a
+  // marcha emperrada interessa aqui.
+  const working =
+    u.builder &&
+    (u.buildTerritoryId !== undefined ||
+      state.structures.some(
+        (st) =>
+          st.alive &&
+          !st.underConstruction &&
+          st.side === u.side &&
+          st.hp < st.maxHp &&
+          dist(st.x, st.y, u.x, u.y) <= u.range + st.radius,
+      ));
+  const stationaryOk =
+    u.order === "manter" || u.engaged || u.jammed > 0 || u.surrendered || working;
+  if (stationaryOk) {
+    u.stall = 0;
+    delete u.stallAnchorX;
+    return;
+  }
+  // Mede PROGRESSO em relação a uma âncora, não o passo de cada quadro: assim o jitter
+  // da separação (que move a unidade alguns centímetros) não reinicia o contador.
+  if (u.stallAnchorX === undefined || u.stallAnchorY === undefined) {
+    u.stallAnchorX = u.x;
+    u.stallAnchorY = u.y;
+    u.stall = 0;
+    return;
+  }
+  const progress = Math.hypot(u.x - u.stallAnchorX, u.y - u.stallAnchorY);
+  if (progress >= STALL_PROGRESS) {
+    u.stallAnchorX = u.x;
+    u.stallAnchorY = u.y;
+    u.stall = 0;
+    if (u.stallBypass === undefined || u.stallBypass <= 0) delete u.stallSign;
+    return;
+  }
+  u.stall = (u.stall ?? 0) + dt;
+  if (u.stall >= STALL_SECONDS) {
+    u.stall = 0;
+    u.stallAnchorX = u.x;
+    u.stallAnchorY = u.y;
+    u.stallBypass = STALL_BYPASS_SECONDS;
+    // Alterna o lado a cada episódio para não repetir o mesmo contorno que já falhou.
+    u.stallSign = u.stallSign === undefined ? 1 : -u.stallSign;
   }
 }
 
@@ -2122,7 +2192,9 @@ function objectiveFor(state: BattleState, u: BattleUnit): { x: number; y: number
     const t = state.territories.find((x) => x.id === u.attackTerritoryId);
     if (t) return { x: t.x, y: t.y };
   }
-  if (u.targetId) {
+  // O engenheiro não caça unidades (não atira): perseguir um alvo que não pode atacar
+  // só o deixava parado em cima dele. Ele ignora alvos-unidade e segue para a obra.
+  if (u.targetId && !u.builder) {
     const e = findUnit(state, u.targetId);
     if (e && e.alive) return { x: e.x, y: e.y };
   }
@@ -2680,14 +2752,48 @@ function separatePair(a: BattleUnit, b: BattleUnit, immovable: (u: BattleUnit) =
     uy = dy / d;
   }
   const overlap = (minDist - d) * SEPARATION_PUSH;
-  const aFixed = immovable(a);
-  const bFixed = immovable(b);
-  const aShare = aFixed && !bFixed ? 0 : bFixed && !aFixed ? overlap : overlap / 2;
-  const bShare = bFixed && !aFixed ? 0 : aFixed && !bFixed ? overlap : overlap / 2;
-  a.x = clamp(a.x - ux * aShare, WORLD_X_MIN, WORLD_X_MAX);
-  a.y = clamp(a.y - uy * aShare, WORLD_Y_MIN, WORLD_Y_MAX);
-  b.x = clamp(b.x + ux * bShare, WORLD_X_MIN, WORLD_X_MAX);
-  b.y = clamp(b.y + uy * bShare, WORLD_Y_MIN, WORLD_Y_MAX);
+  const aPinned = immovable(a);
+  const bPinned = immovable(b);
+  // Quem SEGURA posição cede menos, mas NÃO é parede: com cessão zero, um punhado de
+  // aliados em "manter" formava um muro impenetrável e quem marchava atrás congelava.
+  const PIN_YIELD = 0.35;
+  const aShare =
+    aPinned && !bPinned
+      ? overlap * PIN_YIELD
+      : bPinned && !aPinned
+        ? overlap * (1 - PIN_YIELD)
+        : overlap / 2;
+  const bShare =
+    bPinned && !aPinned
+      ? overlap * PIN_YIELD
+      : aPinned && !bPinned
+        ? overlap * (1 - PIN_YIELD)
+        : overlap / 2;
+  pushRespectingAim(a, -ux * aShare, -uy * aShare, aPinned);
+  pushRespectingAim(b, ux * bShare, uy * bShare, bPinned);
+}
+
+// Aplica o empurrão da separação a uma unidade. Para quem está EM MARCHA, a componente
+// que a empurraria PARA TRÁS (contra a direção da mira) é removida: sem isto a tropa
+// ficava congelada em equilíbrio — o passo do movimento e o empurrão da multidão se
+// anulavam e a unidade repetia a mesma coordenada quadro após quadro. Removendo só a
+// componente traseira, ela desliza de lado e contorna o engarrafamento. Quem segura
+// posição (pinned) recebe o empurrão inteiro.
+function pushRespectingAim(u: BattleUnit, px: number, py: number, pinned: boolean): void {
+  let dx = px;
+  let dy = py;
+  if (!pinned) {
+    const ax = Math.cos(u.aim);
+    const ay = Math.sin(u.aim);
+    const along = dx * ax + dy * ay;
+    if (along < 0) {
+      // Remove a parcela contrária à direção de marcha (mantém a lateral).
+      dx -= along * ax;
+      dy -= along * ay;
+    }
+  }
+  u.x = clamp(u.x + dx, WORLD_X_MIN, WORLD_X_MAX);
+  u.y = clamp(u.y + dy, WORLD_Y_MIN, WORLD_Y_MAX);
 }
 
 function updateStructures(state: BattleState, dt: number): void {
@@ -3080,6 +3186,20 @@ function moveToward(
   const dy = ty - u.y;
   const d = Math.hypot(dx, dy);
   if (d < 0.6) return;
+  // CONTORNO DE EMERGÊNCIA: quando o detector marca a unidade como travada, ela anda
+  // em diagonal lateral por alguns instantes em vez de insistir na parede. É o que tira
+  // a tropa do "canto" (obstáculo + separação + curva do rio) que a prendia.
+  if (u.stallBypass !== undefined && u.stallBypass > 0 && u.domain === "terra") {
+    const perp = { x: -dy / d, y: dx / d };
+    const s = u.stallSign ?? 1;
+    const nx = (dx / d) * 0.35 + perp.x * s;
+    const ny = (dy / d) * 0.35 + perp.y * s;
+    const nl = Math.hypot(nx, ny) || 1;
+    const step = u.speed * slow * dt;
+    u.x = clamp(u.x + (nx / nl) * step, WORLD_X_MIN, WORLD_X_MAX);
+    u.y = clamp(u.y + (ny / nl) * step, WORLD_Y_MIN, WORLD_Y_MAX);
+    return;
+  }
   if (u.domain === "terra") {
     const blocked = state.config.arena.obstacles.find(
       (o) =>
@@ -3087,7 +3207,12 @@ function moveToward(
     );
     if (blocked) {
       const perp = { x: -dy / d, y: dx / d };
-      const s = Math.sign(perp.x * (blocked.x - u.x) + perp.y * (blocked.y - u.y)) || 1;
+      // Sinal PERSISTENTE: sem memorizar o lado, o desvio trocava de sentido a cada
+      // quadro perto da borda do obstáculo e a unidade oscilava no mesmo lugar.
+      const s =
+        u.stallSign ??
+        (Math.sign(perp.x * (blocked.x - u.x) + perp.y * (blocked.y - u.y)) || 1);
+      u.stallSign = s;
       u.x = clamp(u.x + perp.x * u.speed * slow * dt * s, WORLD_X_MIN, WORLD_X_MAX);
       u.y = clamp(u.y + perp.y * u.speed * slow * dt * s, WORLD_Y_MIN, WORLD_Y_MAX);
       return;

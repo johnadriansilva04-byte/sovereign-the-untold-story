@@ -384,6 +384,17 @@ export interface BattleUnit {
   // segundos restantes de "levou dano": a barra de vida só aparece nesse instante (ou
   // quando a unidade está selecionada). O campo limpa a poluição visual permanente.
   hitFlash: number;
+  // ANTI-TRAVAMENTO (motor): segundos que a unidade está imóvel em marcha. Ao passar de
+  // STALL_SECONDS o motor aplica um contorno lateral persistente (stallBypass) e zera o
+  // contador. São estado do MOTOR — resolvem o empacamento, não são efeito visual.
+  stall?: number;
+  stallBypass?: number;
+  stallSign?: number;
+  // Âncora de progresso: se a unidade não se afasta dela, está travada (o jitter da
+  // separação a move alguns centímetros sem sair do lugar, o que enganaria um detector
+  // que só olhasse o deslocamento por quadro).
+  stallAnchorX?: number;
+  stallAnchorY?: number;
   // Desgaste (atrito de campanha): a unidade perde vida continuamente em campo e um
   // pouco mais enquanto se desloca. O campo é grande; mandar tropa sem plano custa
   // caro — quem cruza o mapa inteiro chega debilitado, e quem fica parado também
