@@ -2,18 +2,19 @@ import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { GameShell } from "@/components/game/shell";
-import { CampaignComic } from "@/components/campaign/CampaignComic";
+import { StoryBook, type StoryPage } from "@/components/campaign/StoryBook";
+import { CardFace } from "@/components/campaign/CardFace";
 import { DecisionCard } from "@/components/campaign/DecisionCard";
-import { BattleScreen, toAiDifficulty } from "@/components/battle/BattleScreen";
+import { BattleScreen } from "@/components/battle/BattleScreen";
 import { CollectionScreen } from "@/components/progress/CollectionScreen";
-import { LevelUpPanel } from "@/components/campaign/LevelUpPanel";
 import { chapters } from "@/game/campaign";
 import { commanders } from "@/game/battle/catalog";
-import { buildBattleConfig, missionById } from "@/game/battle/missions";
+import { buildBattleConfig, enemyScalingForChapter, missionById } from "@/game/battle/missions";
 import {
   chapterMeta,
   chapterMetaById,
   chapterOutro,
+  prizeCardFor,
   totalChapters,
 } from "@/game/progress/campaign";
 import { decisionFor, decisionOption } from "@/game/progress/decisions";
@@ -48,13 +49,10 @@ type View =
   | { kind: "dilemma"; chapterId: string }
   | { kind: "briefing"; chapterId: string }
   | { kind: "battle"; chapterId: string }
-  | {
-      kind: "reward";
-      chapterId: string;
-      result: BattleResult;
-      reward: Reward;
-      levelUps: LevelUpInfo[];
-    };
+  | { kind: "reward"; chapterId: string; result: BattleResult; reward: Reward }
+  | { kind: "cardUnlock"; chapterId: string; result: BattleResult; reward: Reward }
+  | { kind: "levelUp"; chapterId: string; result: BattleResult; reward: Reward }
+  | { kind: "story"; chapterId: string; result: BattleResult };
 
 export function CampaignScreen() {
   const { profile, completeChapter, chooseDecision, saveDeck } = useProfile();
@@ -62,6 +60,12 @@ export function CampaignScreen() {
   // Baralho desta operação: começa do baralho ativo e pode ser recomposto no briefing
   // SEM alterar o baralho salvo até o jogador confirmar ("Salvar como meu baralho").
   const [pendingDeck, setPendingDeck] = useState<string[]>([]);
+  // Recompensas da batalha atual (carta ganha + níveis subidos), guardadas para as
+  // telas de coleta/promoção que vêm logo depois do veredito.
+  const [loot, setLoot] = useState<{ reward: Reward; levelUps: LevelUpInfo[] }>({
+    reward: {},
+    levelUps: [],
+  });
 
   // Missão atual: o próximo capítulo ainda não concluído. Vencidos somem da trilha.
   const currentMeta = useMemo(
@@ -78,16 +82,22 @@ export function CampaignScreen() {
     const commander = commanders.find((c) => c.id === deck?.commanderId) ?? commanders[0]!;
     // O baralho escolhido no briefing manda na batalha (se válido); senão, o ativo.
     const battleDeck = pendingDeck.length === 8 ? pendingDeck : effectiveDeck(profile);
+    const scale = enemyScalingForChapter(meta.number);
     return buildBattleConfig({
       nation: profile.nation,
       mission,
+      chapterNumber: meta.number,
+      prizeCardId: prizeCardFor(view.chapterId),
+      // Espólio de guerra: cartas que o inimigo traz e o jogador ainda não possui.
+      ownedCardIds: ownedCardIds(profile),
       deck: battleDeck,
       commander,
       // A escolha do capítulo define a doutrina e soma modificadores reais de combate.
       doctrine: effectiveDoctrine(profile, view.chapterId, deck?.doctrine ?? commander.doctrine),
       mods: effectiveMods(profile, view.chapterId),
-      aiDifficulty: toAiDifficulty(meta.difficulty),
-      seed: seedOf(`${mission.id}:${meta.difficulty}:${battleDeck.join(",")}`),
+      // Dificuldade automática: um só número (o capítulo) define IA, nível e baralho.
+      aiDifficulty: scale.aiDifficulty,
+      seed: seedOf(`${mission.id}:${meta.number}:${battleDeck.join(",")}`),
     });
   }, [view, profile, pendingDeck]);
 
@@ -181,58 +191,144 @@ export function CampaignScreen() {
               result,
               difficulty: meta.difficulty,
             });
-            setView({ kind: "reward", chapterId: view.chapterId, result, reward, levelUps });
+            setLoot({ reward, levelUps });
+            setView({ kind: "reward", chapterId: view.chapterId, result, reward });
           }}
         />
       </GameShell>
     );
   }
 
-  if (view.kind === "reward") {
+  // CICLO PÓS-BATALHA: veredito → carta ganha (se houver) → promoção (se houver) →
+  // história (livro) → próxima fase. Cada tela é única, sem rolagem.
+  if (view.kind === "reward" || view.kind === "cardUnlock" || view.kind === "levelUp") {
     const meta = chapterMetaById(view.chapterId)!;
     const chapter = chapters.find((c) => c.id === meta.id);
     const mission = missionById(meta.missionId);
-    // Próxima missão calculada a partir do perfil MAIS RECENTE (após completeChapter),
-    // para o botão "Próxima missão" avançar de verdade em vez de repetir a fase.
-    const nextMeta = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
-    const nextChapter = nextMeta ? chapters.find((c) => c.id === nextMeta.id) : null;
+    const won = view.result.outcome === "vitoria";
+    const newCards = won
+      ? (view.reward.cards ?? []).filter((id) => (profile.inventory.cards[id] ?? 0) > 0)
+      : [];
+    const levelUps = won ? loot.levelUps : [];
 
-    // Vitória: página de gibi com a história e os fatos. Derrota/empate: tela enxuta.
-    if (view.result.outcome === "vitoria" && chapter) {
+    // Avança para o próximo passo do ciclo, pulando telas vazias.
+    const toStory = () =>
+      setView({ kind: "story", chapterId: view.chapterId, result: view.result });
+    const afterCards = () =>
+      levelUps.length > 0
+        ? setView({
+            kind: "levelUp",
+            chapterId: view.chapterId,
+            result: view.result,
+            reward: view.reward,
+          })
+        : toStory();
+    const afterVerdict = () =>
+      newCards.length > 0
+        ? setView({
+            kind: "cardUnlock",
+            chapterId: view.chapterId,
+            result: view.result,
+            reward: view.reward,
+          })
+        : afterCards();
+
+    if (view.kind === "cardUnlock") {
       return (
         <GameShell full>
-          <CampaignComic
-            chapter={chapter}
-            meta={meta}
-            terrain={mission?.terrain ?? "Cidade"}
-            result={view.result}
-            reward={view.reward}
-            levelUps={view.levelUps}
-            nextTitle={nextChapter?.title ?? null}
-            onNext={() => (nextMeta ? enterChapter(nextMeta.id) : setView({ kind: "overview" }))}
-            onMap={() => setView({ kind: "overview" })}
+          <CardUnlockScreen
+            cards={newCards}
+            chapterLabel={`${chapter?.act ?? ""} · Capítulo ${meta.number}`}
+            onNext={afterCards}
           />
+        </GameShell>
+      );
+    }
+
+    if (view.kind === "levelUp") {
+      return (
+        <GameShell full>
+          <LevelUpScreen levelUps={levelUps} onNext={toStory} />
         </GameShell>
       );
     }
 
     return (
       <GameShell full>
-        <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center px-4 text-center">
-          <RewardScreen
-            meta={meta}
-            act={chapter?.act ?? ""}
-            result={view.result}
-            reward={view.reward}
-            levelUps={view.levelUps}
-            nextTitle={null}
-            decisionLabel={
-              decisionOption(view.chapterId, profile.decisions[view.chapterId] ?? "")?.label
-            }
-            onNext={() => enterChapter(view.chapterId)}
-            onMap={() => setView({ kind: "overview" })}
-          />
-        </div>
+        <VerdictScreen
+          won={won}
+          draw={view.result.outcome === "empate"}
+          chapterTitle={chapter?.title ?? ""}
+          chapterLabel={`${chapter?.act ?? ""} · Capítulo ${meta.number}`}
+          terrain={mission?.terrain ?? "Cidade"}
+          result={view.result}
+          decisionLabel={
+            decisionOption(view.chapterId, profile.decisions[view.chapterId] ?? "")?.label
+          }
+          reward={view.reward}
+          onNext={afterVerdict}
+          onRetry={() => enterChapter(view.chapterId)}
+          onMap={() => setView({ kind: "overview" })}
+        />
+      </GameShell>
+    );
+  }
+
+  // HISTÓRIA: o livro com a escrita ao vivo. O botão de escolher cartas fica AQUI e
+  // só abre se o jogador clicar — a seleção nunca aparece sozinha.
+  if (view.kind === "story") {
+    const meta = chapterMetaById(view.chapterId)!;
+    const chapter = chapters.find((c) => c.id === meta.id);
+    const mission = missionById(meta.missionId);
+    const won = view.result.outcome === "vitoria";
+    const nextMeta = chapterMeta.find((m) => profile.chapters[m.id]?.status !== "concluido");
+    const nextChapter = nextMeta ? chapters.find((c) => c.id === nextMeta.id) : null;
+
+    // Páginas do relato: abertura (introdução do capítulo), falas e desfecho.
+    const pages: StoryPage[] = [
+      { speaker: "Narrador", text: meta.intro },
+      ...(chapter?.dialogue ?? []).map((d) => ({ speaker: d.speaker, text: d.text })),
+      { speaker: "Narrador", text: chapterOutro(meta, view.result.outcome) },
+    ];
+
+    return (
+      <GameShell full>
+        <StoryBook
+          chapterLabel={`${chapter?.act ?? ""} · Capítulo ${meta.number}`}
+          title={chapter?.title ?? ""}
+          place={mission?.terrain}
+          era={chapter?.era}
+          pages={pages}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setView({ kind: "overview" })}
+                className="border border-border px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
+              >
+                Voltar ao mapa
+              </button>
+              {nextMeta && (
+                <button
+                  onClick={() => openBriefing(nextMeta.id)}
+                  className="border border-primary px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-primary transition hover:bg-primary/10"
+                >
+                  Escolher cartas
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => (nextMeta ? enterChapter(nextMeta.id) : setView({ kind: "overview" }))}
+              className="bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110"
+            >
+              {won
+                ? nextChapter
+                  ? `Próxima missão · ${nextChapter.title}`
+                  : "Concluir campanha"
+                : "Tentar de novo"}
+            </button>
+          </div>
+        </StoryBook>
       </GameShell>
     );
   }
@@ -248,7 +344,6 @@ export function CampaignScreen() {
     </GameShell>
   );
 }
-
 function seedOf(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -256,6 +351,197 @@ function seedOf(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+// ---------------------------------------------------------------------------
+// Veredito — tela animada de vitória (alegre) ou derrota (triste). Sem rolagem:
+// o título explode na tela e o resumo fica contido.
+// ---------------------------------------------------------------------------
+function VerdictScreen({
+  won,
+  draw,
+  chapterTitle,
+  chapterLabel,
+  terrain,
+  result,
+  decisionLabel,
+  reward,
+  onNext,
+  onRetry,
+  onMap,
+}: {
+  won: boolean;
+  draw: boolean;
+  chapterTitle: string;
+  chapterLabel: string;
+  terrain: string;
+  result: BattleResult;
+  decisionLabel?: string | undefined;
+  reward: Reward;
+  onNext: () => void;
+  onRetry: () => void;
+  onMap: () => void;
+}) {
+  const headline = won ? "Vitória" : draw ? "Empate" : "Derrota";
+  const tone = won
+    ? "text-fact drop-shadow-[0_0_24px_oklch(0.64_0.06_145/0.55)]"
+    : draw
+      ? "text-muted-foreground"
+      : "text-destructive drop-shadow-[0_0_24px_oklch(0.58_0.19_28/0.55)]";
+  const loot = [
+    ...(reward.cards ?? []).map((c) => `Carta · ${cardName(c)}`),
+    ...(reward.accessories ?? []).map((a) => `Acessório · ${accessoryById(a)?.name ?? a}`),
+    ...(reward.techs ?? []).map((t) => `Tecnologia · ${techById(t)?.name ?? t}`),
+    ...(reward.research ? [`+${reward.research} pesquisa`] : []),
+    ...(reward.sovereigns ? [`+${reward.sovereigns} Sovereigns`] : []),
+  ];
+
+  return (
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-4 px-4 py-4 text-center [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:py-1">
+      <p className="label-mono text-primary">{chapterLabel}</p>
+
+      <div
+        className={cn(
+          "animate-verdict flex flex-col items-center gap-2",
+          !won && !draw && "animate-verdict-shake",
+        )}
+      >
+        <h1
+          className={cn(
+            "font-display text-7xl font-black uppercase leading-none sm:text-8xl [@media(max-height:560px)]:text-5xl",
+            tone,
+          )}
+        >
+          {headline}
+        </h1>
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+          {chapterTitle} · {terrain} · {Math.round(result.duration)}s
+        </p>
+      </div>
+
+      <div className="grid w-full max-w-lg grid-cols-3 gap-2 border-y border-border py-3 font-mono text-[11px] [@media(max-height:560px)]:py-1.5">
+        <Stat label="Território" value={`${result.territorialScore.blue}`} />
+        <Stat label="Abates" value={`${result.kills.blue}`} />
+        <Stat label="Baixas" value={`${result.losses.blue}`} />
+      </div>
+
+      {decisionLabel && (
+        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          Decisão de comando: <span className="text-primary">{decisionLabel}</span>
+        </p>
+      )}
+
+      {won && loot.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+          {loot.map((l) => (
+            <span key={l} className="font-mono text-[11px] uppercase text-fact">
+              {l.startsWith("+") ? l : `+ ${l}`}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex w-full max-w-md flex-col items-stretch gap-2">
+        <button
+          onClick={won ? onNext : onRetry}
+          className="bg-primary px-8 py-4 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110 [@media(max-height:560px)]:py-2"
+        >
+          {won ? "Continuar" : draw ? "Nova tentativa" : "Tentar de novo"}
+        </button>
+        <button
+          onClick={onMap}
+          className="border border-border px-8 py-3 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1.5"
+        >
+          Voltar ao mapa
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{label}</p>
+      <p className="font-display text-2xl font-black text-foreground [@media(max-height:560px)]:text-lg">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Carta desbloqueada — tela exclusiva para ver e coletar a carta ganha.
+// ---------------------------------------------------------------------------
+function CardUnlockScreen({
+  cards,
+  chapterLabel,
+  onNext,
+}: {
+  cards: string[];
+  chapterLabel: string;
+  onNext: () => void;
+}) {
+  return (
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-5 px-4 py-4 text-center [@media(max-height:560px)]:gap-2">
+      <div className="animate-rise">
+        <p className="label-mono text-primary">{chapterLabel}</p>
+        <p className="mt-1 font-display text-4xl font-black uppercase leading-none text-fact [@media(max-height:560px)]:text-2xl">
+          {cards.length > 1 ? "Cartas desbloqueadas" : "Carta desbloqueada"}
+        </p>
+        <p className="mt-1 font-serif text-sm italic text-foreground/80">
+          Reforço incorporado ao seu arsenal.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-start justify-center gap-4">
+        {cards.map((id) => (
+          <CardFace key={id} cardId={id} level={1} />
+        ))}
+      </div>
+
+      <button
+        onClick={onNext}
+        className="bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110 [@media(max-height:560px)]:py-2"
+      >
+        Coletar
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Promoção — tela exclusiva de subida de nível, com os atributos antes × depois.
+// ---------------------------------------------------------------------------
+function LevelUpScreen({ levelUps, onNext }: { levelUps: LevelUpInfo[]; onNext: () => void }) {
+  return (
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col items-center justify-center gap-5 px-4 py-4 text-center [@media(max-height:560px)]:gap-2">
+      <div className="animate-level-burst">
+        <p className="label-mono text-primary">Promoção de campo</p>
+        <p className="mt-1 font-display text-4xl font-black uppercase leading-none [@media(max-height:560px)]:text-2xl">
+          Nível aumentado
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-start justify-center gap-4">
+        {levelUps.map((u) => (
+          <div key={u.cardId} className="animate-card-flip flex flex-col items-center gap-2">
+            <CardFace cardId={u.cardId} level={u.to} />
+            <p className="font-mono text-xs uppercase tracking-wider text-primary">
+              nv {u.from} → <b className="text-fact">nv {u.to}</b>
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onNext}
+        className="bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110 [@media(max-height:560px)]:py-2"
+      >
+        Continuar
+      </button>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -368,101 +654,6 @@ function CampaignOverview({
       <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground [@media(max-height:420px)]:hidden">
         Missão a missão — cada vitória libera a próxima operação.
       </p>
-    </div>
-  );
-}
-
-function RewardScreen({
-  meta,
-  act,
-  result,
-  reward,
-  levelUps,
-  nextTitle,
-  decisionLabel,
-  onNext,
-  onMap,
-}: {
-  meta: (typeof chapterMeta)[number];
-  act: string;
-  result: BattleResult;
-  reward: Reward;
-  levelUps?: LevelUpInfo[];
-  nextTitle: string | null;
-  decisionLabel?: string | undefined;
-  onNext: () => void;
-  onMap: () => void;
-}) {
-  const won = result.outcome === "vitoria";
-  const draw = result.outcome === "empate";
-  const loot = [
-    ...(reward.cards ?? []).map((c) => `Carta desbloqueada · ${cardName(c)}`),
-    ...(reward.accessories ?? []).map((a) => `Acessório · ${accessoryById(a)?.name ?? a}`),
-    ...(reward.techs ?? []).map((t) => `Tecnologia · ${techById(t)?.name ?? t}`),
-    ...(reward.research ? [`+${reward.research} pesquisa`] : []),
-    ...(reward.sovereigns ? [`+${reward.sovereigns} Sovereigns`] : []),
-  ];
-  const story = chapterOutro(meta, result.outcome);
-  const ups = levelUps ?? [];
-
-  return (
-    <div className="flex w-full flex-col items-center gap-4 [@media(max-height:560px)]:gap-2">
-      <p className="label-mono text-primary">
-        {act} · Capítulo {meta.number}
-      </p>
-
-      <h1
-        className={cn(
-          "font-display text-6xl font-black uppercase leading-none sm:text-7xl [@media(max-height:560px)]:text-4xl",
-          won ? "text-fact" : draw ? "text-muted-foreground" : "text-destructive",
-        )}
-      >
-        {won ? "Vitória" : draw ? "Empate" : "Derrota"}
-      </h1>
-
-      <p className="max-w-xl font-serif text-base italic leading-relaxed text-foreground/90 [@media(max-height:560px)]:text-sm [@media(max-height:560px)]:leading-snug">
-        {story}
-      </p>
-
-      {decisionLabel && (
-        <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          Decisão de comando: <span className="text-primary">{decisionLabel}</span>
-        </p>
-      )}
-
-      {won && ups.length > 0 && <LevelUpPanel levelUps={ups} />}
-
-      {won && loot.length > 0 && (
-        <div className="w-full max-w-md border border-border bg-card/60 p-4 text-left [@media(max-height:560px)]:p-2.5">
-          <p className="label-mono mb-2 text-fact">Desbloqueado</p>
-          <ul className="space-y-1 font-mono text-xs [@media(max-height:560px)]:space-y-0.5">
-            {loot.map((l) => (
-              <li key={l} className="text-fact">
-                {l.startsWith("+") ? l : `+ ${l}`}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="flex w-full max-w-md flex-col items-stretch gap-2">
-        <button
-          onClick={onNext}
-          className="bg-primary px-8 py-4 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition hover:brightness-110 [@media(max-height:560px)]:py-2"
-        >
-          {won
-            ? nextTitle
-              ? `Próxima missão · ${nextTitle}`
-              : "Concluir campanha"
-            : "Tentar de novo"}
-        </button>
-        <button
-          onClick={onMap}
-          className="border border-border px-8 py-3 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1.5"
-        >
-          Voltar ao mapa
-        </button>
-      </div>
     </div>
   );
 }

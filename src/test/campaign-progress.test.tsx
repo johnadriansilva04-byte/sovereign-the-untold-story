@@ -1,7 +1,7 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { CampaignComic } from "@/components/campaign/CampaignComic";
+import { StoryBook } from "@/components/campaign/StoryBook";
 import { DecisionCard } from "@/components/campaign/DecisionCard";
 import { chapters } from "@/game/campaign";
 import { applyChapterResult, createProfile } from "@/game/progress/profile";
@@ -61,56 +61,53 @@ describe("progressão da campanha", () => {
   });
 });
 
-describe("página de gibi pós-vitória", () => {
-  it("mostra título, narrativa, fatos e botão de próxima missão", () => {
-    const chapter = chapters.find((c) => c.id === "c1")!;
-    const meta = chapterMetaById("c1")!;
-    const onNext = vi.fn();
+describe("livro de história com escrita ao vivo", () => {
+  const pages = [
+    { speaker: "Narrador", text: "A nossa luta segue ate hoje." },
+    { speaker: "Davi", text: "Se isso e uma guerra, quem declarou?" },
+  ];
+
+  it("escreve palavra por palavra, avança com clique e chama onFinish no fim", async () => {
+    vi.useFakeTimers();
+    const onFinish = vi.fn();
     render(
-      <CampaignComic
-        chapter={chapter}
-        meta={meta}
-        terrain="Cidade"
-        result={fakeResult("vitoria")}
-        reward={{ research: 1, sovereigns: 120, techs: ["t1"], cards: ["inf-fuzil"] }}
-        nextTitle="O Blecaute de Dados"
-        onNext={onNext}
-        onMap={vi.fn()}
+      <StoryBook
+        chapterLabel="Ato I · Capítulo 1"
+        title="Ruído"
+        pages={pages}
+        onFinish={onFinish}
       />,
     );
-    expect(screen.getByRole("heading", { name: chapter.title })).toBeInTheDocument();
-    // narrativa (outro do capítulo)
-    expect(screen.getByText(meta.outro)).toBeInTheDocument();
-    // os fatos NÃO ficam inline (a página não rola): abrem numa tela nova pelo botão
-    const factsBtn = screen.getByRole("button", { name: /Fatos da história/ });
-    expect(factsBtn).toBeInTheDocument();
-    expect(screen.queryByText("Fatos por trás da história")).not.toBeInTheDocument();
-    // recompensa com nomes legíveis (nunca ids crus)
-    expect(screen.getByText(/Tecnologia · Infantaria Avançada/)).toBeInTheDocument();
-    expect(screen.getByText(/\+120 Sovereigns/)).toBeInTheDocument();
-    // avanço
-    expect(
-      screen.getByRole("button", { name: /Próxima missão · O Blecaute de Dados/ }),
-    ).toBeInTheDocument();
+    // no começo, nenhuma palavra apareceu ainda
+    expect(screen.queryByText(/A nossa/)).not.toBeInTheDocument();
+    // o tempo passa e as palavras vão surgindo
+    act(() => {
+      vi.advanceTimersByTime(90 * 4);
+    });
+    expect(screen.getByText(/A nossa luta segue/)).toBeInTheDocument();
+    // clique acelera a página inteira
+    fireEvent.click(screen.getByRole("button", { name: /Acelerar|Virar/ }));
+    expect(screen.getByText(/A nossa luta segue ate hoje\./)).toBeInTheDocument();
+    // página 1 de 2
+    expect(screen.getByText(/Página 1 \/ 2/)).toBeInTheDocument();
+    // clique vira a folha para a segunda página
+    fireEvent.click(screen.getByRole("button", { name: /Virar a página/ }));
+    act(() => {
+      vi.advanceTimersByTime(90 * 10);
+    });
+    expect(screen.getByText(/Página 2 \/ 2/)).toBeInTheDocument();
+    // no fim, o clique conclui o relato
+    fireEvent.click(screen.getByRole("button", { name: /Virar a página/ }));
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
-  it("abre os fatos numa tela nova (dialog) ao clicar, sem listar inline", async () => {
-    const chapter = chapters.find((c) => c.id === "c1")!;
-    const meta = chapterMetaById("c1")!;
+  it("mostra o título e a procedência do capítulo", () => {
     render(
-      <CampaignComic
-        chapter={chapter}
-        meta={meta}
-        terrain="Cidade"
-        result={fakeResult("vitoria")}
-        reward={{ research: 1, sovereigns: 120, techs: ["t1"], cards: ["inf-fuzil"] }}
-        nextTitle="O Blecaute de Dados"
-        onNext={vi.fn()}
-        onMap={vi.fn()}
-      />,
+      <StoryBook chapterLabel="Ato I · Capítulo 1" title="Ruído" place="Cidade" era="Hoje" pages={pages} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Fatos da história/ }));
-    expect(await screen.findByText("Fatos por trás da história")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ruído" })).toBeInTheDocument();
+    expect(screen.getByText(/Cidade · Hoje/)).toBeInTheDocument();
   });
 });
 

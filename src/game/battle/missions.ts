@@ -10,6 +10,7 @@ import {
   commanders,
   startingDeck,
 } from "./catalog";
+import { aiParamsAt } from "@/game/progress/catalog";
 import type {
   AiDifficulty,
   Arena,
@@ -1158,6 +1159,15 @@ export const missionForChapter = (chapterId: string): MissionDef | null => {
   return id ? missionById(id) : null;
 };
 
+// Número do capítulo a partir do id da missão (a chave "cN" carrega o número). Usado para
+// derivar a dificuldade automática quando o chamador só conhece a missão.
+export function chapterNumberForMission(missionId: string): number | undefined {
+  const entry = Object.entries(chapterMission).find(([, mid]) => mid === missionId);
+  if (!entry) return undefined;
+  const n = Number(entry[0].replace(/^c/, ""));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Montagem do BattleConfig
 // ---------------------------------------------------------------------------
@@ -1184,6 +1194,127 @@ export function sideFromNation(
   if (mods) cfg.mods = mods;
   if (cardLevels) cfg.cardLevels = cardLevels;
   return cfg;
+}
+
+// Progressão do INIMIGO: as forças adversárias também evoluem ao longo da campanha.
+// No começo são um pelotão básico de nível 1; nos capítulos finais trazem blindados,
+// artilharia pesada, mísseis e drones, com cartas em nível mais alto. Sem isso o
+// adversário ficava congelado no nível 1 e a "dificuldade" virava só um multiplicador
+// de economia — o exército inimigo nunca crescia de verdade.
+export function enemyLevelForChapter(number: number, blueLevel?: number): number {
+  // EQUILÍBRIO: o inimigo ACOMPANHA a evolução real das SUAS cartas. Antes o nível do
+  // vermelho vinha só do número do capítulo e subia numa curva fixa, enquanto as suas
+  // cartas quase não evoluíam (1 recompensa/capítulo) — no capítulo ~34 o vermelho
+  // ficava nível 6 contra nível 2-3 do azul e a missão virava um muro impossível.
+  // Agora o nível do adversário é derivado do nível médio do SEU deck (com uma pequena
+  // vantagem nos capítulos finais), então a curva fica sempre justa: quem treina as
+  // cartas enfrenta um inimigo à altura, quem fica fraco não é esmagado.
+  if (blueLevel !== undefined) {
+    const offset = number >= 30 ? 1 : 0;
+    return Math.max(1, Math.min(12, Math.round(blueLevel) + offset));
+  }
+  // Fallback (exibição, quando não se conhece o deck do jogador): curva suave por capítulo.
+  return Math.max(1, Math.min(12, 1 + Math.floor((number - 1) / 6)));
+}
+
+// SISTEMA ÚNICO DE DIFICULDADE. Um só número — o capítulo — define TUDO o que torna o
+// adversário mais forte: velocidade de decisão, economia, nível das cartas e o baralho.
+// Não existe mais preset manual por missão (a tabela de "dificuldade" por missão gerava
+// redundância e degraus injustos: o mesmo capítulo virava um penhasco só por trocar o
+// preset). A curva é contínua e determinística.
+export interface EnemyScaling {
+  aiDifficulty: AiDifficulty;
+  cardLevel: number;
+  deck: string[];
+}
+
+export function enemyScalingForChapter(number: number, blueLevel?: number): EnemyScaling {
+  const t = Math.max(0, Math.min(1, (number - 1) / 49));
+  return {
+    // A curva de IA vem das âncoras compartilhadas (progress/catalog), as mesmas dos
+    // presets: uma só fonte de verdade para o adversário.
+    aiDifficulty: aiParamsAt(t),
+    cardLevel: enemyLevelForChapter(number, blueLevel),
+    deck: enemyDeckForChapter(number),
+  };
+}
+
+/** Nível médio de um conjunto de cartas (o "poder" do deck). Base para o nível do inimigo. */
+export function meanCardLevel(levels?: Record<string, number>): number | undefined {
+  if (!levels) return undefined;
+  const vals = Object.values(levels);
+  if (!vals.length) return undefined;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+const ENEMY_DECKS: string[][] = [
+  // Ato I — infantaria básica e apoio leve
+  [
+    "inf-fuzileiros",
+    "inf-assalto",
+    "inf-engenheiro",
+    "rec-drone",
+    "sup-gas",
+    "def-fortificacao",
+    "art-canhao",
+    "bld-vbld",
+  ],
+  // Ato II–III — entram blindados e artilharia
+  [
+    "inf-fuzileiros",
+    "inf-assalto",
+    "inf-antitanque",
+    "inf-engenheiro",
+    "bld-vbld",
+    "bld-tanque",
+    "art-obus",
+    "rec-drone",
+  ],
+  // Ato IV–V — mísseis, defesa antiaérea e engenharia de campo
+  [
+    "inf-assalto",
+    "inf-antitanque",
+    "inf-engenheiro",
+    "bld-tanque",
+    "art-obus",
+    "mss-lmf",
+    "def-aa",
+    "rec-drone",
+  ],
+  // Ato VI–VIII — guerra híbrida: drones de combate, mísseis e artilharia pesada
+  [
+    "inf-assalto",
+    "inf-antitanque",
+    "bld-tanque",
+    "art-obus",
+    "mss-lmf",
+    "rec-drone",
+    "def-aa",
+    "apo-posto",
+  ],
+];
+
+// Transições GRADUAIS: a cada faixa o inimigo troca UMA carta do deck (nunca três de uma
+// vez). Um salto brusco criava um "muro" onde a composição inimiga virava outra de repente.
+const DECK_UPGRADES: { from: number; out: string; in: string }[] = [
+  { from: 9, out: "sup-gas", in: "bld-tanque" },
+  { from: 15, out: "def-fortificacao", in: "art-obus" },
+  { from: 21, out: "art-canhao", in: "inf-antitanque" },
+  { from: 27, out: "rec-drone", in: "mss-lmf" },
+  { from: 33, out: "bld-vbld", in: "def-aa" },
+  { from: 39, out: "inf-fuzileiros", in: "rec-drone-combate" },
+  { from: 44, out: "sup-gas", in: "apo-posto" },
+];
+
+export function enemyDeckForChapter(number: number): string[] {
+  const deck = [...ENEMY_DECKS[0]!];
+  for (const u of DECK_UPGRADES) {
+    if (number < u.from) continue;
+    const i = deck.indexOf(u.out);
+    if (i >= 0) deck[i] = u.in;
+    else if (!deck.includes(u.in)) deck.push(u.in);
+  }
+  return deck;
 }
 
 export function sideFromMission(mission: MissionDef): SideConfig {
@@ -1220,9 +1351,17 @@ export interface BuildBattleOptions {
   seed?: number;
   mods?: SideModifiers;
   aiDifficulty?: AiDifficulty;
+  /** Carta que o inimigo traz a campo para ser CAPTURADA nesta operação. */
+  prizeCardId?: string | undefined;
+  /** Capítulo da campanha: define a progressão do deck e do nível do inimigo. */
+  chapterNumber?: number;
   redDeck?: string[];
   cardLevels?: Record<string, number>;
   redCardLevels?: Record<string, number>;
+  // Cartas que o JOGADOR possui no inventário. As cartas do adversário ausentes desta
+  // lista viram ESPÓLIO: as tropas azuis as reconhecem em campo e priorizam abatê-las
+  // para capturar a carta (inteligência de captura real, ligada ao progresso).
+  ownedCardIds?: string[];
 }
 
 // Traduz o cenário narrativo da missão no posicionamento dos chanceleres. A PRISÃO do
@@ -1273,8 +1412,20 @@ function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
 export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   const arena = cloneArena(arenaByTerrain(opts.mission.terrain));
   const red = sideFromMission(opts.mission);
+  // O adversário também evolui: decks por ato e nível de carta que ACOMPANHA o seu deck
+  // (ver enemyLevelForChapter). Sem os níveis do azul, cai na curva suave por capítulo.
+  if (opts.chapterNumber !== undefined) {
+    const scale = enemyScalingForChapter(opts.chapterNumber, meanCardLevel(opts.cardLevels));
+    red.deck = scale.deck;
+    red.cardLevels = Object.fromEntries(red.deck.map((c) => [c, scale.cardLevel]));
+  }
   if (opts.redDeck && opts.redDeck.length >= 8) red.deck = opts.redDeck.slice(0, 8);
   if (opts.redCardLevels) red.cardLevels = opts.redCardLevels;
+  // ESPÓLIO DE GUERRA: cartas que o adversário traz e o jogador ainda não possui. O
+  // motor marca as unidades correspondentes como alvo prioritário de captura.
+  const owned = new Set(opts.ownedCardIds ?? []);
+  const bountyCardIds =
+    opts.ownedCardIds === undefined ? [] : red.deck.filter((c) => !owned.has(c));
   const config: BattleConfig = {
     id: opts.mission.id,
     missionName: opts.mission.name,
@@ -1292,6 +1443,7 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
     ),
     red,
     seed: opts.seed ?? 20260101,
+    ...(bountyCardIds.length > 0 ? { bountyCardIds } : {}),
   };
   if (opts.mission.militaryThreshold !== undefined)
     config.militaryThreshold = opts.mission.militaryThreshold;
@@ -1299,6 +1451,7 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   if (heroSetup) config.heroSetup = heroSetup;
   if (opts.mission.operational !== undefined) config.operationalTarget = opts.mission.operational;
   if (opts.aiDifficulty !== undefined) config.aiDifficulty = opts.aiDifficulty;
+  if (opts.prizeCardId) config.prizeCardId = opts.prizeCardId;
   return config;
 }
 

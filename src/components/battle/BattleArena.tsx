@@ -1455,6 +1455,44 @@ function UnitGlyph({
       {unit.jammed > 0 && (
         <circle cx={unit.x} cy={y} r={r * 1.2} fill="none" stroke="var(--ai)" strokeWidth="0.25" />
       )}
+      {/* ESPÓLIO: a unidade porta uma carta que ainda não temos. Marcada com um alvo
+          tracejado, sinaliza ao jogador que abatê-la rende a carta. */}
+      {unit.bounty && !unit.surrendered && (
+        <circle
+          cx={unit.x}
+          cy={y}
+          r={r + 1.9}
+          fill="none"
+          stroke="var(--fact)"
+          strokeWidth="0.3"
+          strokeDasharray="1.2 1.2"
+          opacity={0.9}
+        />
+      )}
+      {/* RENDIDO: prisioneiro fora de combate. Uma bandeira branca marca o soldado que
+          baixou as armas. */}
+      {unit.surrendered && (
+        <g>
+          <circle
+            cx={unit.x}
+            cy={y}
+            r={r + 1.6}
+            fill="none"
+            stroke="oklch(1 0 0 / 0.85)"
+            strokeWidth="0.3"
+            opacity={0.9}
+          />
+          <line
+            x1={unit.x + r}
+            y1={y - r}
+            x2={unit.x + r}
+            y2={y - r - 2.4}
+            stroke="oklch(1 0 0 / 0.9)"
+            strokeWidth="0.3"
+          />
+          <rect x={unit.x + r} y={y - r - 2.4} width="1.8" height="1.1" fill="oklch(1 0 0 / 0.9)" />
+        </g>
+      )}
       {(selected || unit.hitFlash > 0 || unit.hp < unit.maxHp * 0.85) && (
         <>
           <rect

@@ -284,7 +284,7 @@ interface AiPlan {
 function intervalFor(p: CommanderPersonality): number {
   switch (p) {
     case "Agressivo":
-      return 1.4;
+      return 2.5;
     case "Econômico":
       return 3.2;
     case "Cauteloso":
@@ -306,7 +306,7 @@ function reserveFor(p: CommanderPersonality, max: number): number {
     case "Econômico":
       return Math.round(max * 0.35);
     case "Agressivo":
-      return 0;
+      return Math.round(max * 0.05);
     default:
       return Math.round(max * 0.08);
   }
@@ -424,7 +424,7 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
 // principal (com justificativa) e as cartas/destinos são derivados dela. A cada turno
 // a intenção é RECALIBRADA: se o chanceler adversário se move, o ponto de caça segue o
 // movimento; se o nosso foge, muda para extração; se o Sov aperta, prioriza território.
-type AiIntent = "rescue" | "extract" | "hunt" | "guard" | "expand" | "push" | "defend";
+type AiIntent = "rescue" | "extract" | "hunt" | "guard" | "expand" | "push" | "defend" | "prize";
 
 interface AiStrategy {
   intent: AiIntent;
@@ -483,6 +483,33 @@ export function aiStrategy(
 ): AiStrategy {
   const cfg = sideState(state, side);
   const mine = state.heroes[side];
+
+  // CARTA-PRÊMIO — objetivo de campanha: empurrar a linha até o comboio e capturá-lo.
+  // Não é a prioridade ZERO (a guerra continua): entra como frente de expansão quando o
+  // lado não está em crise defensiva nem resgatando o próprio chanceler.
+  const prize = state.prize;
+  const convoy = state.red.units.find((u) => u.prizeConvoy && u.alive);
+  if (prize?.capturedBy === "blue" && side === "blue" && convoy)
+    return {
+      intent: "extract",
+      point: { x: convoy.x, y: convoy.y },
+      reason: "Escoltar a carga capturada até a base",
+      targetUnitId: convoy.id,
+    };
+  if (prize && !prize.capturedBy && !prize.failed && convoy && !defensive) {
+    if (side === "blue")
+      return {
+        intent: "prize",
+        point: { x: prize.x, y: prize.y },
+        reason: "Capturar a carta em campo",
+      };
+    if (weights.aggression >= 0.5)
+      return {
+        intent: "defend",
+        point: { x: convoy.x, y: convoy.y },
+        reason: "Defender o comboio da carta",
+      };
+  }
 
   // 1. RESGATE — destruir a prisão que mantém o nosso chanceler.
   if (mine.state === "preso") {
@@ -753,14 +780,17 @@ function scoreCard(
 function commanderBias(card: Card, personality: CommanderPersonality, defensive: boolean): number {
   const cat = card.kind === "militar" ? card.category : "apoio";
   switch (personality) {
+    // Os vieses são LEVES de propósito: nenhuma personalidade deve virar "botão de
+    // vitória". Vieses fortes (ex.: blindado 1.0) faziam o comandante spammar um único
+    // tipo e dominar a partida — a tática difere, a força não.
     case "Agressivo": // Sarmiento — mecanizada: empurra blindados cedo
-      return cat === "blindado" ? 1.0 : cat === "infantaria" ? 0.3 : 0;
+      return cat === "blindado" ? 0.35 : cat === "infantaria" ? 0.3 : 0.15;
     case "Econômico": // Orlov — poder de fogo: artilharia de longo alcance
-      return cat === "artilharia" ? 1.0 : cat === "defesa" ? 0.4 : -0.15;
+      return cat === "artilharia" ? 0.35 : cat === "defesa" ? 0.3 : 0.15;
     case "Cauteloso": // Lima — defesa territorial: fortifica e protege
-      return cat === "defesa" ? 1.1 : defensive ? 0.3 : -0.3;
+      return cat === "defesa" ? 0.4 : defensive ? 0.25 : 0.15;
     case "Oportunista": // Duarte — mobilidade: drones, reconhecimento e flancos
-      return cat === "reconhecimento" ? 0.9 : cat === "infantaria" ? 0.35 : 0;
+      return cat === "reconhecimento" ? 0.35 : cat === "infantaria" ? 0.3 : 0.15;
     case "Metódico": // Varela — operações combinadas: completa a composição
       return cat === "apoio" ? 0.3 : 0.25;
   }
@@ -876,7 +906,11 @@ function chooseTarget(
   const op = state.config.operationalTarget;
   if (op) {
     const opPoint = points.find((p) => p.id === op.controlPointId);
-    if (opPoint && opPoint.owner === other(side)) return opPoint;
+    // DISPUTA DESDE O INÍCIO: quem decide a partida é o ponto do objetivo. Se a IA só
+    // reagisse depois que o inimigo o tomasse, o primeiro a chegar acumulava posse +
+    // renda territorial e a partida virava bola de neve (as missões operacionais
+    // ficavam instáveis: ou 20/20 ou 0/20). Disputar o ponto neutro torna a corrida simétrica.
+    if (opPoint && opPoint.owner !== side) return opPoint;
   }
 
   if (personality === "Agressivo" || !read.behind) {

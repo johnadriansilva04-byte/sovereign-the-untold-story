@@ -186,7 +186,166 @@ export function createBattle(config: BattleConfig): BattleState {
     heroes: { blue: { state: "livre" }, red: { state: "livre" } },
   };
   initHeroes(state);
+  initPrize(state);
   return state;
+}
+
+// ---------------------------------------------------------------------------
+// Carta-prêmio em campo
+// ---------------------------------------------------------------------------
+//
+// O INIMIGO traz a carta nova para o campo, guardada por uma escolta blindada que
+// fica no meio do caminho (território disputado). A carta NÃO é entregue de graça:
+// é preciso empurrar a linha até o comboio e mantê-lo sob controle pelo tempo de
+// captura. A escolta reage e a captura reinicia se o comboio for perdido — a carta
+// pode, sim, ficar para a próxima tentativa (derrota não entrega prêmio).
+const PRIZE_CAPTURE_SECONDS = 4.5;
+const PRIZE_CAPTURE_RADIUS = 12;
+
+export function prizeConvoy(state: BattleState): BattleUnit | null {
+  return state.red.units.find((u) => u.prizeConvoy && u.alive) ?? null;
+}
+
+/** Progresso (0-100) da captura do comboio pelo lado. */
+export function prizeProgress(state: BattleState, side: Side): number {
+  return state.prize?.progress[side] ?? 0;
+}
+
+// Monta o comboio à mão: ele não vem de carta (não é do baralho do inimigo) e não
+// combate — é carga protegida. Fica parado no ponto central com a escolta em volta.
+function initPrize(state: BattleState): void {
+  const cardId = state.config.prizeCardId;
+  if (!cardId) return;
+  const mid = state.config.arena.controlPoints.find((p) => p.sector === "central");
+  const x = mid ? mid.x : 50;
+  const y = mid ? mid.y : 23;
+  const convoy: BattleUnit = {
+    id: "prize-convoy",
+    side: "red",
+    cardId: "prize-convoy",
+    name: "Comboio de Carga",
+    short: "CGA",
+    category: "blindado",
+    model: "vbld",
+    weapon: { kind: "fuzil", projectileSpeed: 0, splash: 0, arc: false, homing: false, muzzle: 0 },
+    builder: false,
+    x,
+    y,
+    hp: 6000,
+    maxHp: 6000,
+    dmg: 0,
+    speed: 0,
+    range: 0,
+    cooldown: 1,
+    readyIn: 0,
+    radius: 4.5,
+    targets: "terra",
+    domain: "terra",
+    order: "manter",
+    groupId: "prize",
+    aim: HOME_AIM.red,
+    recoil: 0,
+    alive: true,
+    engaged: false,
+    smoke: 0,
+    jammed: 0,
+    revealed: 0,
+    seen: { blue: false, red: false },
+    heal: 0,
+    level: 1,
+    armor: 0,
+    hitFlash: 0,
+    wear: 0,
+    prizeConvoy: true,
+  };
+  state.red.units.push(convoy);
+  // Escolta inicial: dois pelotões de assalto guardando o comboio.
+  for (const [dx, dy] of [
+    [0, -6],
+    [0, 6],
+  ] as const) {
+    const esc = spawnUnit(state, "red", "inf-assalto", x + dx, y + dy, { groupId: "prize-escort" });
+    esc.goalX = x + dx;
+    esc.goalY = y + dy;
+    esc.goalAuto = true;
+    esc.holdAtGoal = true;
+    state.red.units.push(esc);
+  }
+  state.prize = {
+    cardId,
+    x,
+    y,
+    capturedBy: null,
+    failed: false,
+    extracted: false,
+    progress: { blue: 0, red: 0 },
+    nextId: 0,
+  };
+  pushLog(state, "red", "evento", `Comboio com a carta ${cardId} entrou em campo. Capture-o.`);
+}
+
+function updatePrize(state: BattleState, dt: number): void {
+  const prize = state.prize;
+  if (!prize || prize.capturedBy || prize.failed) return;
+  const convoy = prizeConvoy(state);
+  // Escolta destruída: o comboio recua com a carta. Nada de prêmio automático.
+  if (!convoy) {
+    prize.failed = true;
+    pushLog(state, "sistema", "evento", "Escolta destruída: o comboio recuou com a carta.");
+    return;
+  }
+  // Raio generoso: as tropas param no alcance de tiro, então CERCA (1 contra 3) conta.
+  const bluePower = capturePower(state, "blue", prize.x, prize.y, PRIZE_CAPTURE_RADIUS);
+  const redPower = capturePower(state, "red", prize.x, prize.y, PRIZE_CAPTURE_RADIUS);
+  // A captura é decidida por SUPERIORIDADE no local: quem tem mais força ao redor do
+  // comboio avança. Assim, cercar com números superiores (1 contra 3) toma a carga, e a
+  // escolta precisa de reforço real para segurá-la — não basta estar por perto.
+  const rate = 100 / PRIZE_CAPTURE_SECONDS;
+  if (bluePower > redPower) {
+    prize.progress.blue = Math.min(100, prize.progress.blue + rate * dt);
+  } else if (redPower > bluePower) {
+    prize.progress.blue = Math.max(0, prize.progress.blue - rate * dt);
+  }
+  prize.progress.red = redPower > bluePower ? 100 : 0;
+  if (prize.progress.blue >= 100) {
+    // Capturado: o comboio passa a seguir a força azul e precisa CHEGAR À BASE aliada.
+    // Só então a carta entra no arsenal — capturar em campo é metade do trabalho.
+    prize.capturedBy = "blue";
+    convoy.side = "blue";
+    convoy.order = "avancar";
+    delete convoy.goalX;
+    delete convoy.goalY;
+    const base = state.structures.find(
+      (st) => st.alive && st.side === "blue" && st.kind === "base-principal",
+    );
+    if (base) {
+      convoy.goalX = base.x;
+      convoy.goalY = base.y;
+    }
+    addEffect(state, "explosion", prize.x, prize.y, 5);
+    pushLog(state, "blue", "captura", "Comboio dominado: escolte a carga até a base.");
+  }
+}
+
+// Extração: com o comboio capturado, o prêmio só é confirmado quando ele CHEGA ao
+// território aliado. Se for abatido no caminho, a carta se perde de vez.
+function updatePrizeExtraction(state: BattleState): void {
+  const prize = state.prize;
+  if (!prize || !prize.capturedBy) return;
+  const convoy = prizeConvoy(state);
+  if (!convoy) {
+    prize.failed = true;
+    prize.capturedBy = null;
+    pushLog(state, "sistema", "evento", "A carga foi destruída no trajeto: carta perdida.");
+    return;
+  }
+  const home = state.structures.find(
+    (st) => st.alive && st.side === "blue" && st.kind === "base-principal",
+  );
+  if (home && dist(convoy.x, convoy.y, home.x, home.y) <= home.radius + convoy.radius + 4) {
+    prize.extracted = true;
+    pushLog(state, "blue", "captura", `Carga entregue na base: carta ${prize.cardId} garantida.`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +720,9 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
     structuresDestroyed: 0,
     deployed: 0,
     score: 0,
+    prisonersTaken: 0,
+    prisonersLost: 0,
+    capturedCards: [],
   };
 }
 
@@ -646,7 +808,8 @@ export function canDeploy(
 export function aliveUnits(state: BattleState, side: Side): number {
   const cfg = side === "blue" ? state.blue : state.red;
   let n = 0;
-  for (const u of cfg.units) if (u.alive) n++;
+  // Prisioneiros rendidos não contam como força: saíram do combate.
+  for (const u of cfg.units) if (u.alive && !u.prizeConvoy && !u.surrendered) n++;
   return n;
 }
 
@@ -1098,6 +1261,10 @@ function spawnUnit(
     cardSpeedMultiplier(level);
   const maxHp = Math.max(1, Math.round(card.hp * hpMult));
   cfg.deployed += 1;
+  // INTELIGÊNCIA DE CAPTURA: a unidade porta uma carta listada como espólio (ausente do
+  // arsenal do jogador). As tropas azuis a reconhecem em campo e a priorizam — abatê-la
+  // pode render a carta como prêmio de guerra.
+  const bounty = Boolean(cardId && state.config.bountyCardIds?.includes(cardId));
   return {
     id: `u${state.nextId++}`,
     side,
@@ -1137,6 +1304,7 @@ function spawnUnit(
     armor: cardArmorFraction(level),
     hitFlash: 0,
     wear: 0,
+    ...(bounty ? { bounty: true } : {}),
   };
 }
 
@@ -1623,6 +1791,8 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   updateProjectiles(state, dt);
   updateEffects(state, dt);
   updateCapture(state, dt);
+  updatePrize(state, dt);
+  updatePrizeExtraction(state);
   updateVisibility(state);
   updateHeroes(state);
   cleanup(state);
@@ -1696,6 +1866,98 @@ function updateEffects(state: BattleState, dt: number): void {
 // Unidades: movimento, seleção de alvo e disparo
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// RENDIÇÃO
+// ---------------------------------------------------------------------------
+//
+// Cercada por força MUITO superior (1 contra 3+), a unidade não fica lutando no vazio:
+// o MOTOR decide se ela se rende ou resiste. Tropas de elite e o chanceler RECUSAM a
+// rendição — é o que dá emoção: o cerco aperta, mas nem todo mundo se entrega. Quem se
+// rende vira prisioneiro (sai de combate) e é capturado por quem o cercou.
+const SURRENDER_RATIO = 3; // força inimiga necessária (em peso) para forçar a decisão
+const SURRENDER_DELAY = 2.5; // segundos de hesitação antes de decidir
+const SURRENDER_RADIUS = 9;
+
+// Peso de combate de uma unidade: quanto "vale" numa disputa de cerco. Blindados e
+// artilharia pesam mais que infantaria; apoio/reconhecimento pesam pouco.
+function combatWeight(u: BattleUnit): number {
+  if (u.hero) return 3;
+  switch (u.category) {
+    case "blindado":
+      return 2.4;
+    case "artilharia":
+      return 1.6;
+    case "infantaria":
+      return 1;
+    case "defesa":
+      return 1.4;
+    default:
+      return 0.7;
+  }
+}
+
+// Chance de render-se: alta para tropa comum cercada, nula para herois e baixa para
+// veteranos (nível alto). É uma decisão DETERMINÍSTICA por semente + id, para o motor
+// ser reproduzível nos testes.
+function surrenders(state: BattleState, u: BattleUnit): boolean {
+  if (u.hero || u.prizeConvoy) return false;
+  // Tropa de elite (nível alto) resiste; recruta cercado se entrega.
+  const resist = Math.min(0.75, 0.08 * u.level);
+  const roll =
+    ((hash32(`${state.config.seed}:${u.id}:${Math.floor(state.t)}`) >>> 0) % 1000) / 1000;
+  return roll > resist;
+}
+
+function hash32(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function updateSurrender(state: BattleState, u: BattleUnit, dt: number): void {
+  if (u.surrendered) return;
+  const enemy = other(u.side);
+  const enemyCfg = enemy === "blue" ? state.blue : state.red;
+  let foe = 0;
+  let allies = 0;
+  for (const e of enemyCfg.units) {
+    if (!e.alive || e.surrendered || e.prizeConvoy) continue;
+    if (dist(e.x, e.y, u.x, u.y) <= SURRENDER_RADIUS) foe += combatWeight(e);
+  }
+  const myCfg = u.side === "blue" ? state.blue : state.red;
+  for (const a of myCfg.units) {
+    if (a === u || !a.alive || a.surrendered) continue;
+    if (dist(a.x, a.y, u.x, u.y) <= SURRENDER_RADIUS) allies += combatWeight(a);
+  }
+  const total = combatWeight(u) + allies;
+  // Sem cerco decisivo, a hesitação zera: o soldado volta a lutar normalmente.
+  if (foe < total * SURRENDER_RATIO) {
+    u.surrenderCheck = 0;
+    return;
+  }
+  u.surrenderCheck = (u.surrenderCheck ?? 0) + dt;
+  if (u.surrenderCheck < SURRENDER_DELAY) return;
+  if (surrenders(state, u)) {
+    u.surrendered = true;
+    u.engaged = false;
+    delete u.targetId;
+    delete u.targetStructureId;
+    enemyCfg.prisonersTaken += 1;
+    myCfg.prisonersLost += 1;
+    addEffect(state, "build", u.x, u.y, u.radius + 2, { side: enemy });
+    pushLog(state, enemy, "captura", `${u.name} cercado: rendeu-se e foi feito prisioneiro.`);
+  } else {
+    // Resistiu: ganha um instante de fúria (recarrega e reage) e não é mais checado por
+    // um tempo — o cerco apertou, mas a tropa escolheu lutar.
+    u.surrenderCheck = -SURRENDER_DELAY * 4;
+    u.readyIn = 0;
+    pushLog(state, u.side, "evento", `${u.name} cercado, mas recusou a rendição.`);
+  }
+}
+
 function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   if (u.smoke > 0) u.smoke = Math.max(0, u.smoke - dt);
   if (u.hitFlash > 0) u.hitFlash = Math.max(0, u.hitFlash - dt);
@@ -1712,6 +1974,11 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
       dist(z.x, z.y, u.x, u.y) <= z.radius,
   );
   if (friendlySmoke) u.smoke = Math.max(u.smoke, 0.6);
+
+  // RENDIÇÃO: cercada, a unidade decide entre entregar-se ou resistir. Rendeu-se, para
+  // de combater e permanece como prisioneira até ser recolhida.
+  updateSurrender(state, u, dt);
+  if (u.surrendered) return;
 
   if (u.builder && updateBuilder(state, u, dt)) return;
   if (u.heal > 0 && updateSupport(state, u, dt)) return;
@@ -1762,6 +2029,9 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
 // (linha de suprimento) multiplica o atrito. Longe de qualquer base, a coluna definha
 // rápido — é isso que dá valor estratégico às bases avançadas.
 function applyWear(state: BattleState, u: BattleUnit, moved: number, dt: number): void {
+  // A carga da carta-prêmio não sofre atrito: ela é capturada ou entregue, nunca
+  // "morre de desgaste" no meio do mapa.
+  if (u.prizeConvoy) return;
   const base = nearestFriendlyBase(state, u.side, u.x, u.y);
   const supplyDist = base ? dist(u.x, u.y, base.x, base.y) : WEAR_FIELD * 2;
   if (u.hero) {
@@ -2059,6 +2329,8 @@ interface TargetRef {
   category?: UnitCategory;
   domain?: string;
   radius: number;
+  // A unidade porta uma carta ausente do nosso arsenal: alvo de CAPTURA prioritário.
+  bounty?: boolean;
 }
 
 function selectTarget(state: BattleState, u: BattleUnit): TargetRef | null {
@@ -2069,6 +2341,11 @@ function selectTarget(state: BattleState, u: BattleUnit): TargetRef | null {
   const units: TargetRef[] = [];
   for (const e of enemyCfg.units) {
     if (!e.alive) continue;
+    // A carga da carta-prêmio não é alvo de fogo: antes de capturada é imune, e depois
+    // é o próprio objetivo a escoltar — atirar nela só desviaria a tropa do combate.
+    if (e.prizeConvoy) continue;
+    // Prisioneiro rendido já saiu do combate: não se atira em quem se rendeu.
+    if (e.surrendered) continue;
     if (!isVisibleTo(state, e, u.side)) continue;
     if (!targetsDomain(u.targets, e.domain)) continue;
     const d = dist(u.x, u.y, e.x, e.y);
@@ -2081,6 +2358,7 @@ function selectTarget(state: BattleState, u: BattleUnit): TargetRef | null {
       category: e.category,
       domain: e.domain,
       radius: e.radius,
+      ...(e.bounty ? { bounty: true } : {}),
     });
   }
 
@@ -2103,6 +2381,9 @@ function selectTarget(state: BattleState, u: BattleUnit): TargetRef | null {
       s += 1000;
     if (t.kind === "unit" && t.category && priority.includes(t.category)) s += 40;
     if (t.kind === "structure") s += 6;
+    // ESPÓLIO: a tropa reconhece a unidade que porta uma carta que ainda não temos e a
+    // caça com afinco — capturar a carta vale mais que a baixa em si.
+    if (t.bounty) s += 120;
     return s;
   };
 
@@ -2155,7 +2436,7 @@ function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void 
   const kind: Projectile["kind"] =
     w.kind === "missil" ? "missile" : w.kind === "atgm" || w.kind === "lmf" ? "rocket" : "shell";
 
-  const create = (tx: number, ty: number): void => {
+  const create = (tx: number, ty: number, shotDmg: number): void => {
     const ang = Math.atan2(ty - my, tx - mx);
     state.projectiles.push({
       id: `p${state.nextId++}`,
@@ -2168,7 +2449,7 @@ function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void 
       vx: Math.cos(ang) * w.projectileSpeed,
       vy: Math.sin(ang) * w.projectileSpeed,
       speed: w.projectileSpeed,
-      dmg,
+      dmg: shotDmg,
       splash: w.splash,
       arc: w.arc,
       homing: w.homing,
@@ -2185,13 +2466,17 @@ function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void 
   };
 
   if (w.kind === "lmf") {
-    for (let i = 0; i < 5; i++) {
+    // Salva de foguetes: o dano é DIVIDIDO entre os foguetes. Sem isso, cada foguete
+    // aplicava o dano cheio e a salva multiplicava o poder por 5 (dizimava infantaria).
+    const rockets = 5;
+    const shotDmg = dmg / rockets;
+    for (let i = 0; i < rockets; i++) {
       const spread = (i - 2) * 2.2;
       const jitter = (nextRng(state) - 0.5) * 2;
-      create(target.x + spread + jitter, target.y + jitter);
+      create(target.x + spread + jitter, target.y + jitter, shotDmg);
     }
   } else {
-    create(target.x, target.y);
+    create(target.x, target.y, dmg);
   }
 }
 
@@ -2451,6 +2736,9 @@ function damageUnit(
   from: BattleUnit | null,
   dmgVs?: Partial<Record<UnitCategory, number>>,
 ): void {
+  // Comboio ainda NÃO capturado é invulnerável: não se toma a carta destruindo-a.
+  // Depois de capturado, ele pode ser abatido no trajeto — aí a carga se perde.
+  if (target.prizeConvoy && !state.prize?.capturedBy) return;
   const ob = obstacleAt(state.config.arena, target.x, target.y);
   const fort = coverBonusAt(state, target);
   const cover = target.domain === "aereo" ? 0 : Math.min(0.6, (ob?.cover ?? 0) + fort);
@@ -2487,6 +2775,21 @@ function damageUnit(
     victimCfg.losses += 1;
     // Sem recompensa por abate: o Sov é FINITO e só volta de território conquistado.
     pushLog(state, killerSide, "baixa", `${victimCfg.countryName} perde ${target.name}.`);
+    // ESPÓLIO: a unidade portava uma carta que o nosso lado não tinha. Abatê-la rende a
+    // carta ao vencedor (uma vez por operação), desde que o alvo não tenha se rendido —
+    // prisioneiro vivo já é recompensa suficiente e a carta sai do espólio.
+    if (target.bounty && !target.surrendered && killerSide === "blue") {
+      const already = state.blue.capturedCards.includes(target.cardId);
+      if (!already) {
+        state.blue.capturedCards.push(target.cardId);
+        pushLog(
+          state,
+          "blue",
+          "captura",
+          `Espólio de guerra: ${cardById(target.cardId).name} capturada em campo.`,
+        );
+      }
+    }
     // O chanceler é a peça que decide a guerra: perder o seu ou eliminar o outro encerra.
     if (target.hero) heroDied(state, target);
   }
@@ -2641,6 +2944,8 @@ function capturePower(
   let power = 0;
   for (const u of cfg.units) {
     if (!u.alive) continue;
+    // A CARGA não defende: ela é o prêmio, não um soldado. Não conta força de captura.
+    if (u.prizeConvoy) continue;
     if (dist(u.x, u.y, x, y) > radius + u.radius) continue;
     let w = 0.6;
     if (u.category === "infantaria") w = 1.2;
@@ -3138,6 +3443,9 @@ export function computeResult(state: BattleState): BattleResult {
     coins: { blue: state.blue.coins, red: state.red.coins },
     income: { blue: state.blue.income, red: state.red.income },
     pointsHeld: points,
+    prizeCardWon: state.prize?.extracted ? state.prize.cardId : null,
+    prisoners: { blue: state.blue.prisonersTaken, red: state.red.prisonersTaken },
+    capturedCards: [...state.blue.capturedCards],
   };
 }
 

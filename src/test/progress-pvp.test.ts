@@ -7,13 +7,17 @@ import {
   chapterOutro,
 } from "@/game/progress/campaign";
 import { computeResult, runToCompletion } from "@/game/battle/engine";
-import { consequencesOf, missionById } from "@/game/battle/missions";
+import {
+  consequencesOf,
+  enemyScalingForChapter,
+  missionById,
+} from "@/game/battle/missions";
 import {
   addCard,
   difficulties,
   difficultyById,
+  difficultyForChapter,
   emptyInventory,
-  missionDifficulty,
   modsFromAccessories,
   ownsCard,
   removeCard,
@@ -81,10 +85,14 @@ describe("progressão: acessórios e dificuldade", () => {
     expect(difficulties.find((d) => d.id === "llm")?.isLlm).toBe(true);
   });
 
-  it("todas as missões têm dificuldade definida", () => {
-    for (const [, d] of Object.entries(missionDifficulty)) {
-      expect(difficultyById(d).id).toBe(d);
-    }
+  it("a dificuldade é derivada do capítulo (sistema automático único)", () => {
+    expect(difficultyForChapter(1)).toBe("recruta");
+    expect(difficultyForChapter(50)).toBe("soberano");
+    // a curva real do inimigo acompanha o capítulo
+    const inicio = enemyScalingForChapter(1);
+    const fim = enemyScalingForChapter(50);
+    expect(fim.cardLevel).toBeGreaterThan(inicio.cardLevel);
+    expect(fim.aiDifficulty.intervalMult).toBeLessThan(inicio.aiDifficulty.intervalMult);
   });
 });
 

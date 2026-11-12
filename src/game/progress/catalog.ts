@@ -488,26 +488,26 @@ export const difficulties: DifficultyDef[] = [
     id: "recruta",
     name: "Recruta",
     summary: "O inimigo hesita e economiza demais. Ideal para aprender a arena.",
-    aiIntervalMult: 1.6,
-    aiCommandMult: 0.9,
-    aiReserveBonus: 3,
+    aiIntervalMult: 1.45,
+    aiCommandMult: 0.94,
+    aiReserveBonus: 2,
     rewardMult: 0.7,
   },
   {
     id: "veterano",
     name: "Veterano",
     summary: "Adversário sólido: responde à sua composição e joga pelas regras.",
-    aiIntervalMult: 1.0,
-    aiCommandMult: 1.0,
-    aiReserveBonus: 0,
+    aiIntervalMult: 1.25,
+    aiCommandMult: 0.98,
+    aiReserveBonus: 1,
     rewardMult: 1.0,
   },
   {
     id: "elite",
     name: "Elite",
     summary: "Decide rápido, contra-ataca e explora cada carta mal gasta.",
-    aiIntervalMult: 0.7,
-    aiCommandMult: 1.0,
+    aiIntervalMult: 1.0,
+    aiCommandMult: 1.03,
     aiReserveBonus: -1,
     rewardMult: 1.35,
   },
@@ -515,8 +515,8 @@ export const difficulties: DifficultyDef[] = [
     id: "soberano",
     name: "Soberano",
     summary: "Pressão constante, coordenação de cartas e leitura do seu erro. Vencer exige plano.",
-    aiIntervalMult: 0.5,
-    aiCommandMult: 1.05,
+    aiIntervalMult: 0.7,
+    aiCommandMult: 1.08,
     aiReserveBonus: -2,
     rewardMult: 1.7,
   },
@@ -532,6 +532,46 @@ export const difficulties: DifficultyDef[] = [
   },
 ];
 
+// ÂNCORAS DA CURVA DE IA: são a ÚNICA fonte de verdade dos parâmetros do adversário. Os
+// presets acima (exibição/treino) e a escalada da campanha usam exatamente estes números —
+// antes havia duas curvas divergentes e o "Soberano" do preset era mais cruel que o topo
+// real da campanha, o que produzia degraus artificiais e missões impossíveis.
+const AI_ANCHORS: { at: number; intervalMult: number; commandMult: number; reserveBonus: number }[] =
+  [
+    { at: 0.0, intervalMult: 1.45, commandMult: 0.94, reserveBonus: 2 },
+    { at: 0.3, intervalMult: 1.25, commandMult: 0.98, reserveBonus: 1 },
+    { at: 0.6, intervalMult: 1.0, commandMult: 1.03, reserveBonus: -1 },
+    { at: 1.0, intervalMult: 0.7, commandMult: 1.08, reserveBonus: -2 },
+  ];
+
+export interface AiParams {
+  intervalMult: number;
+  commandMult: number;
+  reserveBonus: number;
+}
+
+// Parâmetros de IA interpolados linearmente em t ∈ [0,1] (0 = início da campanha, 1 = fim).
+export function aiParamsAt(t: number): AiParams {
+  const x = Math.max(0, Math.min(1, t));
+  let a = AI_ANCHORS[0]!;
+  let b = AI_ANCHORS[AI_ANCHORS.length - 1]!;
+  for (let i = 0; i < AI_ANCHORS.length - 1; i++) {
+    if (x >= AI_ANCHORS[i]!.at && x <= AI_ANCHORS[i + 1]!.at) {
+      a = AI_ANCHORS[i]!;
+      b = AI_ANCHORS[i + 1]!;
+      break;
+    }
+  }
+  const span = b.at - a.at || 1;
+  const k = (x - a.at) / span;
+  const lerp = (p: number, q: number) => +(p + (q - p) * k).toFixed(2);
+  return {
+    intervalMult: lerp(a.intervalMult, b.intervalMult),
+    commandMult: lerp(a.commandMult, b.commandMult),
+    reserveBonus: Math.round(a.reserveBonus + (b.reserveBonus - a.reserveBonus) * k),
+  };
+}
+
 export const difficultyById = (id: Difficulty): DifficultyDef =>
   difficulties.find((d) => d.id === id) ?? difficulties[1]!;
 
@@ -539,57 +579,16 @@ export const difficultyById = (id: Difficulty): DifficultyDef =>
 // Dificuldade das missões (curva da campanha)
 // ---------------------------------------------------------------------------
 
-export const missionDifficulty: Record<string, Difficulty> = {
-  "m-apagao": "recruta",
-  "m-blecaute": "recruta",
-  "m-vozes": "veterano",
-  "m-fronteira": "veterano",
-  "m-porto": "veterano",
-  "m-castello": "veterano",
-  "m-escalao": "veterano",
-  "m-montese": "elite",
-  "m-fornovo": "elite",
-  "m-desfile": "veterano",
-  "m-desmob": "veterano",
-  "m-trampolim": "veterano",
-  "m-zecarioca": "veterano",
-  "m-standard": "elite",
-  "m-lobato": "elite",
-  "m-petroleo": "elite",
-  "m-fundacao": "elite",
-  "m-cafe": "elite",
-  "m-curriculo": "elite",
-  "m-febre": "elite",
-  "m-berlim": "soberano",
-  "m-camelot": "soberano",
-  "m-soa": "soberano",
-  "m-guatemala": "soberano",
-  "m-alianca": "soberano",
-  "m-cpi": "soberano",
-  "m-torre": "elite",
-  "m-3327": "elite",
-  "m-corrente": "elite",
-  "m-automovel": "elite",
-  "m-rua": "elite",
-  "m-cidadeviva": "elite",
-  "m-mockingbird": "elite",
-  "m-cointelpro": "soberano",
-  "m-condor": "soberano",
-  "m-gerasimov": "soberano",
-  "m-hibridas": "soberano",
-  "m-snowden": "soberano",
-  "m-petrobras": "soberano",
-  "m-stuxnet": "soberano",
-  "m-cambridge": "soberano",
-  "m-trolls": "soberano",
-  "m-pegasus": "soberano",
-  "m-5g": "soberano",
-  "m-deepfake": "soberano",
-  "m-ouroazul": "soberano",
-  "m-arquivos": "soberano",
-  "m-brics": "soberano",
-  "m-tabuleiro": "soberano",
-  "m-final": "llm",
+// SISTEMA ÚNICO DE DIFICULDADE. Um só número — o capítulo — define o rótulo (exibição) e,
+// em `enemyScalingForChapter` (battle/missions), a curva real: nível das cartas, baralho e
+// parâmetros de IA. A antiga tabela `missionDifficulty` por missão era redundante e criava
+// degraus injustos (o mesmo capítulo virava penhasco ao trocar o preset à mão).
+export const difficultyForChapter = (number: number): Difficulty => {
+  const t = Math.max(0, Math.min(1, (number - 1) / 49));
+  if (t < 0.3) return "recruta";
+  if (t < 0.6) return "veterano";
+  if (t < 0.85) return "elite";
+  return "soberano";
 };
 
 export const terrainHint: Record<TerrainKind, string> = {

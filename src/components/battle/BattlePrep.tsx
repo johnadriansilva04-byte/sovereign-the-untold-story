@@ -5,15 +5,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { cardById, commanders, doctrineList, doctrines } from "@/game/battle/catalog";
 import { TERRAIN_LABEL } from "@/game/battle/labels";
 import {
+  chapterNumberForMission,
   commandCapacity,
   economyBonus,
+  enemyScalingForChapter,
   missions,
   regenRate,
   type MissionDef,
 } from "@/game/battle/missions";
 import type { Commander, Doctrine } from "@/game/battle/types";
-import { difficultyById, modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
-import { missionDifficulty } from "@/game/progress/catalog";
+import { difficultyForChapter, modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
 import {
   activeAccessories,
   effectiveDeck,
@@ -66,9 +67,16 @@ export function BattlePrep({
   const [doctrine, setDoctrine] = useState<Doctrine>(
     profile.decks[0]?.doctrine ?? commander.doctrine,
   );
-  const [difficulty] = useState<Difficulty>(
-    initialDifficulty ?? missionDifficulty[mission.id] ?? "veterano",
+  // Dificuldade AUTOMÁTICA: derivada do capítulo da missão (sem seletor manual).
+  const chapterNumber = useMemo(
+    () => chapterNumberForMission(mission.id) ?? 1,
+    [mission.id],
   );
+  const difficulty = useMemo<Difficulty>(
+    () => initialDifficulty ?? difficultyForChapter(chapterNumber),
+    [initialDifficulty, chapterNumber],
+  );
+  const scale = useMemo(() => enemyScalingForChapter(chapterNumber), [chapterNumber]);
   const [showMissions, setShowMissions] = useState(false);
 
   const locked = deck.length !== 8;
@@ -251,8 +259,8 @@ export function BattlePrep({
           {locked ? `Selecione ${8 - deck.length} carta(s)` : "Iniciar operação"}
         </button>
         <p className="font-mono text-[11px] text-muted-foreground">
-          {mission.name} · {TERRAIN_LABEL[mission.terrain] ?? mission.terrain} ·{" "}
-          {difficultyById(difficulty).name}
+          {mission.name} · {TERRAIN_LABEL[mission.terrain] ?? mission.terrain} · Nível IA{" "}
+          {scale.cardLevel}
         </p>
         {onExit && (
           <button
@@ -280,7 +288,8 @@ export function BattlePrep({
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
               <div className="grid gap-2 sm:grid-cols-2">
                 {missions.map((m) => {
-                  const d = difficultyById(missionDifficulty[m.id] ?? "veterano");
+                  const n = chapterNumberForMission(m.id) ?? 1;
+                  const d = enemyScalingForChapter(n);
                   const active = m.id === missionId;
                   return (
                     <button
@@ -301,7 +310,7 @@ export function BattlePrep({
                       </span>
                       <p className="font-display text-sm font-bold uppercase">{m.name}</p>
                       <p className="font-mono text-[10px] text-muted-foreground">
-                        {m.terrain} · {Math.round(m.duration / 60)} min · {d.name}
+                        {m.terrain} · {Math.round(m.duration / 60)} min · Nível {d.cardLevel}
                       </p>
                     </button>
                   );

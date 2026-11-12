@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { archives, chapters, archiveById } from "@/game/campaign";
 import { chapterMeta, totalChapters } from "@/game/progress/campaign";
-import { missionDifficulty } from "@/game/progress/catalog";
+import { difficultyForChapter } from "@/game/progress/catalog";
 import { missions, chapterMission, missionById } from "@/game/battle/missions";
 import { createProfile, applyChapterResult } from "@/game/progress/profile";
 
@@ -31,8 +31,9 @@ describe("campanha expandida: 50 capítulos", () => {
 
   it("todo capítulo tem dificuldade válida e desfecho de derrota próprio", () => {
     for (const meta of chapterMeta) {
-      expect(missionDifficulty[meta.missionId], `sem dificuldade para ${meta.missionId}`).toBe(
-        meta.difficulty,
+      // A dificuldade é DERIVADA do número do capítulo (sistema automático único).
+      expect(meta.difficulty, `dificuldade divergente no cap. ${meta.number}`).toBe(
+        difficultyForChapter(meta.number),
       );
       expect(meta.outroDerrota, `capítulo ${meta.id} sem outroDerrota`).toBeTruthy();
       expect(meta.intro.length).toBeGreaterThan(0);

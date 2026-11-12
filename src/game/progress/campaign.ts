@@ -2,9 +2,20 @@
 // A campanha ensina uma mecânica por vez; o PvP cobra todas ao mesmo tempo.
 
 import { commanders } from "@/game/battle/catalog";
-import { buildBattleConfig, missionById, type NationState } from "@/game/battle/missions";
+import {
+  buildBattleConfig,
+  enemyScalingForChapter,
+  meanCardLevel,
+  missionById,
+  type NationState,
+} from "@/game/battle/missions";
 import type { BattleConfig } from "@/game/battle/types";
-import { difficultyById, modsFromAccessories, type Difficulty, type Reward } from "./catalog";
+import {
+  difficultyForChapter,
+  modsFromAccessories,
+  type Difficulty,
+  type Reward,
+} from "./catalog";
 import { activeAccessories, cardLevelsForDeck, effectiveDeck, type ProfileState } from "./profile";
 
 export interface ChapterMeta {
@@ -22,13 +33,20 @@ export interface ChapterMeta {
   outroDerrota?: string; // desfecho em caso de derrota (cai em um texto padrão se ausente)
 }
 
+// A CARTA-PRÊMIO do capítulo: a carta que o INIMIGO traz para o campo e que só entra
+// no arsenal se for CAPTURADA em combate (não basta vencer). Quando o capítulo não
+// define uma carta própria, a primeira carta da recompensa é a que vai a campo.
+export function prizeCardFor(chapterId: string): string | undefined {
+  const meta = chapterMetaById(chapterId);
+  return meta?.reward.cards?.[0];
+}
+
 // Cada capítulo libera exatamente uma ideia nova de jogo.
-export const chapterMeta: ChapterMeta[] = [
+const chapterMetaBase: Omit<ChapterMeta, "difficulty">[] = [
   {
     id: "c1",
     number: 1,
     missionId: "m-apagao",
-    difficulty: "recruta",
     reward: {
       research: 1,
       sovereigns: 120,
@@ -47,7 +65,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 2,
     missionId: "m-blecaute",
     requires: "c1",
-    difficulty: "recruta",
     reward: {
       research: 1,
       sovereigns: 130,
@@ -66,7 +83,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 3,
     missionId: "m-vozes",
     requires: "c2",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 150,
@@ -84,7 +100,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 4,
     missionId: "m-fronteira",
     requires: "c3",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 160,
@@ -101,7 +116,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 5,
     missionId: "m-porto",
     requires: "c4",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 170,
@@ -119,7 +133,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 6,
     missionId: "m-castello",
     requires: "c5",
-    difficulty: "veterano",
     reward: {
       cards: ["inf-assalto"],
       techs: ["t10"],
@@ -139,7 +152,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 7,
     missionId: "m-escalao",
     requires: "c6",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 150,
@@ -157,7 +169,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 8,
     missionId: "m-montese",
     requires: "c7",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 200,
@@ -176,7 +187,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 9,
     missionId: "m-fornovo",
     requires: "c8",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 210,
@@ -194,7 +204,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 10,
     missionId: "m-desfile",
     requires: "c9",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 160,
@@ -212,7 +221,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 11,
     missionId: "m-desmob",
     requires: "c10",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 170,
@@ -228,7 +236,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 12,
     missionId: "m-trampolim",
     requires: "c11",
-    difficulty: "veterano",
     reward: {
       cards: ["rec-drone"],
       techs: ["t8"],
@@ -247,7 +254,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 13,
     missionId: "m-zecarioca",
     requires: "c12",
-    difficulty: "veterano",
     reward: {
       research: 2,
       sovereigns: 185,
@@ -263,7 +269,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 14,
     missionId: "m-standard",
     requires: "c13",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 220,
@@ -279,7 +284,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 15,
     missionId: "m-lobato",
     requires: "c14",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 225,
@@ -296,7 +300,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 16,
     missionId: "m-petroleo",
     requires: "c15",
-    difficulty: "elite",
     reward: {
       cards: ["mss-lmf"],
       techs: ["t7"],
@@ -315,7 +318,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 17,
     missionId: "m-fundacao",
     requires: "c16",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 235,
@@ -331,7 +333,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 18,
     missionId: "m-cafe",
     requires: "c17",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 240,
@@ -347,7 +348,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 19,
     missionId: "m-curriculo",
     requires: "c18",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 245,
@@ -364,7 +364,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 20,
     missionId: "m-febre",
     requires: "c19",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 250,
@@ -381,7 +380,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 21,
     missionId: "m-berlim",
     requires: "c20",
-    difficulty: "soberano",
     reward: {
       research: 4,
       sovereigns: 260,
@@ -397,7 +395,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 22,
     missionId: "m-camelot",
     requires: "c21",
-    difficulty: "soberano",
     reward: {
       research: 4,
       sovereigns: 270,
@@ -415,7 +412,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 23,
     missionId: "m-soa",
     requires: "c22",
-    difficulty: "soberano",
     reward: {
       research: 4,
       sovereigns: 280,
@@ -432,7 +428,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 24,
     missionId: "m-guatemala",
     requires: "c23",
-    difficulty: "soberano",
     reward: {
       research: 4,
       sovereigns: 290,
@@ -449,7 +444,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 25,
     missionId: "m-alianca",
     requires: "c24",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 300,
@@ -465,7 +459,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 26,
     missionId: "m-cpi",
     requires: "c25",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 310,
@@ -483,7 +476,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 27,
     missionId: "m-torre",
     requires: "c26",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 250,
@@ -500,7 +492,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 28,
     missionId: "m-3327",
     requires: "c27",
-    difficulty: "elite",
     reward: {
       research: 4,
       sovereigns: 260,
@@ -517,7 +508,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 29,
     missionId: "m-corrente",
     requires: "c28",
-    difficulty: "elite",
     reward: {
       research: 4,
       sovereigns: 265,
@@ -534,7 +524,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 30,
     missionId: "m-automovel",
     requires: "c29",
-    difficulty: "elite",
     reward: {
       research: 4,
       sovereigns: 270,
@@ -551,7 +540,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 31,
     missionId: "m-rua",
     requires: "c30",
-    difficulty: "elite",
     reward: {
       research: 4,
       sovereigns: 280,
@@ -568,7 +556,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 32,
     missionId: "m-cidadeviva",
     requires: "c31",
-    difficulty: "elite",
     reward: {
       research: 4,
       sovereigns: 290,
@@ -585,7 +572,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 33,
     missionId: "m-mockingbird",
     requires: "c32",
-    difficulty: "elite",
     reward: {
       research: 3,
       sovereigns: 250,
@@ -601,7 +587,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 34,
     missionId: "m-cointelpro",
     requires: "c33",
-    difficulty: "soberano",
     reward: {
       research: 4,
       sovereigns: 300,
@@ -618,7 +603,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 35,
     missionId: "m-condor",
     requires: "c34",
-    difficulty: "soberano",
     reward: {
       research: 4,
       sovereigns: 305,
@@ -635,7 +619,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 36,
     missionId: "m-gerasimov",
     requires: "c35",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 320,
@@ -651,7 +634,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 37,
     missionId: "m-hibridas",
     requires: "c36",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 330,
@@ -667,7 +649,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 38,
     missionId: "m-snowden",
     requires: "c37",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 340,
@@ -684,7 +665,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 39,
     missionId: "m-petrobras",
     requires: "c38",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 345,
@@ -700,7 +680,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 40,
     missionId: "m-stuxnet",
     requires: "c39",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 350,
@@ -717,7 +696,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 41,
     missionId: "m-cambridge",
     requires: "c40",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 360,
@@ -734,7 +712,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 42,
     missionId: "m-trolls",
     requires: "c41",
-    difficulty: "soberano",
     reward: {
       research: 5,
       sovereigns: 370,
@@ -751,7 +728,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 43,
     missionId: "m-pegasus",
     requires: "c42",
-    difficulty: "soberano",
     reward: {
       research: 6,
       sovereigns: 380,
@@ -768,7 +744,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 44,
     missionId: "m-5g",
     requires: "c43",
-    difficulty: "soberano",
     reward: {
       research: 6,
       sovereigns: 390,
@@ -786,7 +761,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 45,
     missionId: "m-deepfake",
     requires: "c44",
-    difficulty: "soberano",
     reward: {
       research: 6,
       sovereigns: 400,
@@ -803,7 +777,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 46,
     missionId: "m-ouroazul",
     requires: "c45",
-    difficulty: "soberano",
     reward: {
       research: 6,
       sovereigns: 410,
@@ -820,7 +793,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 47,
     missionId: "m-arquivos",
     requires: "c46",
-    difficulty: "soberano",
     reward: {
       research: 6,
       sovereigns: 420,
@@ -837,7 +809,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 48,
     missionId: "m-brics",
     requires: "c47",
-    difficulty: "soberano",
     reward: {
       research: 7,
       sovereigns: 430,
@@ -854,7 +825,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 49,
     missionId: "m-tabuleiro",
     requires: "c48",
-    difficulty: "soberano",
     reward: {
       research: 7,
       sovereigns: 450,
@@ -871,7 +841,6 @@ export const chapterMeta: ChapterMeta[] = [
     number: 50,
     missionId: "m-final",
     requires: "c49",
-    difficulty: "llm",
     reward: {
       research: 8,
       sovereigns: 500,
@@ -886,6 +855,11 @@ export const chapterMeta: ChapterMeta[] = [
       "A guerra híbrida ganhou esta rodada. Você conhece o terreno e os heróis — agora precisa de uma resposta à altura.",
   },
 ];
+
+export const chapterMeta: ChapterMeta[] = chapterMetaBase.map((meta) => ({
+  ...meta,
+  difficulty: difficultyForChapter(meta.number),
+}));
 
 export const chapterMetaById = (id: string): ChapterMeta | undefined =>
   chapterMeta.find((c) => c.id === id);
@@ -911,24 +885,21 @@ export function battleConfigForChapter(
   const meta = chapterMetaById(chapterId);
   if (!meta) return null;
   const mission = missionById(meta.missionId);
-  const def = difficultyById(meta.difficulty);
   const nation: NationState = profile.nation;
   const activeDeck = profile.decks.find((d) => d.id === profile.activeDeckId) ?? profile.decks[0];
   const commander = commanders.find((c) => c.id === activeDeck?.commanderId) ?? commanders[0]!;
+  const levels = cardLevelsForDeck(profile);
+  const scale = enemyScalingForChapter(meta.number, meanCardLevel(levels));
   return buildBattleConfig({
     nation,
     mission,
+    chapterNumber: meta.number,
     deck: effectiveDeck(profile),
     commander,
     doctrine: activeDeck?.doctrine ?? commander.doctrine,
     mods: modsFromAccessories(activeAccessories(profile)),
-    cardLevels: cardLevelsForDeck(profile),
-    aiDifficulty: {
-      intervalMult: def.aiIntervalMult,
-      commandMult: def.aiCommandMult,
-      reserveBonus: def.aiReserveBonus,
-      isLlm: def.isLlm,
-    },
+    cardLevels: levels,
+    aiDifficulty: scale.aiDifficulty,
     seed,
   });
 }

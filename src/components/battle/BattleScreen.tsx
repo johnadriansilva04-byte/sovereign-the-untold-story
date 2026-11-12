@@ -21,7 +21,9 @@ import { launchBases } from "@/game/battle/engine";
 import {
   buildBattleConfig,
   chapterMission,
+  chapterNumberForMission,
   consequencesOf,
+  enemyScalingForChapter,
   missionById,
   type MissionDef,
 } from "@/game/battle/missions";
@@ -37,8 +39,8 @@ import type {
   Order,
   Side,
 } from "@/game/battle/types";
-import { difficultyById, modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
-import { activeAccessories, type ProfileState } from "@/game/progress/profile";
+import { modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
+import { activeAccessories, cardLevelsForDeck, type ProfileState } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
 
 type Phase = "preparacao" | "batalha" | "resultado";
@@ -78,15 +80,19 @@ export function BattleScreen(props: BattleScreenProps) {
     if (props.presetConfig) return props.presetConfig;
     if (!setup) return null;
     const mods = modsFromAccessories(activeAccessories(profile));
+    const chapterNumber = chapterNumberForMission(setup.mission.id) ?? 1;
+    const scale = enemyScalingForChapter(chapterNumber);
     return buildBattleConfig({
       nation: profile.nation,
       mission: setup.mission,
+      chapterNumber,
       deck: setup.deck,
       commander: setup.commander,
       doctrine: setup.doctrine,
       mods,
-      aiDifficulty: toAiDifficulty(setup.difficulty),
-      seed: hashSeed(`${setup.mission.id}:${setup.deck.join(",")}:${setup.difficulty}`),
+      cardLevels: cardLevelsForDeck(profile),
+      aiDifficulty: scale.aiDifficulty,
+      seed: hashSeed(`${setup.mission.id}:${setup.deck.join(",")}:${chapterNumber}`),
     });
   }, [setup, props.presetConfig, profile]);
 
@@ -627,16 +633,6 @@ function FrontLineScore({ state }: { state: BattleState }) {
       </span>
     </div>
   );
-}
-
-export function toAiDifficulty(d: Difficulty) {
-  const def = difficultyById(d);
-  return {
-    intervalMult: def.aiIntervalMult,
-    commandMult: def.aiCommandMult,
-    reserveBonus: def.aiReserveBonus,
-    isLlm: def.isLlm,
-  };
 }
 
 function chapterIdFor(missionId: string): string {

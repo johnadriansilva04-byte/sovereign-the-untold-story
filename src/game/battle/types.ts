@@ -362,6 +362,20 @@ export interface BattleUnit {
   seen: Record<Side, boolean>; // visibilidade calculada por lado (fog of war)
   // suporte: cura por pulso (0 = unidade de combate comum)
   heal: number;
+  // COMBOIO DA CARTA-PRÊMIO: unidade de carga que não combate, não pode ser
+  // destruída (só capturada) e não conta como tropa para efeito de objetivo.
+  prizeConvoy?: boolean;
+  // RENDIÇÃO: quando uma unidade é cercada por força MUITO superior (1 contra 3+), o
+  // sistema decide se ela se rende (vira prisioneira, sai de combate) ou se luta até o
+  // fim — soldados de elite/heroicos recusam a rendição. O dado é do MOTOR, não um
+  // efeito visual: rendida, a unidade para de atirar e pode ser capturada/eliminada.
+  surrendered?: boolean;
+  // Segundos restantes de hesitação antes de decidir render-se ou resistir.
+  surrenderCheck?: number;
+  // ALVO DE CAPTURA: a unidade porta uma carta que o NOSSO lado não possui. As tropas
+  // têm inteligência para reconhecê-la em campo e priorizá-la — abatê-la pode render a
+  // carta (espólio de guerra). Marcado no nascimento a partir do baralho adversário.
+  bounty?: boolean;
   // nível da carta que originou a unidade (1-15)
   level: number;
   // fração do dano recebido que a unidade IGNORA por ser veterana (0-0,3). Aplicada
@@ -475,6 +489,13 @@ export interface SideState {
   structuresDestroyed: number;
   deployed: number;
   score: number;
+  // Prisioneiros feitos (inimigos rendidos capturados por este lado) e baixas
+  // capturadas do próprio lado. Alimenta o relatório da operação.
+  prisonersTaken: number;
+  prisonersLost: number;
+  // Cartas capturadas como espólio (abatendo unidades que portavam cartas ausentes do
+  // nosso arsenal). Ao fim da operação vitoriosa, entram no inventário.
+  capturedCards: string[];
 }
 
 export interface BattleLogEntry {
@@ -508,6 +529,11 @@ export interface BattleConfig {
   operationalTarget?: { controlPointId: string; seconds: number };
   // ajuste do comandante adversário (dificuldade)
   aiDifficulty?: AiDifficulty;
+  /** Carta a ser CAPTURADA em campo nesta operação (undefined = sem prêmio). */
+  prizeCardId?: string;
+  // CARTAS-ESPÓLIO: cartas do arsenal adversário que o jogador ainda não possui. As
+  // tropas azuis as reconhecem em campo e priorizam abatê-las para capturar a carta.
+  bountyCardIds?: string[];
   // CHANCELERES: onde cada herói começa. "livre" = unidade em campo desde o início;
   // "preso" = cativo dentro de uma PRISÃO inimiga, libertado quando ela é destruída.
   heroSetup?: HeroSetup[];
@@ -553,6 +579,22 @@ export interface SideModifiers {
   sight?: number;
 }
 
+// Carta-prêmio: o inimigo a traz em campo dentro de um comboio blindado. Destruir a
+// escolta NÃO basta — é preciso levar unidades até o comboio e capturá-lo antes do fim
+// da janela. Capturada, a carta entra no arsenal; perdida, o comboio recua e a carta
+// fica para a próxima tentativa.
+export interface PrizeCard {
+  cardId: string;
+  x: number;
+  y: number;
+  capturedBy: Side | null;
+  failed: boolean;
+  /** Carga entregue na base aliada: a carta está garantida no arsenal. */
+  extracted: boolean;
+  progress: Record<Side, number>;
+  nextId: number;
+}
+
 export interface BattleState {
   config: BattleConfig;
   t: number;
@@ -575,6 +617,8 @@ export interface BattleState {
   holds: Record<string, number>; // tempo de manutenção por condição (vitória)
   // Estado do chanceler de cada lado. Sem heroSetup, ambos começam "livre" em campo.
   heroes: Record<Side, HeroStatus>;
+  // Comboio da carta-prêmio em campo (só existe quando a operação define prizeCardId).
+  prize?: PrizeCard | undefined;
 }
 
 export interface HeroStatus {
@@ -607,6 +651,12 @@ export interface BattleResult {
   coins: Record<Side, number>;
   income: Record<Side, number>;
   pointsHeld: { id: string; name: string; sector: string; owner: Side | "neutro" }[];
+  /** Carta capturada em campo nesta operação (null = comboio perdido/recuou). */
+  prizeCardWon?: string | null;
+  /** Prisioneiros rendidos feitos por cada lado (mecânica de rendição). */
+  prisoners?: { blue: number; red: number };
+  /** Cartas capturadas como espólio de guerra (ausentes do arsenal do vencedor). */
+  capturedCards?: string[];
 }
 
 // ---------------------------------------------------------------------------

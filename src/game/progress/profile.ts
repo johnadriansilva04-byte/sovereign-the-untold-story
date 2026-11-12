@@ -252,7 +252,15 @@ export function applyChapterResult(
     chapterId: string;
     result: Pick<
       BattleResult,
-      "configId" | "missionName" | "outcome" | "duration" | "kills" | "losses" | "territorialScore"
+      | "configId"
+      | "missionName"
+      | "outcome"
+      | "duration"
+      | "kills"
+      | "losses"
+      | "territorialScore"
+      | "prizeCardWon"
+      | "capturedCards"
     >;
     difficulty: Difficulty;
     rewards?: Reward | undefined;
@@ -261,8 +269,25 @@ export function applyChapterResult(
   },
 ): { profile: ProfileState; reward: Reward; levelUps: LevelUpInfo[] } {
   const meta = chapterMetaById(opts.chapterId);
-  const reward: Reward = opts.rewards ?? meta?.reward ?? {};
+  const base: Reward = opts.rewards ?? meta?.reward ?? {};
   const won = opts.result.outcome === "vitoria";
+  // A CARTA-PRÊMIO só entra no arsenal se foi CAPTURADA em campo. A primeira carta da
+  // recompensa do capítulo é a carga trazida pelo inimigo: sem a captura, ela não é dada.
+  const prizeId = base.cards?.[0];
+  const capturedPrize = opts.result.prizeCardWon ?? null;
+  const baseReward: Reward =
+    prizeId && won && capturedPrize !== prizeId
+      ? { ...base, cards: (base.cards ?? []).slice(1) }
+      : base;
+  // ESPÓLIO DE GUERRA: cartas tomadas em campo (unidades abatidas que portavam cartas
+  // ausentes do arsenal) entram no inventário junto da recompensa do capítulo.
+  const spoils = (opts.result.capturedCards ?? []).filter(
+    (id) => !(baseReward.cards ?? []).includes(id),
+  );
+  const reward: Reward =
+    won && spoils.length > 0
+      ? { ...baseReward, cards: [...(baseReward.cards ?? []), ...spoils] }
+      : baseReward;
 
   let levelUps: LevelUpInfo[] = [];
   let next = profile;
@@ -313,7 +338,8 @@ export function applyChapterResult(
   return { profile: next, reward, levelUps };
 }
 
-// Cartas que o jogador possui (independente de tecnologia).
+// Cartas que o jogador possui (independente de tecnologia). Serve também de referência
+// do "espólio de guerra": cartas adversárias ausentes desta lista viram alvo de captura.
 export function ownedCardIds(profile: ProfileState): string[] {
   return allCards.filter((c) => (profile.inventory.cards[c.id] ?? 0) > 0).map((c) => c.id);
 }
