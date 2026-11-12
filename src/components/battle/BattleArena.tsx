@@ -1064,18 +1064,21 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
   const x = s.x;
   const y = s.y;
   const hpFrac = Math.max(0, Math.min(1, s.hp / s.maxHp));
-  const wood = "oklch(0.46 0.05 70)";
-  const woodDark = "oklch(0.3 0.04 70)";
-  const thatch = color;
-  const ground = "oklch(0.26 0.03 80)";
-  // Aldeia: casas com telhado de palha, casa do chefe no centro e torres de vigia
-  // pontiagudas. A PALIÇADA é desenhada em seções que caem conforme o dano — cada
-  // estaca some quando a vida passa do seu limiar, então o cerco come a cerca.
+  // Paleta militar moderna: concreto, aço, asfalto. A cor da facção só marca as luzes,
+  // o telhado dos hangares e a bandeira — o resto é neutro para não virar "neon".
+  const concrete = "oklch(0.42 0.012 250)";
+  const concreteDark = "oklch(0.3 0.012 250)";
+  const steel = "oklch(0.55 0.01 250)";
+  const asphalt = "oklch(0.24 0.008 250)";
+  // Instalação militar: perímetro murado (rompe com o dano), centro de comando,
+  // hangares, radar rotativo, mastro de comunicações e heliponto. Cada elemento
+  // some conforme a vida cai — o cerco come a instalação por partes.
   const posts = (i: number): [number, number] => {
     const a = (i * 2 * Math.PI) / 20;
     return [x + Math.cos(a) * R * 0.96, y + Math.sin(a) * R * 0.96];
   };
-  const houses: [number, number, number, number][] = [
+  // Hangares/silos ao redor do pátio.
+  const hangars: [number, number, number, number][] = [
     [-0.46, -0.3, 0.5, 1],
     [-0.44, 0.34, -0.7, 0.9],
     [0.06, -0.56, 0.2, 0.82],
@@ -1084,32 +1087,42 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
   ];
   return (
     <g>
-      {/* terreno batido */}
-      <circle cx={x} cy={y} r={R} fill={ground} opacity="0.9" />
-      <circle cx={x} cy={y} r={R} fill={color} opacity="0.07" />
-      <circle cx={x} cy={y} r={R} fill="none" stroke={color} strokeWidth="0.2" opacity="0.4" />
-      {/* PALIÇADA (rompe com o dano) */}
+      {/* pátio pavimentado */}
+      <circle cx={x} cy={y} r={R} fill={asphalt} opacity="0.95" />
+      <circle cx={x} cy={y} r={R} fill={color} opacity="0.06" />
+      <circle cx={x} cy={y} r={R} fill="none" stroke={color} strokeWidth="0.2" opacity="0.35" />
+      {/* MARCAÇÕES do pátio (faixas de heliponto) */}
+      <circle
+        cx={x}
+        cy={y}
+        r={R * 0.62}
+        fill="none"
+        stroke="oklch(1 0 0 / 0.12)"
+        strokeWidth="0.18"
+        strokeDasharray="1.4 1.2"
+      />
+      {/* MURO PERIMETRAL de concreto (rompe com o dano) */}
       {Array.from({ length: 20 }).map((_, i) => {
         if (hpFrac <= i / 20) return null;
         const [x0, y0] = posts(i);
         const [x1, y1] = posts(i + 1);
         return (
           <g key={i}>
-            <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={woodDark} strokeWidth="0.55" />
+            <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={concreteDark} strokeWidth="0.55" />
             <line
               x1={x0}
               y1={y0 - 0.45}
               x2={x1}
               y2={y1 - 0.45}
-              stroke={wood}
-              strokeWidth="0.18"
-              opacity="0.8"
+              stroke={concrete}
+              strokeWidth="0.2"
+              opacity="0.85"
             />
           </g>
         );
       })}
-      {/* casas */}
-      {houses.map(([hx, hy, rot, sc], i) => {
+      {/* hangares/silos: galpões de concreto com teto metálico da cor da facção */}
+      {hangars.map(([hx, hy, rot, sc], i) => {
         const px = x + hx * R;
         const py = y + hy * R;
         const w = 3.6 * sc;
@@ -1121,43 +1134,62 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
               y={-h / 2}
               width={w}
               height={h}
-              fill={wood}
-              stroke={woodDark}
+              fill={concrete}
+              stroke={concreteDark}
               strokeWidth="0.16"
             />
-            <polygon
-              points={`${-w / 2 - 0.4},${-h / 2} 0,${-h / 2 - 1.2 * sc} ${w / 2 + 0.4},${-h / 2}`}
-              fill={thatch}
-              opacity="0.9"
-              stroke={woodDark}
-              strokeWidth="0.12"
+            {/* telhado metálico (cor da facção) */}
+            <rect
+              x={-w / 2 - 0.3}
+              y={-h / 2 - 0.4}
+              width={w + 0.6}
+              height="0.9"
+              fill={color}
+              opacity="0.85"
+              stroke={concreteDark}
+              strokeWidth="0.1"
             />
-            <rect x="-0.4" y={h / 2 - 0.9} width="0.8" height="0.9" fill={woodDark} />
+            {/* porta de veículo */}
+            <rect x="-0.6" y={h / 2 - 0.9} width="1.2" height="0.9" fill={concreteDark} />
           </g>
         );
       })}
-      {/* casa do chefe / centro de comando */}
+      {/* CENTRO DE COMANDO (bunker central) */}
       <g transform={`translate(${x} ${y})`}>
         <rect
-          x="-2.7"
-          y="-2"
-          width="5.4"
-          height="4"
-          fill={wood}
-          stroke={woodDark}
+          x="-2.9"
+          y="-2.2"
+          width="5.8"
+          height="4.4"
+          rx="0.3"
+          fill={concrete}
+          stroke={concreteDark}
           strokeWidth="0.2"
         />
-        <polygon
-          points="-3.1,-2 0,-4.2 3.1,-2"
-          fill={thatch}
-          stroke={woodDark}
-          strokeWidth="0.14"
+        {/* teto rebaixado + clarabóia */}
+        <rect
+          x="-2.2"
+          y="-1.5"
+          width="4.4"
+          height="3"
+          rx="0.2"
+          fill={concreteDark}
+          stroke={steel}
+          strokeWidth="0.12"
         />
-        <rect x="-0.6" y="0.5" width="1.2" height="1.5" fill={woodDark} />
-        <line x1="0" y1="-4.2" x2="0" y2="-6.2" stroke={woodDark} strokeWidth="0.18" />
-        <polygon points="0,-6.2 2.2,-5.6 0,-5" fill={color} />
+        <circle cx="0" cy="0" r="0.7" fill={color} opacity="0.75">
+          <animate attributeName="opacity" values="0.4;0.9;0.4" dur="2s" repeatCount="indefinite" />
+        </circle>
+        {/* mastro de comunicações */}
+        <line x1="0" y1="-2.2" x2="0" y2="-5.4" stroke={steel} strokeWidth="0.18" />
+        <line x1="-1" y1="-3.4" x2="1" y2="-3.4" stroke={steel} strokeWidth="0.12" />
+        <circle cx="0" cy="-5.4" r="0.28" fill={color}>
+          <animate attributeName="opacity" values="0.2;1;0.2" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+        {/* bandeira da facção */}
+        <polygon points="0,-5.4 2.2,-4.8 0,-4.2" fill={color} />
       </g>
-      {/* torres de vigia (as "pontas" da aldeia) */}
+      {/* torres de radar + defesa nos cantos */}
       {(
         [
           [-0.74, -0.74],
@@ -1166,30 +1198,42 @@ function BasePrincipalGlyph({ s, color }: { s: Structure; color: string }) {
           [0.74, 0.74],
         ] as [number, number][]
       ).map(([dx, dy], i) => {
-        const tx = x + dx * R * 0.6;
-        const ty = y + dy * R * 0.6;
+        const tx = x + dx * R * 0.62;
+        const ty = y + dy * R * 0.62;
         return (
           <g key={`w${i}`} transform={`translate(${tx} ${ty})`}>
+            {/* base de concreto */}
             <rect
               x="-0.9"
-              y="-0.6"
+              y="-0.7"
               width="1.8"
-              height="1.9"
-              fill={woodDark}
-              stroke={wood}
+              height="1.6"
+              fill={concreteDark}
+              stroke={steel}
               strokeWidth="0.14"
             />
-            <polygon
-              points="-1.2,-0.6 0,-2.6 1.2,-0.6"
-              fill={thatch}
-              opacity="0.85"
-              stroke={woodDark}
-              strokeWidth="0.12"
-            />
+            {/* prato de radar rotativo */}
+            <line x1="0" y1="-0.7" x2="0" y2="-2.4" stroke={steel} strokeWidth="0.14" />
+            <path
+              d="M-1.3 -2.4 Q0 -3.3 1.3 -2.4 Q0 -1.9 -1.3 -2.4 Z"
+              fill={steel}
+              opacity="0.9"
+              stroke={concreteDark}
+              strokeWidth="0.1"
+            >
+              <animateTransform
+                attributeName="transform"
+                type="rotate"
+                from="0 0 -2.4"
+                to="360 0 -2.4"
+                dur="4s"
+                repeatCount="indefinite"
+              />
+            </path>
           </g>
         );
       })}
-      {/* antena/luz de sinal no centro do pátio */}
+      {/* farol de sinalização no pátio */}
       <circle cx={x - R * 0.5} cy={y - R * 0.42} r="0.3" fill={color}>
         <animate attributeName="opacity" values="0.2;1;0.2" dur="1.6s" repeatCount="indefinite" />
       </circle>
@@ -1203,14 +1247,15 @@ function TowerGlyph({ s, color }: { s: Structure; color: string }) {
   const y = s.y;
   const rx = x + Math.cos(s.aim) * (R * 0.9 - s.recoil * 0.6);
   const ry = y + Math.sin(s.aim) * (R * 0.9 - s.recoil * 0.6);
-  const wood = "oklch(0.46 0.05 70)";
-  const woodDark = "oklch(0.3 0.04 70)";
+  const concrete = "oklch(0.44 0.012 250)";
+  const concreteDark = "oklch(0.28 0.012 250)";
+  const steel = "oklch(0.58 0.01 250)";
   return (
     <g>
-      {/* pátio da torre de vigia */}
-      <circle cx={x} cy={y} r={R} fill="oklch(0.26 0.03 80)" opacity="0.85" />
-      <circle cx={x} cy={y} r={R} fill={color} opacity="0.12" />
-      {/* paliçada de sacos/toras nos cantos */}
+      {/* pátio pavimentado da torre de defesa */}
+      <circle cx={x} cy={y} r={R} fill="oklch(0.24 0.008 250)" opacity="0.9" />
+      <circle cx={x} cy={y} r={R} fill={color} opacity="0.1" />
+      {/* sacos de areia / barreiras nos cantos (defesa de campanha) */}
       {(
         [
           [-1, -1],
@@ -1224,19 +1269,19 @@ function TowerGlyph({ s, color }: { s: Structure; color: string }) {
           cx={x + dx * R * 0.7}
           cy={y + dy * R * 0.7}
           r="0.6"
-          fill={wood}
-          opacity="0.55"
+          fill={concrete}
+          opacity="0.6"
         />
       ))}
-      {/* base da torre */}
+      {/* base de concreto da torre */}
       <rect
         x={x - R * 0.5}
         y={y - R * 0.5}
         width={R}
         height={R}
         rx="0.3"
-        fill={woodDark}
-        stroke={wood}
+        fill={concreteDark}
+        stroke={steel}
         strokeWidth="0.22"
       />
       <rect
@@ -1244,20 +1289,20 @@ function TowerGlyph({ s, color }: { s: Structure; color: string }) {
         y={y - R * 0.32}
         width={R * 0.64}
         height={R * 0.64}
-        fill="oklch(0.22 0.03 70)"
-        stroke={wood}
+        fill="oklch(0.32 0.012 250)"
+        stroke={steel}
         strokeWidth="0.14"
       />
-      {/* telhado pontiagudo da torre */}
+      {/* torreta blindada com teto metálico da cor da facção */}
       <polygon
-        points={`${x - R * 0.62},${y - R * 0.5} ${x},${y - R * 1.15} ${x + R * 0.62},${y - R * 0.5}`}
+        points={`${x - R * 0.62},${y - R * 0.5} ${x},${y - R * 1.05} ${x + R * 0.62},${y - R * 0.5}`}
         fill={color}
         opacity="0.85"
-        stroke={woodDark}
+        stroke={concreteDark}
         strokeWidth="0.14"
       />
-      {/* peça de defesa apontando para o alvo, com recuo */}
-      <line x1={x} y1={y} x2={rx} y2={ry} stroke={wood} strokeWidth="0.5" strokeLinecap="round" />
+      {/* canhão apontando para o alvo, com recuo */}
+      <line x1={x} y1={y} x2={rx} y2={ry} stroke={steel} strokeWidth="0.5" strokeLinecap="round" />
       <circle cx={rx} cy={ry} r="0.45" fill={color} />
     </g>
   );
