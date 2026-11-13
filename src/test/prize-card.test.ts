@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { commanders, startingDeck } from "@/game/battle/catalog";
-import { computeResult, createBattle, deploy, prizeConvoy, stepBattle } from "@/game/battle/engine";
+import {
+  captureProgress,
+  computeResult,
+  createBattle,
+  deploy,
+  prizeCarrier,
+  startCapture,
+  stepBattle,
+} from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
 import { difficultyById } from "@/game/progress/catalog";
 
@@ -25,74 +33,82 @@ function battleWithPrize(seed: number, prizeCardId = "sup-gas") {
   return createBattle(config);
 }
 
-
-  // Tropas não podem NASCER em território inimigo: a operação as lança na base aliada
-  // e a MARCHA é simulada reposicionando-as no comboio (o que o jogador faria em campo).
-  function sendSquadToConvoy(state: ReturnType<typeof battleWithPrize>, n = 3) {
-    const home = state.structures.find(
-      (s) => s.alive && s.side === "blue" && s.kind === "base-principal",
-    )!;
-    const prize = state.prize!;
-    for (let i = 0; i < n; i++) {
-      const before = state.blue.units.length;
-      deploy(state, "blue", "inf-fuzileiros", home.x, home.y, {
-        x: home.x,
-        y: home.y,
-        holdAtArrival: false,
-        skipRecharge: true,
-      });
-      if (state.blue.units.length === before) continue;
-      const u = state.blue.units[state.blue.units.length - 1]!;
-      const ang = (i / n) * Math.PI * 2;
-      u.x = prize.x + Math.cos(ang) * 7;
-      u.y = prize.y + Math.sin(ang) * 7;
-      u.goalX = u.x;
-      u.goalY = u.y;
-      u.holdAtGoal = true;
-    }
+// Lança fuzileiros (tropas com capacidade de prender) colados ao comboio e emite a ordem
+// de captura — o mesmo caminho que o jogador usa em campo.
+function armCapture(state: ReturnType<typeof battleWithPrize>, n = 3) {
+  const carrier = prizeCarrier(state)!;
+  state.blue.command = 100000;
+  const ids: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const before = state.blue.units.length;
+    deploy(state, "blue", "inf-fuzileiros", carrier.x, carrier.y, {
+      x: carrier.x,
+      y: carrier.y,
+      holdAtArrival: false,
+      skipRecharge: true,
+    });
+    if (state.blue.units.length === before) continue;
+    const u = state.blue.units[state.blue.units.length - 1]!;
+    const ang = (i / n) * Math.PI * 2;
+    u.x = carrier.x + Math.cos(ang) * 4;
+    u.y = carrier.y + Math.sin(ang) * 4;
+    u.hp = 8000; // resiste ao fogo do comboio durante a carga (o teste isola a captura)
+    ids.push(u.id);
   }
+  return { carrier, ids };
+}
 
-describe("carta-prêmio em campo", () => {
-  it("o comboio entra em campo com escolta e é invulnerável antes da captura", () => {
+describe("carta nova em campo", () => {
+  it("o comboio adversário entra em campo marcado como alvo de captura", () => {
     const state = battleWithPrize(1);
-    const convoy = prizeConvoy(state);
-    expect(convoy).not.toBeNull();
+    const carrier = prizeCarrier(state);
+    expect(carrier).not.toBeNull();
+    expect(carrier!.side).toBe("red");
+    expect(carrier!.captureTarget).toBe(true);
     expect(state.prize?.cardId).toBe("sup-gas");
-    expect(state.red.units.filter((u) => u.groupId === "prize-escort").length).toBeGreaterThan(0);
-
-    // Não se ganha a carta destruindo a carga: o comboio é imune ao fogo até ser tomado.
-    const hpBefore = convoy!.hp;
-    for (let i = 0; i < 200; i++) stepBattle(state, 0.25);
-    expect(prizeConvoy(state)?.hp ?? 0).toBe(hpBefore);
-    expect(state.prize!.capturedBy).toBeNull();
+    expect(captureProgress(state, "blue")).toBe(0);
   });
 
-  it("superioridade numérica cerca e captura o comboio, que passa a seguir para a base", () => {
+  it("sem captura, abater o comboio PERDE a carta", () => {
     const state = battleWithPrize(2);
-    sendSquadToConvoy(state, 6);
-    for (let i = 0; i < 600 && state.prize!.capturedBy !== "blue"; i++) stepBattle(state, 0.25);
-
-    expect(state.prize!.capturedBy).toBe("blue");
-    const convoy = prizeConvoy(state)!;
-    expect(convoy.side).toBe("blue");
-    expect(convoy.goalX).toBeDefined();
+    const carrier = prizeCarrier(state)!;
+    carrier.alive = false;
+    stepBattle(state, 0.25);
+    expect(state.prize!.lost).toBe(true);
+    expect(state.prize!.extracted).toBe(false);
+    expect(computeResult(state).prizeCardWon).toBeNull();
   });
 
-  it("a carga capturada só garante a carta ao CHEGAR na base aliada", () => {
+  it("cercar e prender o comboio cria o carro-prisão que conduz a carta à base", () => {
     const state = battleWithPrize(3);
-    sendSquadToConvoy(state, 6);
-    for (let i = 0; i < 600 && state.prize!.capturedBy !== "blue"; i++) stepBattle(state, 0.25);
-    expect(state.prize!.capturedBy).toBe("blue");
+    const { carrier, ids } = armCapture(state, 4);
+    expect(startCapture(state, "blue", ids, carrier.id)).toBe(true);
+
+    for (let i = 0; i < 400 && !state.prize!.captured; i++) {
+      // Segura o comboio no lugar: sem isto ele marcha para o centro e escapa da carga.
+      const c = prizeCarrier(state);
+      if (c) {
+        c.x = carrier.x;
+        c.y = carrier.y;
+        c.goalX = carrier.x;
+        c.goalY = carrier.y;
+      }
+      stepBattle(state, 0.25);
+    }
+    expect(state.prize!.captured).toBe(true);
     expect(state.prize!.extracted).toBe(false);
     expect(computeResult(state).prizeCardWon).toBeNull();
 
-    // Entrega: ao alcançar a base, o prêmio é confirmado no resultado da operação.
+    // O carro-prisão nasce no lado azul e segue para a base.
+    const car = state.blue.units.find((u) => u.prisonCar && u.alive);
+    expect(car).toBeDefined();
+
+    // Entrega: ao alcançar a base, a carta é garantida no resultado da operação.
     const home = state.structures.find(
       (s) => s.alive && s.side === "blue" && s.kind === "base-principal",
     )!;
-    const convoy = prizeConvoy(state)!;
-    convoy.x = home.x;
-    convoy.y = home.y;
+    car!.x = home.x;
+    car!.y = home.y;
     stepBattle(state, 0.25);
     expect(state.prize!.extracted).toBe(true);
     expect(computeResult(state).prizeCardWon).toBe("sup-gas");

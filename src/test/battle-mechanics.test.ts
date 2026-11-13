@@ -13,7 +13,7 @@ import {
   stepBattle,
 } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
-import { WORLD_H } from "@/game/battle/world";
+import { WORLD_H, WORLD_W } from "@/game/battle/world";
 import type {
   BattleConfig,
   BattleState,
@@ -605,14 +605,18 @@ describe("motor de batalha — cartas com efeito real", () => {
     // A cena fica num corredor lateral, fora do alcance das torres, para isolar a cobertura.
     const measure = (withFort: boolean) => {
       const state = createBattle(supportConfig({ duration: 30 }));
+      // Cena proporcional ao mundo atual (a versão anterior usava coordenadas fixas do
+      // mundo menor; aqui o corredor é o MESMO ponto relativo, fora do alcance das torres).
+      const px = (f: number) => WORLD_W * f;
+      const py = (f: number) => WORLD_H * f;
       if (withFort) {
-        const fort = place(state, "blue", "def-fortificacao", 88, 62);
+        const fort = place(state, "blue", "def-fortificacao", px(0.478), py(0.674));
         fort.speed = 0;
       }
-      const target = place(state, "blue", "inf-fuzileiros", 90, 62);
+      const target = place(state, "blue", "inf-fuzileiros", px(0.489), py(0.674));
       target.speed = 0;
       target.hp = target.maxHp;
-      const shooter = place(state, "red", "inf-fuzileiros", 90, 64);
+      const shooter = place(state, "red", "inf-fuzileiros", px(0.489), py(0.696));
       shooter.speed = 0;
       shooter.cooldown = 10; // um único disparo dentro da janela
       const before = target.hp;
@@ -750,7 +754,9 @@ describe("motor de batalha — cartas com efeito real", () => {
     });
     expect(ok).toBe(true);
     expect(
-      state.blue.units.filter((u) => u.alive && !u.hero).every((u) => u.attackStructureId === tower.id),
+      state.blue.units
+        .filter((u) => u.alive && !u.hero)
+        .every((u) => u.attackStructureId === tower.id),
     ).toBe(true);
     const hpBefore = tower.hp;
     for (let i = 0; i < 3000 && state.running && tower.hp >= hpBefore; i++) {

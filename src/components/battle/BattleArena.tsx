@@ -1686,7 +1686,9 @@ function UnitGlyph({
         />
       )}
       <g
-        transform={`translate(${unit.x} ${y}) rotate(${(unit.aim * 180) / Math.PI}) scale(${scale})`}
+        transform={`translate(${unit.x} ${y}) rotate(${
+          UNIT_DIAGONAL_SCREEN_DEG + (portrait ? 90 : 0)
+        }) scale(${scale})`}
       >
         {unitModel(unit.model, color, selected)}
       </g>
@@ -1809,6 +1811,7 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
   vbld: 1.7,
   "caca-tanques": 1.7,
   comboio: 1.8,
+  "carro-prisao": 1.75,
   "drone-recon": 1.5,
   "drone-combate": 1.5,
   aa: 1.4,
@@ -1817,6 +1820,13 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
   paraquedista: 1.9,
   chanceler: 2.6,
 };
+
+// ORIENTAÇÃO DIAGONAL: toda unidade entra em campo já inclinada e assim permanece —
+// na marcha, no combate, no recuo. É a apresentação padrão do teatro (leitura
+// isométrica), não um efeito de seleção: nada de a unidade "virar" quando é tocada.
+// O ângulo é definido no ESPAÇO DE TELA; o giro local desfaz a rotação da câmera
+// (que gira o campo 90° em retrato) para a diagonal sair igual em qualquer aparelho.
+const UNIT_DIAGONAL_SCREEN_DEG = -45;
 
 // Desenha o modelo da unidade centrado na origem, com o "nariz" apontando para +x.
 function unitModel(model: BattleUnit["model"], color: string, selected: boolean): ReactNode {
@@ -2016,6 +2026,30 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <rect x="1.45" y="-1.0" width="0.5" height="2" rx="0.12" fill={dark} opacity={0.6} />
           <rect x="-2.1" y="-1.0" width="3" height="2" rx="0.12" fill={steel} opacity={0.55} />
           <rect x="-2.1" y="-0.16" width="3" height="0.32" fill={dark} opacity={0.5} />
+        </>,
+      );
+    case "carro-prisao":
+      return body(
+        <>
+          <rect x="-3.1" y="-1.6" width="6.2" height="0.62" rx="0.1" fill={dark} />
+          <rect x="-3.1" y="0.98" width="6.2" height="0.62" rx="0.1" fill={dark} />
+          <rect x="-2.9" y="-1.45" width="4.6" height="2.9" rx="0.24" fill={color} />
+          <rect x="1.5" y="-1.35" width="1.7" height="2.7" rx="0.3" fill={steel} />
+          <rect x="1.7" y="-1.1" width="0.5" height="2.2" rx="0.12" fill={dark} opacity={0.6} />
+          <rect x="-2.5" y="-0.95" width="3.4" height="1.9" rx="0.12" fill={steel} opacity={0.5} />
+          <rect x="-2.5" y="-0.14" width="3.4" height="0.28" fill={dark} opacity={0.55} />
+          {[-2.2, -0.7, 0.8].map((yy) => (
+            <rect
+              key={yy}
+              x="-2.7"
+              y={yy}
+              width="4.2"
+              height="0.5"
+              rx="0.08"
+              fill={steel}
+              opacity={0.28}
+            />
+          ))}
         </>,
       );
     case "drone-recon":

@@ -13,7 +13,16 @@
 // comanda qualquer lado — é isso que permite a IA jogar contra si mesma milhares de vezes.
 
 import { cardById, doctrines } from "./catalog";
-import { deploy, dist, effectiveCost, isVisibleTo, issueOrder, nextRandom, other } from "./engine";
+import {
+  deploy,
+  dist,
+  effectiveCost,
+  isVisibleTo,
+  issueOrder,
+  nextRandom,
+  other,
+  startCapture,
+} from "./engine";
 import { WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   BattleState,
@@ -70,6 +79,8 @@ interface AiMemory {
   lastHeroMoveAt: number;
   /** Última recalibração de destino das tropas já em campo (perseguição de alvo móvel). */
   lastRecalAt: number;
+  /** Última ordem de CAPTURA emitida (evita repetir a cada turno). */
+  lastCaptureAt: number;
 }
 
 // Estado interno por batalha: cada lado tem o seu.
@@ -85,6 +96,7 @@ function memFor(state: BattleState, side: Side): AiMemory {
         lastOrderAt: -999,
         lastHeroMoveAt: -999,
         lastRecalAt: -999,
+        lastCaptureAt: -999,
       },
       red: {
         cooldown: 0,
@@ -92,6 +104,7 @@ function memFor(state: BattleState, side: Side): AiMemory {
         lastOrderAt: -999,
         lastHeroMoveAt: -999,
         lastRecalAt: -999,
+        lastCaptureAt: -999,
       },
     };
     memory.set(state, both);
@@ -169,6 +182,36 @@ function stepAi(
   moveChancellor(state, side, mem);
   escortRetreatingHero(state, side);
   recalibrateIntent(state, side, mem);
+  aiCaptureTick(state, side, mem);
+}
+
+// CAPTURA PELA IA: quando o adversário tem um ALVO DE CAPTURA em campo (o chanceler
+// dele, ou o comboio que porta a carta nova) e a IA tem infantaria de assalto por perto,
+// ela emite a ordem "capturar" de verdade no motor — prende o alvo e o conduz à base.
+function aiCaptureTick(state: BattleState, side: Side, mem: AiMemory): void {
+  if (state.t - mem.lastCaptureAt < 8) return;
+  const foe = other(side);
+  const foeCfg = sideState(state, foe);
+  const cfg = sideState(state, side);
+  const targets = foeCfg.units.filter(
+    (u) => u.alive && u.captureTarget && isVisibleTo(state, u, side),
+  );
+  if (targets.length === 0) return;
+  const captors = cfg.units.filter((u) => u.alive && u.canCapture);
+  if (captors.length < 2) return;
+  const anchor = captors[0]!;
+  const target = [...targets].sort(
+    (a, b) => dist(a.x, a.y, anchor.x, anchor.y) - dist(b.x, b.y, anchor.x, anchor.y),
+  )[0]!;
+  const near = captors.filter((u) => dist(u.x, u.y, target.x, target.y) < 22);
+  if (near.length < 2) return;
+  mem.lastCaptureAt = state.t;
+  startCapture(
+    state,
+    side,
+    near.map((u) => u.id),
+    target.id,
+  );
 }
 
 // RECALIBRAÇÃO: o alvo do chanceler se MOVE (fuga, recuo). A IA revisa o destino das
@@ -424,7 +467,7 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
 // principal (com justificativa) e as cartas/destinos são derivados dela. A cada turno
 // a intenção é RECALIBRADA: se o chanceler adversário se move, o ponto de caça segue o
 // movimento; se o nosso foge, muda para extração; se o Sov aperta, prioriza território.
-type AiIntent = "rescue" | "extract" | "hunt" | "guard" | "expand" | "push" | "defend" | "prize";
+type AiIntent = "rescue" | "extract" | "hunt" | "guard" | "expand" | "push" | "defend";
 
 interface AiStrategy {
   intent: AiIntent;
@@ -484,32 +527,10 @@ export function aiStrategy(
   const cfg = sideState(state, side);
   const mine = state.heroes[side];
 
-  // CARTA-PRÊMIO — objetivo de campanha: empurrar a linha até o comboio e capturá-lo.
-  // Não é a prioridade ZERO (a guerra continua): entra como frente de expansão quando o
-  // lado não está em crise defensiva nem resgatando o próprio chanceler.
-  const prize = state.prize;
-  const convoy = state.red.units.find((u) => u.prizeConvoy && u.alive);
-  if (prize?.capturedBy === "blue" && side === "blue" && convoy)
-    return {
-      intent: "extract",
-      point: { x: convoy.x, y: convoy.y },
-      reason: "Escoltar a carga capturada até a base",
-      targetUnitId: convoy.id,
-    };
-  if (prize && !prize.capturedBy && !prize.failed && convoy && !defensive) {
-    if (side === "blue")
-      return {
-        intent: "prize",
-        point: { x: prize.x, y: prize.y },
-        reason: "Capturar a carta em campo",
-      };
-    if (weights.aggression >= 0.5)
-      return {
-        intent: "defend",
-        point: { x: convoy.x, y: convoy.y },
-        reason: "Defender o comboio da carta",
-      };
-  }
+  // CARTA NOVA em campo (alvo de captura): a CAPTURA não é uma frente fixa — ela é
+  // OPORTUNISTA e vive em aiCaptureTick, que emite a ordem "capturar" real quando um
+  // pelotão já está colado ao alvo. Assim a IA não desvia o exército para caçar o comboio
+  // e abandonar o objetivo da partida.
 
   // 1. RESGATE — destruir a prisão que mantém o nosso chanceler.
   if (mine.state === "preso") {
@@ -550,7 +571,9 @@ export function aiStrategy(
         intent: opPoint.owner === side ? "defend" : "push",
         point: { x: opPoint.x, y: opPoint.y },
         reason:
-          opPoint.owner === side ? "Segurar o objetivo operacional" : "Tomar o objetivo operacional",
+          opPoint.owner === side
+            ? "Segurar o objetivo operacional"
+            : "Tomar o objetivo operacional",
       };
     }
   }

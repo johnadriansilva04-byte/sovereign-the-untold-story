@@ -5,13 +5,16 @@
 // Manter as dimensões num único lugar garante que motor, IA e renderizador usem
 // exatamente os mesmos limites — nenhum clampa coordenada por conta própria.
 
-export const WORLD_W = 184;
+export const WORLD_W = 210;
 /**
  * Profundidade do front (largura norte→sul). Subir este valor deixa o campo mais
  * FUNDO, com mais espaço de manobra entre as duas bases — não é só estética: o motor
- * usa o mesmo limite para movimento, alcance e captura.
+ * usa o mesmo limite para movimento, alcance e captura. A razão WORLD_W:WORLD_H foi
+ * escolhida como MEIO-TERMO entre a tela do celular (em retrato o campo é girado, e
+ * quanto mais alto ele for, menos faixa morta sobra nas laterais) e o desktop (onde o
+ * palco é largo e raso): nenhuma das duas orientações fica com o campo pequeno.
  */
-export const WORLD_H = 92;
+export const WORLD_H = 130;
 
 /**
  * BEIRADA do teatro: faixa de borda (em unidades de mundo) que fica FORA da área de

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { prizeProgress } from "@/game/battle/engine";
+import { captureProgress } from "@/game/battle/engine";
 import type { BattlePhase, BattleState, Side, Structure } from "@/game/battle/types";
 
 // Barra superior da batalha: relógio no centro, bases nas laterais.
@@ -42,33 +42,40 @@ export function BattleTopBar({ state }: { state: BattleState }) {
   );
 }
 
-// Comboio da carta-prêmio: enquanto ele está em campo, o jogador precisa saber que há
-// uma carta a capturar — sem o aviso, o prêmio passa despercebido e a mecânica some.
+// CARTA NOVA em campo: enquanto o alvo de captura estiver ativo, o jogador precisa saber
+// que há uma carta a tomar — sem o aviso, a mecânica passa despercebida.
 function PrizeBadge({ state }: { state: BattleState }) {
   const prize = state.prize;
   if (!prize) return null;
-  if (prize.failed)
-    return (
-      <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-destructive">
-        Comboio recuou · carta perdida
-      </p>
-    );
+  const ourCar = state.prisonCars?.find((c) => c.side === "blue" && !c.captured && !c.lost);
   if (prize.extracted)
     return (
       <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-fact">
-        Carta-prêmio garantida
+        Carta nova garantida
       </p>
     );
-  if (prize.capturedBy === "blue")
+  if (ourCar?.captiveKind === "carta")
     return (
       <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-ai">
-        Escolte a carga até a base
+        Carro-prisão a caminho · conduza à base
       </p>
     );
-  const pct = Math.round(prizeProgress(state, "blue"));
+  if (prize.captured)
+    return (
+      <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-ai">
+        Carta capturada · traga o carro à base
+      </p>
+    );
+  if (prize.lost)
+    return (
+      <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-destructive">
+        Carta nova perdida
+      </p>
+    );
+  const pct = Math.round(captureProgress(state, "blue"));
   return (
     <p className="mt-0.5 font-mono text-[9px] uppercase tracking-wider text-ai">
-      {pct > 0 ? `Capturando comboio ${pct}%` : "Comboio com carta em campo"}
+      {pct > 0 ? `Capturando alvo ${pct}%` : "Carta nova em campo · capture o portador"}
     </p>
   );
 }

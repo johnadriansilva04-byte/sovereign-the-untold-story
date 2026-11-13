@@ -29,6 +29,7 @@ import {
   type MissionDef,
 } from "@/game/battle/missions";
 import { useBattle } from "@/game/battle/useBattle";
+import { orientationFor } from "@/game/battle/world";
 import { useBattleAudio } from "@/game/battle/useBattleAudio";
 import { isAudioMuted, primeAudio, setAudioMuted } from "@/game/battle/audio";
 import type {
@@ -293,9 +294,17 @@ export function LiveBattle({
   // CHANCELER em campo (aliado): habilita o CONTROLE DIRETO (setas no PC, analógico no
   // celular). Sem ele em campo, não há volante para dirigir.
   const blueHero = state.blue.units.find((u) => u.hero && u.alive) ?? null;
+  // O vetor chega no espaço da TELA (o dedo empurra "para cima" na tela). Em retrato o
+  // campo está girado +90°, então o vetor é convertido para o mundo antes de virar
+  // comando: empurrar para cima move o chanceler para a base inimiga (mundo +x).
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const drive = useCallback(
     (dx: number, dy: number) => {
-      if (blueHero) battle.driveUnit(blueHero.id, dx, dy);
+      if (!blueHero) return;
+      const el = stageRef.current;
+      const portrait = el ? orientationFor(el.clientWidth, el.clientHeight) === "portrait" : false;
+      if (portrait) battle.driveUnit(blueHero.id, -dy, dx);
+      else battle.driveUnit(blueHero.id, dx, dy);
     },
     [battle, blueHero],
   );
@@ -470,7 +479,10 @@ export function LiveBattle({
       </Dialog>
 
       {/* Teatro de operações: ocupa TODO o espaço restante, sem rolagem */}
-      <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))]">
+      <div
+        ref={stageRef}
+        className="relative flex min-h-0 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))]"
+      >
         <BattleArena
           state={state}
           selectedUnitId={selectedUnitId}

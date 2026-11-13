@@ -103,8 +103,8 @@ export function BattlePrep({
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col overflow-y-auto px-4 py-3 [@media(max-height:560px)]:py-1.5">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5 [@media(max-height:560px)]:gap-y-1 [@media(max-height:560px)]:pb-1.5">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col overflow-hidden px-4 py-3 [@media(max-height:560px)]:py-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-2.5 [@media(max-height:560px)]:gap-y-1 [@media(max-height:560px)]:pb-1.5">
         <div>
           <p className="label-mono text-primary">Preparação para a batalha</p>
           <h2 className="font-display text-2xl font-black uppercase leading-none [@media(max-height:560px)]:text-xl">
@@ -131,7 +131,7 @@ export function BattlePrep({
         </button>
       </div>
 
-      <div className="mt-2.5 grid min-h-0 flex-1 gap-2.5 [@media(max-height:560px)]:flex-none [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-1.5 lg:grid-cols-[1.5fr_1fr]">
+      <div className="mt-2.5 grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-2.5 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-1.5 lg:grid-cols-[1.5fr_1fr]">
         <section className="hud-panel hud-corners flex min-h-0 flex-col p-3 [@media(max-height:560px)]:p-2">
           <div className="flex items-center justify-between">
             <p className="label-mono">Baralho de composição militar</p>
@@ -209,8 +209,8 @@ export function BattlePrep({
           </div>
         </section>
 
-        <div className="grid min-h-0 grid-rows-[auto_1fr] gap-2.5">
-          <section className="hud-panel hud-corners p-3">
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2.5">
+          <section className="hud-panel hud-corners shrink-0 p-3">
             <p className="label-mono mb-1.5">Comandante</p>
             <div className="flex flex-wrap gap-1.5">
               {commanders.map((c) => (
@@ -253,7 +253,7 @@ export function BattlePrep({
         </div>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-border pt-2.5 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:pt-1.5">
+      <div className="mt-2.5 flex shrink-0 flex-wrap items-center gap-3 border-t border-border pt-2.5 [@media(max-height:560px)]:mt-1.5 [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:pt-1.5">
         <button
           disabled={locked}
           onClick={() => onStart({ mission, deck, commander, doctrine, difficulty })}

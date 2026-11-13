@@ -36,6 +36,7 @@ import type {
   HeroStatus,
   Obstacle,
   Order,
+  PrisonCarState,
   Projectile,
   Side,
   SideConfig,
@@ -216,59 +217,156 @@ export function createBattle(config: BattleConfig): BattleState {
 }
 
 // ---------------------------------------------------------------------------
-// Carta-prêmio em campo
+// Carta nova do adversário (objetivo de captura)
 // ---------------------------------------------------------------------------
 //
-// O INIMIGO traz a carta nova para o campo, guardada por uma escolta blindada que
-// fica no meio do caminho (território disputado). A carta NÃO é entregue de graça:
-// é preciso empurrar a linha até o comboio e mantê-lo sob controle pelo tempo de
-// captura. A escolta reage e a captura reinicia se o comboio for perdido — a carta
-// pode, sim, ficar para a próxima tentativa (derrota não entrega prêmio).
-const PRIZE_CAPTURE_SECONDS = 4.5;
-const PRIZE_CAPTURE_RADIUS = 12;
+// A CARTA NOVA da operação entra no BARALHO DO INIMIGO e é jogada pela IA como qualquer
+// outra carta — nada de comboio decorativo parado no meio do campo. A unidade que a
+// porta é o ALVO DE CAPTURA: o jogador envia uma tropa com a ordem "capturar" e, se
+// conseguir prender e trazer o cativo de volta à base, a carta entra no arsenal.
+const CAPTURE_CHARGE_SECONDS = 3; // tempo de carga da prisão sobre o alvo (perto)
+const CAPTURE_GRAB_RANGE = 4; // distância em que a tropa de assalto encosta e prende
+const PRISON_CAR_SPEED = 4.6;
+const PRISON_CAR_HP = 900;
+// Carta interna do PORTADOR da carta nova (comboio do adversário). Não é carta de baralho:
+// o motor a instancia em initPrize e a unidade que a porta vira alvo de captura.
+const PRIZE_CARRIER_CARD = "prize-carrier";
 
-export function prizeConvoy(state: BattleState): BattleUnit | null {
-  return state.red.units.find((u) => u.prizeConvoy && u.alive) ?? null;
+/** Unidade viva que porta a carta nova do adversário (alvo de captura), se houver. */
+export function prizeCarrier(state: BattleState): BattleUnit | null {
+  const id = state.prize?.unitId;
+  if (!id) return null;
+  const u = state.red.units.find((x) => x.id === id && x.alive);
+  return u ?? null;
 }
 
-/** Progresso (0-100) da captura do comboio pelo lado. */
-export function prizeProgress(state: BattleState, side: Side): number {
-  return state.prize?.progress[side] ?? 0;
+/** Carta nova ainda em jogo e capturável (nem capturada nem perdida). */
+export function prizeAvailable(state: BattleState): boolean {
+  const prize = state.prize;
+  return Boolean(prize && !prize.captured && !prize.lost && prize.unitId);
 }
 
-// Monta o comboio à mão: ele não vem de carta (não é do baralho do inimigo) e não
-// combate — é carga protegida. Fica parado no ponto central com a escolta em volta.
-function initPrize(state: BattleState): void {
-  const cardId = state.config.prizeCardId;
-  if (!cardId) return;
-  const mid = state.config.arena.controlPoints.find((p) => p.sector === "central");
-  const x = mid ? mid.x : 50;
-  const y = mid ? mid.y : 23;
-  const convoy: BattleUnit = {
-    id: "prize-convoy",
-    side: "red",
-    cardId: "prize-convoy",
-    name: "Comboio de Carga",
-    short: "CGA",
+// ---------------------------------------------------------------------------
+// Prisão: carregar a carga e conduzir o cativo
+// ---------------------------------------------------------------------------
+
+// A unidade pode PRENDER? Infantaria de assalto e fuzileiros têm a capacidade; o resto
+// abate à distância e não prende. É capacidade de tropa, não um botão decorativo.
+function canCaptureUnit(u: BattleUnit): boolean {
+  return u.canCapture === true;
+}
+
+// Inicia a carga sobre o alvo designado (unidade marcada como captureTarget). O alvo é
+// o chanceler adversário ou a unidade que porta a carta nova.
+export function startCapture(
+  state: BattleState,
+  side: Side,
+  unitIds: string[],
+  targetUnitId: string,
+): boolean {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const foe = other(side);
+  const foeCfg = foe === "blue" ? state.blue : state.red;
+  const target = foeCfg.units.find((u) => u.id === targetUnitId && u.alive);
+  if (!target || !target.captureTarget) return false;
+  let n = 0;
+  for (const id of unitIds) {
+    const u = cfg.units.find((x) => x.id === id && x.alive && !x.hero);
+    if (!u) continue;
+    u.order = "capturar";
+    u.captureOrder = true;
+    u.captureTargetId = targetUnitId;
+    u.targetId = targetUnitId;
+    u.captureCharge = 0;
+    delete u.goalX;
+    delete u.goalY;
+    delete u.attackStructureId;
+    delete u.attackTerritoryId;
+    n += 1;
+  }
+  if (n > 0)
+    pushLog(state, side, "ordem", `${cfg.countryName} envia ${n} unidade(s) para capturar o alvo.`);
+  return n > 0;
+}
+
+// Progresso da carga sobre o alvo, por lado (para o HUD e a leitura da IA).
+export function captureProgress(state: BattleState, side: Side): number {
+  const cfg = side === "blue" ? state.blue : state.red;
+  let best = 0;
+  for (const u of cfg.units) {
+    if (u.alive && u.captureOrder && (u.captureCharge ?? 0) > best) best = u.captureCharge ?? 0;
+  }
+  return best;
+}
+
+// Limpa as ordens de captura que perderam o alvo (morreu, foi capturado ou a carta
+// acabou). Sem isso a tropa ficaria parada perseguindo algo inexistente.
+function clearDeadCaptureOrders(state: BattleState): void {
+  for (const side of ["blue", "red"] as Side[]) {
+    const cfg = side === "blue" ? state.blue : state.red;
+    const foe = other(side);
+    const foeCfg = foe === "blue" ? state.blue : state.red;
+    for (const u of cfg.units) {
+      if (!u.alive || !u.captureOrder) continue;
+      const t = foeCfg.units.find((x) => x.id === u.captureTargetId && x.alive);
+      if (!t || !t.captureTarget) {
+        u.captureOrder = false;
+        delete u.captureTargetId;
+        u.captureCharge = 0;
+        if (u.order === "capturar") u.order = "avancar";
+      }
+    }
+  }
+}
+
+// Conclui a captura: remove o alvo do campo e cria o CARRO-PRISÃO que conduz o cativo
+// de volta à base de quem capturou. Se o alvo for o chanceler, o lado adversário fica
+// sem comandante (derrota); se for a carta, ela só é garantida ao chegar à base.
+function completeCapture(state: BattleState, side: Side, target: BattleUnit): void {
+  const captorCfg = side === "blue" ? state.blue : state.red;
+  const captiveSide = target.side;
+  const kind: PrisonCarState["captiveKind"] = target.hero ? "chanceler" : "carta";
+  const cardId = target.hero ? undefined : target.cardId;
+  target.alive = false; // sai do campo: agora vai dentro do carro-prisão
+
+  if (target.hero) {
+    state.heroes[captiveSide] = { state: "preso", captured: true };
+  } else if (cardId) {
+    const p = state.prize;
+    if (p && p.unitId === target.id) {
+      delete p.unitId;
+      p.captured = true;
+    }
+  }
+
+  const home = state.structures.find(
+    (s) => s.alive && s.side === side && s.kind === "base-principal",
+  );
+  const car: BattleUnit = {
+    id: `car${state.nextId++}`,
+    side,
+    cardId: "carro-prisao",
+    name: "Carro-Prisão",
+    short: "PRIS",
     category: "blindado",
-    model: "comboio",
+    model: "carro-prisao",
     weapon: { kind: "fuzil", projectileSpeed: 0, splash: 0, arc: false, homing: false, muzzle: 0 },
     builder: false,
-    x,
-    y,
-    hp: 6000,
-    maxHp: 6000,
+    x: target.x,
+    y: target.y,
+    hp: PRISON_CAR_HP,
+    maxHp: PRISON_CAR_HP,
     dmg: 0,
-    speed: 0,
+    speed: PRISON_CAR_SPEED,
     range: 0,
     cooldown: 1,
     readyIn: 0,
-    radius: 4.5,
+    radius: 2.6,
     targets: "terra",
     domain: "terra",
-    order: "manter",
-    groupId: "prize",
-    aim: HOME_AIM.red,
+    order: "avancar",
+    groupId: `car${state.nextId}`,
+    aim: HOME_AIM[side],
     recoil: 0,
     alive: true,
     engaged: false,
@@ -281,98 +379,161 @@ function initPrize(state: BattleState): void {
     armor: 0,
     hitFlash: 0,
     wear: 0,
-    prizeConvoy: true,
+    prisonCar: true,
   };
-  state.red.units.push(convoy);
-  // Escolta inicial: dois pelotões de assalto guardando o comboio.
-  for (const [dx, dy] of [
-    [0, -6],
-    [0, 6],
-  ] as const) {
-    const esc = spawnUnit(state, "red", "inf-assalto", x + dx, y + dy, { groupId: "prize-escort" });
-    esc.goalX = x + dx;
-    esc.goalY = y + dy;
-    esc.goalAuto = true;
-    esc.holdAtGoal = true;
-    state.red.units.push(esc);
+  if (home) {
+    car.goalX = home.x;
+    car.goalY = home.y;
   }
-  state.prize = {
-    cardId,
-    x,
-    y,
-    capturedBy: null,
-    failed: false,
-    extracted: false,
-    progress: { blue: 0, red: 0 },
-    nextId: 0,
-  };
-  pushLog(state, "red", "evento", `Comboio com a carta ${cardId} entrou em campo. Capture-o.`);
-}
-
-function updatePrize(state: BattleState, dt: number): void {
-  const prize = state.prize;
-  if (!prize || prize.capturedBy || prize.failed) return;
-  const convoy = prizeConvoy(state);
-  // Escolta destruída: o comboio recua com a carta. Nada de prêmio automático.
-  if (!convoy) {
-    prize.failed = true;
-    pushLog(state, "sistema", "evento", "Escolta destruída: o comboio recuou com a carta.");
-    return;
-  }
-  // Raio generoso: as tropas param no alcance de tiro, então CERCA (1 contra 3) conta.
-  const bluePower = capturePower(state, "blue", prize.x, prize.y, PRIZE_CAPTURE_RADIUS);
-  const redPower = capturePower(state, "red", prize.x, prize.y, PRIZE_CAPTURE_RADIUS);
-  // A captura é decidida por SUPERIORIDADE no local: quem tem mais força ao redor do
-  // comboio avança. Assim, cercar com números superiores (1 contra 3) toma a carga, e a
-  // escolta precisa de reforço real para segurá-la — não basta estar por perto.
-  const rate = 100 / PRIZE_CAPTURE_SECONDS;
-  if (bluePower > redPower) {
-    prize.progress.blue = Math.min(100, prize.progress.blue + rate * dt);
-  } else if (redPower > bluePower) {
-    prize.progress.blue = Math.max(0, prize.progress.blue - rate * dt);
-  }
-  prize.progress.red = redPower > bluePower ? 100 : 0;
-  if (prize.progress.blue >= 100) {
-    // Capturado: o comboio passa a seguir a força azul e precisa CHEGAR À BASE aliada.
-    // Só então a carta entra no arsenal — capturar em campo é metade do trabalho.
-    prize.capturedBy = "blue";
-    convoy.side = "blue";
-    convoy.order = "avancar";
-    delete convoy.goalX;
-    delete convoy.goalY;
-    const base = state.structures.find(
-      (st) => st.alive && st.side === "blue" && st.kind === "base-principal",
-    );
-    if (base) {
-      convoy.goalX = base.x;
-      convoy.goalY = base.y;
-    }
-    addEffect(state, "explosion", prize.x, prize.y, 5);
-    pushLog(state, "blue", "captura", "Comboio dominado: escolte a carga até a base.");
-  }
-}
-
-// Extração: com o comboio capturado, o prêmio só é confirmado quando ele CHEGA ao
-// território aliado. Se for abatido no caminho, a carta se perde de vez.
-function updatePrizeExtraction(state: BattleState): void {
-  const prize = state.prize;
-  if (!prize || !prize.capturedBy) return;
-  const convoy = prizeConvoy(state);
-  if (!convoy) {
-    prize.failed = true;
-    prize.capturedBy = null;
-    pushLog(state, "sistema", "evento", "A carga foi destruída no trajeto: carta perdida.");
-    return;
-  }
-  const home = state.structures.find(
-    (st) => st.alive && st.side === "blue" && st.kind === "base-principal",
+  captorCfg.units.push(car);
+  state.prisonCars = state.prisonCars ?? [];
+  state.prisonCars.push({
+    id: car.id,
+    side,
+    captiveSide,
+    captiveKind: kind,
+    ...(cardId ? { captiveCardId: cardId } : {}),
+    captured: false,
+    lost: false,
+    x: car.x,
+    y: car.y,
+  });
+  pushLog(
+    state,
+    side,
+    "captura",
+    kind === "chanceler"
+      ? "Chanceler adversário capturado! Conduza o carro-prisão até a base."
+      : `Carta ${cardId} capturada! Conduza o carro-prisão até a base.`,
   );
-  if (home && dist(convoy.x, convoy.y, home.x, home.y) <= home.radius + convoy.radius + 4) {
-    prize.extracted = true;
-    pushLog(state, "blue", "captura", `Carga entregue na base: carta ${prize.cardId} garantida.`);
+}
+
+// Atualiza a carga das ordens de captura. Longe, a tropa atira (o combate normal cuida
+// disso); perto, inicia a carga; completada a carga, prende o alvo.
+function updateCaptureOrders(state: BattleState, dt: number): void {
+  for (const side of ["blue", "red"] as Side[]) {
+    const cfg = side === "blue" ? state.blue : state.red;
+    const foe = other(side);
+    const foeCfg = foe === "blue" ? state.blue : state.red;
+    for (const u of cfg.units) {
+      if (!u.alive || !u.captureOrder) continue;
+      const target = foeCfg.units.find((x) => x.id === u.captureTargetId && x.alive);
+      if (!target) continue;
+      const d = dist(u.x, u.y, target.x, target.y);
+      const canGrab = canCaptureUnit(u);
+      const grabbing = canGrab && d <= u.radius + target.radius + CAPTURE_GRAB_RANGE;
+      if (!grabbing) {
+        // Longe (ou sem capacidade de prender): a carga não avança; a tropa atira.
+        u.captureCharge = 0;
+        continue;
+      }
+      // Encostou: carrega a prisão sobre o alvo.
+      u.captureCharge = Math.min(100, (u.captureCharge ?? 0) + (100 / CAPTURE_CHARGE_SECONDS) * dt);
+      if ((u.captureCharge ?? 0) >= 100) {
+        completeCapture(state, side, target);
+        for (const a of cfg.units) {
+          if (a.captureTargetId === target.id) {
+            a.captureOrder = false;
+            delete a.captureTargetId;
+            a.captureCharge = 0;
+            if (a.order === "capturar") a.order = "avancar";
+          }
+        }
+        break;
+      }
+    }
   }
 }
 
+// Move os carros-prisão rumo à base aliada. Ao chegar, confirma a captura (a carta é
+// garantida; o chanceler já saiu de campo no momento da prisão).
+function updatePrisonCars(state: BattleState, _dt: number): void {
+  const cars = state.prisonCars;
+  if (!cars || cars.length === 0) return;
+  for (const rec of cars) {
+    if (rec.captured || rec.lost) continue;
+    const car = (rec.side === "blue" ? state.blue : state.red).units.find(
+      (u) => u.id === rec.id && u.alive,
+    );
+    if (!car) {
+      rec.lost = true;
+      if (rec.captiveKind === "carta") {
+        const p = state.prize;
+        if (p && !p.extracted) p.lost = true;
+        pushLog(
+          state,
+          "sistema",
+          "evento",
+          "Carro-prisão destruído: o cativo escapou com a carta.",
+        );
+      } else if (state.heroes[rec.captiveSide].state === "preso") {
+        // O chanceler cativo escapa e volta a campo livre (a captura falhou).
+        spawnChancellor(state, rec.captiveSide, rec.x, rec.y);
+        pushLog(state, "sistema", "evento", "Carro-prisão destruído: o chanceler escapou!");
+      }
+      continue;
+    }
+    rec.x = car.x;
+    rec.y = car.y;
+    const home = state.structures.find(
+      (s) => s.alive && s.side === rec.side && s.kind === "base-principal",
+    );
+    if (!home) continue;
+    car.goalX = home.x;
+    car.goalY = home.y;
+    if (dist(car.x, car.y, home.x, home.y) <= home.radius + car.radius + 4) {
+      rec.captured = true;
+      car.alive = false; // entregue: o carro sai do campo com o cativo
+      if (rec.captiveKind === "carta") {
+        const p = state.prize;
+        if (p) p.extracted = true;
+        pushLog(
+          state,
+          rec.side,
+          "captura",
+          `Carta ${rec.captiveCardId} entregue na base: garantida.`,
+        );
+      } else {
+        pushLog(
+          state,
+          rec.side,
+          "captura",
+          "Chanceler adversário entregue na base: cativeiro confirmado.",
+        );
+        // Capturar o chefe de Estado adversário e conduzi-lo à base só DECIDE a guerra nas
+        // missões de história do herói (heroDecisive). Nas demais, o cativeiro o tira de
+        // campo, mas a vitória continua por objetivo/base.
+        if (state.config.heroDecisive === false) {
+          pushLog(state, rec.side, "captura", "O chanceler adversário segue cativo na base.");
+        } else if (rec.side === "blue") {
+          finish(
+            state,
+            "vitoria",
+            "Chanceler adversário capturado e conduzido à base — guerra vencida.",
+          );
+        } else {
+          finish(state, "derrota", "Seu chanceler foi capturado e conduzido à base adversária.");
+        }
+      }
+    }
+  }
+}
+
+// Carta nova abatida em campo (morreu por fogo, não por captura): perde-se a chance.
+function updatePrize(state: BattleState): void {
+  const p = state.prize;
+  if (!p || p.captured || p.lost || !p.unitId) return;
+  const carrier = state.red.units.find((u) => u.id === p.unitId && u.alive);
+  if (!carrier) {
+    p.lost = true;
+    pushLog(
+      state,
+      "sistema",
+      "evento",
+      `A unidade com a carta ${p.cardId} foi abatida: carta perdida.`,
+    );
+  }
+}
 // ---------------------------------------------------------------------------
 // Chanceleres e prisões
 // ---------------------------------------------------------------------------
@@ -532,31 +693,37 @@ function heroDied(state: BattleState, unit: BattleUnit): void {
 // Nas missões NÃO-decisivas o chanceler não decide nada — a vitória segue por objetivo/base.
 function checkHeroVictory(state: BattleState): boolean {
   if (state.config.heroDecisive === false) return false;
-  const blueDead = state.heroes.blue.state === "morto";
-  const redDead = state.heroes.red.state === "morto";
-  if (!blueDead && !redDead) return false;
+  const blueOut =
+    state.heroes.blue.state === "morto" ||
+    (state.heroes.blue.state === "preso" && state.heroes.blue.captured === true);
+  const redOut =
+    state.heroes.red.state === "morto" ||
+    (state.heroes.red.state === "preso" && state.heroes.red.captured === true);
+  if (!blueOut && !redOut) return false;
   const blueOk = canClaimVictory(state, "blue");
   const redOk = canClaimVictory(state, "red");
-  if (blueDead && redDead) {
-    finish(state, "empate", "Os dois chanceleres foram eliminados.");
+  if (blueOut && redOut) {
+    finish(state, "empate", "Os dois chanceleres foram neutralizados.");
     return true;
   }
-  if (redDead && blueOk) {
+  if (redOut && blueOk) {
     finish(
       state,
       "vitoria",
-      "Chanceler adversário eliminado com o seu em segurança — guerra vencida.",
+      "Chanceler adversário neutralizado com o seu em segurança — guerra vencida.",
     );
     return true;
   }
-  if (blueDead && redOk) {
-    finish(state, "derrota", "Seu chanceler foi eliminado com o adversário em segurança.");
+  if (blueOut && redOk) {
+    finish(state, "derrota", "Seu chanceler foi neutralizado com o adversário em segurança.");
     return true;
   }
   return false;
 }
 
-// O chanceler do lado está em segurança para reivindicar a vitória?
+// O chanceler do lado está em segurança para reivindicar a vitória? Só "livre" (nunca
+// saiu de campo) ou "seguro" (extraído). "preso"/"fugindo" — inclusive preso por captura
+// em campo — não contam: é preciso ter o seu próprio chanceler em mãos.
 function canClaimVictory(state: BattleState, side: Side): boolean {
   const st = state.heroes[side].state;
   return st === "livre" || st === "seguro";
@@ -787,10 +954,47 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
   };
 }
 
+// Estado inicial da CARTA NOVA: o adversário entra em campo com um PORTADOR blindado
+// (o comboio que traz o protótipo). Ele é uma unidade jogável normal do lado vermelho —
+// anda com a própria ofensiva e pode ser abatido (carta perdida) ou capturado e
+// conduzido à base azul (carta ganha). Nada de marcador decorativo no chão.
+function initPrize(state: BattleState): void {
+  const cardId = state.config.prizeCardId;
+  if (!cardId) return;
+  state.prize = { cardId, captured: false, lost: false, extracted: false };
+  const home = state.structures.find(
+    (s) => s.side === "red" && s.kind === "base-principal" && s.alive,
+  );
+  if (!home) return;
+  const x = home.x - 35;
+  const y = home.y;
+  const u = spawnUnit(state, "red", PRIZE_CARRIER_CARD, x, y, {
+    name: "Comboio · Carta Nova",
+    groupId: `prize-${state.nextId}`,
+  });
+  u.hero = false;
+  u.captureTarget = true;
+  // O comboio AVANÇA com a ofensiva vermelha rumo ao centro — é lá que o jogador o
+  // intercepta. Fica parado só quando alcança o objetivo (não persegue para dentro da
+  // base azul), para dar tempo de armar a captura.
+  const mid = state.config.arena.controlPoints.find((p) => p.sector === "central");
+  u.goalX = mid ? mid.x : x - 30;
+  u.goalY = mid ? mid.y : y;
+  u.holdAtGoal = true;
+  u.order = "avancar";
+  state.red.units.push(u);
+  state.prize.unitId = u.id;
+  pushLog(
+    state,
+    "red",
+    "evento",
+    `O adversário traz a carta ${cardId} em um comboio. Capture-o e conduza à base.`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Custo efetivo de uma carta conforme a doutrina
 // ---------------------------------------------------------------------------
-
 export function effectiveCost(card: Card, doctrine: string): number {
   const mod = doctrines[doctrine as keyof typeof doctrines];
   const mult = mod?.costMultiplier[card.category as UnitCategory] ?? 1;
@@ -872,7 +1076,7 @@ export function aliveUnits(state: BattleState, side: Side): number {
   // Prisioneiros rendidos não contam como força: saíram do combate. O CHANCELER também
   // não conta: é o comandante, não um corpo de tropa — senão ele ocupa uma vaga do teto.
   for (const u of cfg.units)
-    if (u.alive && !u.prizeConvoy && !u.surrendered && !u.hero) n++;
+    if (u.alive && !u.prisonCar && !u.captive && !u.surrendered && !u.hero) n++;
   return n;
 }
 
@@ -1328,6 +1532,13 @@ function spawnUnit(
   // arsenal do jogador). As tropas azuis a reconhecem em campo e a priorizam — abatê-la
   // pode render a carta como prêmio de guerra.
   const bounty = Boolean(cardId && state.config.bountyCardIds?.includes(cardId));
+  // ALVO DE CAPTURA: o CHANCELER adversário pode ser preso em campo. O comboio da carta
+  // nova recebe a marca direto em initPrize. Recebe marcador próprio e é o alvo válido da
+  // ordem "capturar".
+  const isHero = Boolean(card.hero);
+  const captureTarget = isHero;
+  // Capacidade de prender: infantaria de assalto e fuzileiros. O resto abate à distância.
+  const canCapture = cardId === "inf-assalto" || cardId === "inf-fuzileiros";
   return {
     id: `u${state.nextId++}`,
     side,
@@ -1368,6 +1579,8 @@ function spawnUnit(
     hitFlash: 0,
     wear: 0,
     ...(bounty ? { bounty: true } : {}),
+    ...(captureTarget ? { captureTarget: true } : {}),
+    ...(canCapture ? { canCapture: true } : {}),
   };
 }
 
@@ -1811,6 +2024,7 @@ export function issueOrder(
     defender: "Defender",
     manter: "Manter posição",
     recuar: "Recuar",
+    capturar: "Capturar alvo",
   }[order];
   pushLog(state, side, "ordem", `${cfg.countryName} ordena: ${label}.`);
   return true;
@@ -1856,8 +2070,10 @@ export function stepBattle(state: BattleState, dt: number): BattleState {
   updateProjectiles(state, dt);
   updateEffects(state, dt);
   updateCapture(state, dt);
-  updatePrize(state, dt);
-  updatePrizeExtraction(state);
+  clearDeadCaptureOrders(state);
+  updateCaptureOrders(state, dt);
+  updatePrisonCars(state, dt);
+  updatePrize(state);
   updateVisibility(state);
   updateHeroes(state);
   cleanup(state);
@@ -1965,7 +2181,7 @@ function combatWeight(u: BattleUnit): number {
 // veteranos (nível alto). É uma decisão DETERMINÍSTICA por semente + id, para o motor
 // ser reproduzível nos testes.
 function surrenders(state: BattleState, u: BattleUnit): boolean {
-  if (u.hero || u.prizeConvoy) return false;
+  if (u.hero || u.prisonCar || u.captive) return false;
   // Tropa de elite (nível alto) resiste; recruta cercado se entrega.
   const resist = Math.min(0.75, 0.08 * u.level);
   const roll =
@@ -1989,7 +2205,7 @@ function updateSurrender(state: BattleState, u: BattleUnit, dt: number): void {
   let foe = 0;
   let allies = 0;
   for (const e of enemyCfg.units) {
-    if (!e.alive || e.surrendered || e.prizeConvoy) continue;
+    if (!e.alive || e.surrendered || e.prisonCar || e.captive) continue;
     if (dist(e.x, e.y, u.x, u.y) <= SURRENDER_RADIUS) foe += combatWeight(e);
   }
   const myCfg = u.side === "blue" ? state.blue : state.red;
@@ -2067,18 +2283,34 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   // constrói — o passo dele é resolvido em updateBuilder.
   const target = u.builder ? null : selectTarget(state, u);
   u.engaged = false;
+  // ORDEM CAPTURAR: encostada no alvo designado, a tropa de assalto PARA de atirar e
+  // carrega a prisão (ver updateCaptureOrders). Matar de perto impediria a captura.
+  const grabbing =
+    Boolean(u.captureOrder) &&
+    canCaptureUnit(u) &&
+    target?.kind === "unit" &&
+    target.id === u.captureTargetId &&
+    dist(u.x, u.y, target.x, target.y) <= u.radius + (target.radius ?? 0) + CAPTURE_GRAB_RANGE;
   if (target && u.jammed <= 0 && canShoot(u)) {
     u.engaged = true;
     turnAim(u, target.x, target.y, dt);
-    if (u.readyIn <= 0) {
+    if (grabbing) return; // prende, não atira
+    const distToTarget = dist(u.x, u.y, target.x, target.y);
+    // O alvo de captura pode estar FORA do alcance (é uma caçada): só atira quando
+    // entra em alcance, senão gastaria tiros que nunca acertariam.
+    if (distToTarget <= u.range + (target.radius ?? 0) && u.readyIn <= 0) {
       fireWeapon(state, u, target);
       u.readyIn = u.cooldown;
     }
     // ZONA DE ALCANCE COM FOLGA: a unidade avança até ficar a ENGAGE_STANDOFF do
     // alcance e PARA ali para atirar — não encosta no alvo. O alcance é medido até a
-    // BORDA do alvo (igual a selectTarget); a folga evita o "amontoa e gira".
-    const stopDist = (u.range + (target.radius ?? 0)) * ENGAGE_STANDOFF;
-    if (!driving && u.range < ENGAGE_RADIUS && dist(u.x, u.y, target.x, target.y) > stopDist) {
+    // BORDA do alvo (igual a selectTarget); a folga evita o "amontoa e gira". A tropa em
+    // ordem de captura avança ATÉ a distância de prender, para encostar e carregar.
+    const stopDist = u.captureOrder
+      ? Math.max(0, u.radius + (target.radius ?? 0) + CAPTURE_GRAB_RANGE - 1)
+      : (u.range + (target.radius ?? 0)) * ENGAGE_STANDOFF;
+    const advance = Boolean(u.captureOrder) || u.range < ENGAGE_RADIUS;
+    if (!driving && advance && distToTarget > stopDist) {
       moveToward(state, u, target.x, target.y, dt, slow);
     }
     return;
@@ -2165,9 +2397,8 @@ function updateStall(state: BattleState, u: BattleUnit, moved: number, dt: numbe
 // (linha de suprimento) multiplica o atrito. Longe de qualquer base, a coluna definha
 // rápido — é isso que dá valor estratégico às bases avançadas.
 function applyWear(state: BattleState, u: BattleUnit, moved: number, dt: number): void {
-  // A carga da carta-prêmio não sofre atrito: ela é capturada ou entregue, nunca
-  // "morre de desgaste" no meio do mapa.
-  if (u.prizeConvoy) return;
+  // O carro-prisão não sofre atrito: ele é destruído em combate ou entrega o cativo.
+  if (u.prisonCar) return;
   const base = nearestFriendlyBase(state, u.side, u.x, u.y);
   const supplyDist = base ? dist(u.x, u.y, base.x, base.y) : WEAR_FIELD * 2;
   if (u.hero) {
@@ -2479,15 +2710,15 @@ function selectTarget(state: BattleState, u: BattleUnit): TargetRef | null {
   const units: TargetRef[] = [];
   for (const e of enemyCfg.units) {
     if (!e.alive) continue;
-    // A carga da carta-prêmio não é alvo de fogo: antes de capturada é imune, e depois
-    // é o próprio objetivo a escoltar — atirar nela só desviaria a tropa do combate.
-    if (e.prizeConvoy) continue;
     // Prisioneiro rendido já saiu do combate: não se atira em quem se rendeu.
     if (e.surrendered) continue;
     if (!isVisibleTo(state, e, u.side)) continue;
     if (!targetsDomain(u.targets, e.domain)) continue;
     const d = dist(u.x, u.y, e.x, e.y);
-    if (d > u.range + e.radius) continue;
+    // ORDEM CAPTURAR: o alvo designado é sempre considerado — a tropa marcha até ele
+    // mesmo fora do alcance de tiro (é uma caçada, não um engajamento parado).
+    const isCaptureTarget = u.captureOrder === true && e.id === u.captureTargetId;
+    if (d > u.range + e.radius && !isCaptureTarget) continue;
     units.push({
       x: e.x,
       y: e.y,
@@ -2912,9 +3143,6 @@ function damageUnit(
   from: BattleUnit | null,
   dmgVs?: Partial<Record<UnitCategory, number>>,
 ): void {
-  // Comboio ainda NÃO capturado é invulnerável: não se toma a carta destruindo-a.
-  // Depois de capturado, ele pode ser abatido no trajeto — aí a carga se perde.
-  if (target.prizeConvoy && !state.prize?.capturedBy) return;
   const ob = obstacleAt(state.config.arena, target.x, target.y);
   const fort = coverBonusAt(state, target);
   const cover = target.domain === "aereo" ? 0 : Math.min(0.6, (ob?.cover ?? 0) + fort);
@@ -3120,8 +3348,8 @@ function capturePower(
   let power = 0;
   for (const u of cfg.units) {
     if (!u.alive) continue;
-    // A CARGA não defende: ela é o prêmio, não um soldado. Não conta força de captura.
-    if (u.prizeConvoy) continue;
+    // O carro-prisão não defende: ele conduz o cativo, não segura posição.
+    if (u.prisonCar) continue;
     if (dist(u.x, u.y, x, y) > radius + u.radius) continue;
     let w = 0.6;
     if (u.category === "infantaria") w = 1.2;
@@ -3622,6 +3850,18 @@ export function applyAction(state: BattleState, action: BattleAction): ActionRes
     const n = separate(state, action.side, action.groupId);
     return n > 0 ? { ok: true } : { ok: false, error: "Nenhuma tropa para separar." };
   }
+  if (action.type === "capturar") {
+    const cfg = action.side === "blue" ? state.blue : state.red;
+    const ids = action.groupId
+      ? cfg.units.filter((u) => u.alive && u.groupId === action.groupId).map((u) => u.id)
+      : action.unitId
+        ? [action.unitId]
+        : [];
+    const ok = startCapture(state, action.side, ids, action.targetUnitId);
+    return ok
+      ? { ok: true }
+      : { ok: false, error: "Alvo de captura inválido ou sem tropa designada." };
+  }
   const ok = issueOrder(state, action.side, action.order, action.unitId, action.objectiveId);
   return ok ? { ok: true } : { ok: false, error: "Nenhuma unidade para receber a ordem." };
 }
@@ -3663,6 +3903,8 @@ export function computeResult(state: BattleState): BattleResult {
     income: { blue: state.blue.income, red: state.red.income },
     pointsHeld: points,
     prizeCardWon: state.prize?.extracted ? state.prize.cardId : null,
+    chancellorCaptured:
+      state.prisonCars?.some((c) => c.captiveKind === "chanceler" && c.captured) ?? false,
     prisoners: { blue: state.blue.prisonersTaken, red: state.red.prisonersTaken },
     capturedCards: [...state.blue.capturedCards],
   };

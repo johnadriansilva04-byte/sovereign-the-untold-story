@@ -875,9 +875,44 @@ for (const card of militaryCards) {
 // O CHANCELER é uma carta-herói: existe para o motor montar a unidade, mas não entra
 // no baralho nem na coleção, então fica FORA de `allCards` (a coleção não o oferece).
 export const heroCards: MilitaryCard[] = militaryCards.filter((c) => c.hero);
+// CARTAS ESPECIAIS: não entram no baralho nem na coleção — só o motor as instancia em
+// cena (ex.: o COMBOIO que traz a carta nova da operação, alvo de captura).
+export const specialCards: MilitaryCard[] = [
+  {
+    id: "prize-carrier",
+    kind: "militar",
+    name: "Comboio da Carta",
+    short: "CMB",
+    category: BLD,
+    cost: 0,
+    hp: 720,
+    dmg: 20,
+    speed: 3.0,
+    range: 8,
+    cooldown: 1.4,
+    targets: "ambos",
+    domain: "terra",
+    radius: 3,
+    model: "comboio",
+    weapon: {
+      kind: "fuzil",
+      projectileSpeed: 90,
+      splash: 0,
+      arc: false,
+      homing: false,
+      muzzle: 1.8,
+      tracer: true,
+    },
+    role: "Porta a carta nova da operação. Capture-o e conduza à base para tomar a carta.",
+  },
+];
+
 export const allCards: Card[] = [...militaryCards.filter((c) => !c.hero), ...supportCards];
 export const cardById = (id: string): Card => {
-  const c = allCards.find((x) => x.id === id) ?? heroCards.find((x) => x.id === id);
+  const c =
+    allCards.find((x) => x.id === id) ??
+    heroCards.find((x) => x.id === id) ??
+    specialCards.find((x) => x.id === id);
   if (!c) throw new Error(`Carta desconhecida: ${id}`);
   return c;
 };

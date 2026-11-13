@@ -11,7 +11,7 @@ export type TargetProfile = "terra" | "aereo" | "ambos";
 
 export type Domain = "terra" | "aereo";
 
-export type Order = "avancar" | "defender" | "manter" | "recuar";
+export type Order = "avancar" | "defender" | "manter" | "recuar" | "capturar";
 
 export type Doctrine =
   | "Mobilidade"
@@ -38,6 +38,7 @@ export type UnitModel =
   | "engenheiro"
   | "canhao"
   | "artilharia-pesada"
+  | "carro-prisao"
   | "lmf"
   | "tanque"
   | "vbld"
@@ -373,9 +374,6 @@ export interface BattleUnit {
   seen: Record<Side, boolean>; // visibilidade calculada por lado (fog of war)
   // suporte: cura por pulso (0 = unidade de combate comum)
   heal: number;
-  // COMBOIO DA CARTA-PRÊMIO: unidade de carga que não combate, não pode ser
-  // destruída (só capturada) e não conta como tropa para efeito de objetivo.
-  prizeConvoy?: boolean;
   // RENDIÇÃO: quando uma unidade é cercada por força MUITO superior (1 contra 3+), o
   // sistema decide se ela se rende (vira prisioneira, sai de combate) ou se luta até o
   // fim — soldados de elite/heroicos recusam a rendição. O dado é do MOTOR, não um
@@ -387,6 +385,26 @@ export interface BattleUnit {
   // têm inteligência para reconhecê-la em campo e priorizá-la — abatê-la pode render a
   // carta (espólio de guerra). Marcado no nascimento a partir do baralho adversário.
   bounty?: boolean;
+  // A unidade é o ALVO DE CAPTURA em campo: o chanceler adversário ou a unidade que
+  // porta a carta nova do inimigo. Recebe um marcador visual próprio e é o alvo válido
+  // da ordem "capturar".
+  captureTarget?: boolean;
+  // ORDEM CAPTURAR: alvo designado pelo jogador. Longe, a tropa atira para abater;
+  // perto, inicia a carga da prisão (só tropas de assalto têm essa capacidade).
+  captureOrder?: boolean;
+  captureTargetId?: string;
+  // Capacidade de PRENDER (carregar a prisão): infantaria de assalto/fuzileiros.
+  canCapture?: boolean;
+  // Carga em andamento (0-100) sobre o alvo designado.
+  captureCharge?: number;
+  // CATIVO: unidade dentro de um carro-prisão; não combate, não conta como tropa e é
+  // libertada se o carro for destruído.
+  captive?: boolean;
+  // CARRO-PRISÃO: veículo blindado com grades que leva o cativo de volta à base aliada.
+  prisonCar?: boolean;
+  // Segundos restantes de fúria: a unidade desce sobre o alvo capturado e ignora a
+  // escolta no caminho (usado na caçada de captura).
+  frenzy?: number;
   // nível da carta que originou a unidade (1-15)
   level: number;
   // fração do dano recebido que a unidade IGNORA por ser veterana (0-0,3). Aplicada
@@ -551,7 +569,10 @@ export interface BattleConfig {
   operationalTarget?: { controlPointId: string; seconds: number };
   // ajuste do comandante adversário (dificuldade)
   aiDifficulty?: AiDifficulty;
-  /** Carta a ser CAPTURADA em campo nesta operação (undefined = sem prêmio). */
+  // CARTA NOVA do adversário nesta operação: o adversário entra em campo com um COMBOIO
+  // blindado que a porta. A unidade é o ALVO DE CAPTURA (visual próprio): abatê-la perde a
+  // carta; capturá-la e conduzi-la à base rende a carta ao arsenal — junto com o chanceler
+  // adversário, é objetivo da ordem "capturar".
   prizeCardId?: string;
   // CARTAS-ESPÓLIO: cartas do arsenal adversário que o jogador ainda não possui. As
   // tropas azuis as reconhecem em campo e priorizam abatê-las para capturar a carta.
@@ -606,20 +627,34 @@ export interface SideModifiers {
   sight?: number;
 }
 
-// Carta-prêmio: o inimigo a traz em campo dentro de um comboio blindado. Destruir a
-// escolta NÃO basta — é preciso levar unidades até o comboio e capturá-lo antes do fim
-// da janela. Capturada, a carta entra no arsenal; perdida, o comboio recua e a carta
-// fica para a próxima tentativa.
+// CARTA NOVA do adversário em campo: a unidade que a porta é o ALVO DE CAPTURA. Ela é
+// usada pela IA como qualquer outra carta; se for abatida ou capturada, o estado registra
+// o desfecho. Capturada (levada ao carro-prisão e entregue na base), a carta entra no
+// arsenal do jogador ao fim da operação vitoriosa.
 export interface PrizeCard {
   cardId: string;
+  // Unidade viva que porta a carta (alvo de captura). Ausente após abatida/capturada.
+  unitId?: string;
+  captured: boolean;
+  lost: boolean;
+  /** Carta entregue na base aliada: garantida no arsenal. */
+  extracted: boolean;
+}
+
+// CARRO-PRISÃO em campo: veículo blindado com grades que transporta um cativo (o
+// chanceler adversário ou a unidade da carta nova) de volta à base aliada. Se for
+// destruído no trajeto, o cativo escapa — a captura falha.
+export interface PrisonCarState {
+  id: string;
+  side: Side; // lado que o opera (quem capturou)
+  captiveSide: Side; // lado do cativo transportado
+  // O que está preso: o chanceler ou a unidade da carta nova.
+  captiveKind: "chanceler" | "carta";
+  captiveCardId?: string;
+  captured: boolean; // chegou à base: captura confirmada
+  lost: boolean; // carro destruído no trajeto: cativo escapou
   x: number;
   y: number;
-  capturedBy: Side | null;
-  failed: boolean;
-  /** Carga entregue na base aliada: a carta está garantida no arsenal. */
-  extracted: boolean;
-  progress: Record<Side, number>;
-  nextId: number;
 }
 
 export interface BattleState {
@@ -644,8 +679,10 @@ export interface BattleState {
   holds: Record<string, number>; // tempo de manutenção por condição (vitória)
   // Estado do chanceler de cada lado. Sem heroSetup, ambos começam "livre" em campo.
   heroes: Record<Side, HeroStatus>;
-  // Comboio da carta-prêmio em campo (só existe quando a operação define prizeCardId).
+  // Carta nova do adversário em campo (só existe quando a operação define prizeCardId).
   prize?: PrizeCard | undefined;
+  // Carros-prisão em trânsito (cativo a caminho da base de quem capturou).
+  prisonCars?: PrisonCarState[] | undefined;
 }
 
 export interface HeroStatus {
@@ -660,6 +697,9 @@ export interface HeroStatus {
    */
   state: "livre" | "preso" | "fugindo" | "seguro" | "morto";
   prisonId?: string;
+  // O chanceler foi CAPTURADO em campo (levado pelo carro-prisão), não apenas começa
+  // cativo numa prisão de cenário. Diferencia "preso por captura" de "preso a resgatar".
+  captured?: boolean;
   /** Instante (s) em que um chanceler não-decisivo volta à base depois de tombar. */
   respawnAt?: number;
 }
@@ -680,8 +720,10 @@ export interface BattleResult {
   coins: Record<Side, number>;
   income: Record<Side, number>;
   pointsHeld: { id: string; name: string; sector: string; owner: Side | "neutro" }[];
-  /** Carta capturada em campo nesta operação (null = comboio perdido/recuou). */
+  /** Carta capturada em campo nesta operação (null = carta não capturada). */
   prizeCardWon?: string | null;
+  /** O chanceler adversário foi capturado e entregue na base aliada. */
+  chancellorCaptured?: boolean;
   /** Prisioneiros rendidos feitos por cada lado (mecânica de rendição). */
   prisoners?: { blue: number; red: number };
   /** Cartas capturadas como espólio de guerra (ausentes do arsenal do vencedor). */
@@ -756,5 +798,19 @@ export interface SeparateAction {
   groupId: string;
 }
 
+// ORDEM DE CAPTURA: o jogador seleciona a TROPA e o ALVO (chanceler adversário ou a
+// unidade da carta nova). A tropa marcha até o alvo: de longe atira para abater, de
+// perto (se for tropa de assalto) inicia a carga da prisão. Ao prender, um carro-prisão
+// é criado e conduz o cativo de volta à base aliada.
+export interface CaptureAction {
+  type: "capturar";
+  side: Side;
+  /** Tropa designada: a unidade avulsa OU o grupo (esquadrão) inteiro. */
+  unitId?: string;
+  groupId?: string;
+  /** Alvo de captura (unidade marcada como captureTarget no campo adversário). */
+  targetUnitId: string;
+}
+
 export type BattleAction =
-  DeployAction | SupportAction | OrderAction | RepositionAction | SeparateAction;
+  DeployAction | SupportAction | OrderAction | RepositionAction | SeparateAction | CaptureAction;

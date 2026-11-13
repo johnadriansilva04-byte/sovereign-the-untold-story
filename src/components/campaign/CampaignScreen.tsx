@@ -438,7 +438,8 @@ function VerdictScreen({
 
       {result.prizeCardWon && (
         <p className="font-mono text-[11px] uppercase text-ai">
-          Carta-prêmio capturada: <span className="text-foreground">{cardName(result.prizeCardWon)}</span>
+          Carta-prêmio capturada:{" "}
+          <span className="text-foreground">{cardName(result.prizeCardWon)}</span>
         </p>
       )}
       {won && (result.capturedCards?.length ?? 0) > 0 && (
@@ -649,7 +650,7 @@ function CampaignOverview({
           <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             {mission?.terrain} · {Math.round((mission?.duration ?? 0) / 60)} min
           </span>
-          <span className="line-clamp-3 max-w-2xl font-serif text-sm italic text-foreground/85 [@media(max-height:560px)]:line-clamp-2">
+          <span className="line-clamp-2 max-w-2xl shrink-0 font-serif text-sm italic text-foreground/85">
             {currentMeta.intro}
           </span>
           {decision && (
@@ -721,8 +722,8 @@ function CampaignBriefing({
   const dirty = deck.length !== savedDeck.length || deck.some((c, i) => savedDeck[i] !== c);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-3 px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-2.5 [@media(max-height:560px)]:pb-1.5">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-2 overflow-hidden px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-2 [@media(max-height:560px)]:pb-1.5">
         <div className="min-w-0">
           <p className="label-mono text-primary">
             {act} · Capítulo {number}
@@ -739,13 +740,13 @@ function CampaignBriefing({
       </div>
 
       {/* Texto do briefing — limitado em altura para nunca empurrar a tela */}
-      <p className="line-clamp-3 max-w-3xl font-serif text-sm italic leading-snug text-foreground/85 [@media(max-height:560px)]:line-clamp-2 [@media(max-height:560px)]:text-xs">
+      <p className="line-clamp-2 max-w-3xl shrink-0 font-serif text-sm italic leading-snug text-foreground/85 [@media(max-height:560px)]:text-xs">
         {intro}
       </p>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1fr_320px] [@media(max-height:560px)]:gap-2">
-        <section className="hud-panel hud-corners flex min-h-0 flex-col p-3 [@media(max-height:560px)]:p-2">
-          <div className="flex items-center justify-between">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3 [@media(max-height:560px)]:gap-1.5">
+        <section className="hud-panel hud-corners flex min-h-0 flex-1 flex-col p-3 [@media(max-height:560px)]:p-2">
+          <div className="flex shrink-0 items-center justify-between">
             <p className="label-mono">Cartas desta operação</p>
             <span className={cn("font-mono text-[11px]", full ? "text-fact" : "text-destructive")}>
               {deck.length}/8
@@ -784,8 +785,8 @@ function CampaignBriefing({
           </div>
         </section>
 
-        <div className="flex min-h-0 flex-col gap-2 [@media(max-height:560px)]:gap-1.5">
-          <div className="hud-panel hud-corners p-3 [@media(max-height:560px)]:p-2">
+        <aside className="flex min-h-0 w-full shrink-0 flex-col gap-1.5 lg:w-[300px] lg:gap-2">
+          <div className="hud-panel hud-corners shrink-0 p-2.5 [@media(max-height:560px)]:p-2">
             <p className="label-mono mb-1.5">Sequência de lançamento</p>
             <div className="flex flex-wrap gap-1">
               {deck.map((id, i) => (
@@ -806,26 +807,29 @@ function CampaignBriefing({
               ))}
             </div>
           </div>
-          <button
-            onClick={onOpenCollection}
-            className="border border-border px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary [@media(max-height:560px)]:py-1.5"
-          >
-            Abrir coleção & ferramentas ›
-          </button>
-          <button
-            disabled={!dirty || !full}
-            onClick={onSaveDeck}
-            className={cn(
-              "border px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] transition [@media(max-height:560px)]:py-1.5",
-              dirty && full
-                ? "border-primary text-primary hover:bg-accent"
-                : "cursor-not-allowed border-border text-muted-foreground/50",
-            )}
-          >
-            Salvar como meu baralho
-          </button>
 
-          <div className="mt-auto flex flex-col gap-2 [@media(max-height:560px)]:gap-1.5">
+          <div className="flex shrink-0 gap-1.5">
+            <button
+              onClick={onOpenCollection}
+              className="flex-1 border border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground transition hover:border-primary hover:text-primary [@media(max-height:560px)]:py-1.5"
+            >
+              Coleção ›
+            </button>
+            <button
+              disabled={!dirty || !full}
+              onClick={onSaveDeck}
+              className={cn(
+                "flex-1 border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] transition [@media(max-height:560px)]:py-1.5",
+                dirty && full
+                  ? "border-primary text-primary hover:bg-accent"
+                  : "cursor-not-allowed border-border text-muted-foreground/50",
+              )}
+            >
+              Salvar baralho
+            </button>
+          </div>
+
+          <div className="mt-auto flex shrink-0 flex-col gap-1.5 lg:gap-2">
             <button
               disabled={!full}
               onClick={onStart}
@@ -845,7 +849,7 @@ function CampaignBriefing({
               Voltar
             </button>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );
