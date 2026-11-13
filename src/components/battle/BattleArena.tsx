@@ -1640,6 +1640,11 @@ function UnitGlyph({
   // jogador enxergar a diferença entre fuzileiro, tanque e drone à primeira vista.
   const scale = MODEL_SCALE[unit.model] ?? 1;
   const r = unit.radius * scale;
+  // Corpo na diagonal FIXA (leitura isométrica). As peças com TORRE (canhão, tanque,
+  // lançador…) recebem um giro LOCAL = mira − base, então a torre segue o alvo enquanto
+  // o casco permanece na diagonal. Ambos os ângulos no espaço de tela.
+  const bodyDeg = UNIT_DIAGONAL_SCREEN_DEG + (portrait ? 90 : 0);
+  const turretDeg = TURRET_MODELS.has(unit.model) ? (unit.aim * 180) / Math.PI - bodyDeg : 0;
   return (
     <g
       pointerEvents="none"
@@ -1685,12 +1690,8 @@ function UnitGlyph({
           opacity={0.85}
         />
       )}
-      <g
-        transform={`translate(${unit.x} ${y}) rotate(${
-          UNIT_DIAGONAL_SCREEN_DEG + (portrait ? 90 : 0)
-        }) scale(${scale})`}
-      >
-        {unitModel(unit.model, color, selected)}
+      <g transform={`translate(${unit.x} ${y}) rotate(${bodyDeg}) scale(${scale})`}>
+        {unitModel(unit.model, color, selected, turretDeg)}
       </g>
       {unit.smoke > 0 && (
         <circle
@@ -1828,12 +1829,34 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
 // (que gira o campo 90° em retrato) para a diagonal sair igual em qualquer aparelho.
 const UNIT_DIAGONAL_SCREEN_DEG = -45;
 
+// Modelos com TORRE/cano orientável: o casco fica na diagonal fixa e só a peça superior
+// gira para o alvo (giro local = mira − base). São as peças de tiro direto que precisam
+// "apontar" — infantaria já mira pelo próprio corpo; morteiro é arco fixo.
+const TURRET_MODELS = new Set<BattleUnit["model"]>([
+  "canhao",
+  "artilharia-pesada",
+  "tanque",
+  "caca-tanques",
+  "aa",
+]);
+
 // Desenha o modelo da unidade centrado na origem, com o "nariz" apontando para +x.
-function unitModel(model: BattleUnit["model"], color: string, selected: boolean): ReactNode {
+function unitModel(
+  model: BattleUnit["model"],
+  color: string,
+  selected: boolean,
+  turretDeg = 0,
+): ReactNode {
   const outline = selected ? "var(--primary)" : "oklch(0 0 0 / 0.5)";
   const sw = selected ? 0.5 : 0.28;
   const body = (children: ReactNode) => (
     <g stroke={outline} strokeWidth={sw}>
+      {children}
+    </g>
+  );
+  // Peça superior (torre + cano) que gira para o alvo dentro do corpo diagonal.
+  const turret = (children: ReactNode) => (
+    <g transform={`rotate(${turretDeg.toFixed(2)})`} stroke={outline} strokeWidth={sw}>
       {children}
     </g>
   );
@@ -1928,8 +1951,12 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <rect x="-1.7" y="-0.7" width="2.2" height="1.4" rx="0.18" fill={color} />
           <circle cx="-1.45" cy="-1.15" r="0.55" fill={dark} stroke={steel} strokeWidth="0.14" />
           <circle cx="-1.45" cy="1.15" r="0.55" fill={dark} stroke={steel} strokeWidth="0.14" />
-          <rect x="0.6" y="-0.28" width="3" height="0.56" rx="0.1" fill={dark} />
-          <rect x="3.5" y="-0.42" width="0.4" height="0.84" rx="0.08" fill={steel} />
+          {turret(
+            <>
+              <rect x="0.6" y="-0.28" width="3" height="0.56" rx="0.1" fill={dark} />
+              <rect x="3.5" y="-0.42" width="0.4" height="0.84" rx="0.08" fill={steel} />
+            </>,
+          )}
         </>,
       );
     case "artilharia-pesada":
@@ -1939,9 +1966,13 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           <rect x="-2" y="-0.9" width="2.8" height="1.8" rx="0.2" fill={color} />
           <circle cx="-1.8" cy="-1.5" r="0.62" fill={dark} stroke={steel} strokeWidth="0.14" />
           <circle cx="-1.8" cy="1.5" r="0.62" fill={dark} stroke={steel} strokeWidth="0.14" />
-          <circle cx="0.1" cy="0" r="0.75" fill={steel} />
-          <rect x="0.8" y="-0.34" width="4" height="0.68" rx="0.12" fill={dark} />
-          <rect x="4.6" y="-0.52" width="0.5" height="1.04" rx="0.1" fill={steel} />
+          {turret(
+            <>
+              <circle cx="0.1" cy="0" r="0.75" fill={steel} />
+              <rect x="0.8" y="-0.34" width="4" height="0.68" rx="0.12" fill={dark} />
+              <rect x="4.6" y="-0.52" width="0.5" height="1.04" rx="0.1" fill={steel} />
+            </>,
+          )}
         </>,
       );
     case "lmf":
@@ -1995,11 +2026,15 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           {/* casco */}
           <rect x="-2.35" y="-1.2" width="4.5" height="2.4" rx="0.28" fill={color} />
           <path d="M2.15 -1.2 L2.9 0 L2.15 1.2 Z" fill={color} />
-          {/* torre + canhão */}
-          <circle cx="-0.1" cy="0" r="1.05" fill={steel} />
-          <circle cx="-0.1" cy="0" r="0.66" fill={color} />
-          <rect x="0.7" y="-0.26" width="3.7" height="0.52" rx="0.1" fill={dark} />
-          <rect x="4.15" y="-0.4" width="0.5" height="0.8" rx="0.1" fill={steel} />
+          {/* torre + canhão (gira para o alvo) */}
+          {turret(
+            <>
+              <circle cx="-0.1" cy="0" r="1.05" fill={steel} />
+              <circle cx="-0.1" cy="0" r="0.66" fill={color} />
+              <rect x="0.7" y="-0.26" width="3.7" height="0.52" rx="0.1" fill={dark} />
+              <rect x="4.15" y="-0.4" width="0.5" height="0.8" rx="0.1" fill={steel} />
+            </>,
+          )}
         </>,
       );
     case "vbld":
@@ -2090,8 +2125,12 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
         <>
           <rect x="-1.5" y="-1.05" width="2.2" height="2.1" rx="0.28" fill={steel} />
           <rect x="-1.3" y="-0.7" width="1.8" height="1.4" rx="0.16" fill={color} />
-          <line x1="0.5" y1="-0.42" x2="2.8" y2="-0.72" stroke={dark} strokeWidth="0.34" />
-          <line x1="0.5" y1="0.42" x2="2.8" y2="0.72" stroke={dark} strokeWidth="0.34" />
+          {turret(
+            <>
+              <line x1="0.5" y1="-0.42" x2="2.8" y2="-0.72" stroke={dark} strokeWidth="0.34" />
+              <line x1="0.5" y1="0.42" x2="2.8" y2="0.72" stroke={dark} strokeWidth="0.34" />
+            </>,
+          )}
         </>,
       );
     case "fortificacao":
@@ -2142,10 +2181,14 @@ function unitModel(model: BattleUnit["model"], color: string, selected: boolean)
           {/* casco baixo e longo */}
           <rect x="-1.9" y="-1" width="3.8" height="2" rx="0.28" fill={steel} />
           <rect x="-1.5" y="-0.7" width="3" height="1.4" rx="0.18" fill={color} />
-          {/* torre baixa com canhão muito longo */}
-          <rect x="-0.7" y="-0.6" width="1.7" height="1.2" rx="0.2" fill={steel} />
-          <rect x="0.9" y="-0.18" width="3.1" height="0.36" rx="0.08" fill={dark} />
-          <rect x="3.9" y="-0.26" width="0.5" height="0.52" rx="0.08" fill={steel} />
+          {/* torre baixa com canhão muito longo (gira para o alvo) */}
+          {turret(
+            <>
+              <rect x="-0.7" y="-0.6" width="1.7" height="1.2" rx="0.2" fill={steel} />
+              <rect x="0.9" y="-0.18" width="3.1" height="0.36" rx="0.08" fill={dark} />
+              <rect x="3.9" y="-0.26" width="0.5" height="0.52" rx="0.08" fill={steel} />
+            </>,
+          )}
         </>,
       );
     case "chanceler":
