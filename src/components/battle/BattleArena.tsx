@@ -1486,15 +1486,16 @@ function TerritoryGlyph({
           DISPUTA
         </text>
       )}
-      {/* NOME do território no centroide da região (leitura de mapa). */}
+      {/* NOME do território no centroide da região (leitura de mapa). Branco NEUTRO
+          (chroma 0): `oklch(1 1 1)` tem chroma 1 e é rosa saturado, não branco. */}
       <text
         x={c.x}
         y={c.y}
         textAnchor="middle"
         fontSize="1.7"
         fontFamily="var(--font-mono)"
-        fill={owned ? color : "oklch(1 1 1 / 0.55)"}
-        fillOpacity="0.85"
+        fill={owned ? color : "oklch(1 0 0)"}
+        opacity={owned ? 0.85 : 0.55}
         fontWeight={600}
         transform={uprightText(portrait, c.x, c.y)}
       >
@@ -1670,7 +1671,10 @@ function UnitGlyph({
           opacity={0.95}
         />
       )}
-      {unit.level > 1 && (
+      {/* Insígnia de veterania: só nas tropas PRÓPRIAS. No adversário o aro virava
+          ruído em volta de cada inimigo e poluía a leitura do campo — a patente do
+          inimigo é informação do relatório, não do teatro. */}
+      {unit.level > 1 && unit.side === "blue" && (
         <circle
           cx={unit.x}
           cy={y}

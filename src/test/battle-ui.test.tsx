@@ -309,6 +309,82 @@ describe("interface da batalha", () => {
     expect(svg.querySelector('[data-side="red"]')).toBeTruthy();
   });
 
+  it("não desenha o aro de veterania em unidades inimigas (só nas próprias)", () => {
+    const config = buildBattleConfig({
+      nation: defaultNation,
+      mission: missionById("m-apagao"),
+      deck: startingDeck,
+      commander: commanders[0]!,
+      doctrine: commanders[0]!.doctrine,
+      seed: 11,
+    });
+    const state = createBattle(config);
+    // Uma unidade de cada lado com nível > 1 (a patente que desenhava o aro).
+    const ally = state.blue.units.find((u) => u.alive)!;
+    const enemy = state.red.units.find((u) => u.alive)!;
+    ally.level = 5;
+    enemy.level = 5;
+    const { container } = render(
+      <BattleArena
+        state={state}
+        selectedUnitId={null}
+        onSelectUnit={vi.fn()}
+        onMoveSelected={vi.fn()}
+        operationActive={false}
+        baseLabels={{}}
+        originId={null}
+        destination={null}
+        onPickOrigin={vi.fn()}
+        onPickDestination={vi.fn()}
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    const ringOn = (side: string) => {
+      const glyph = svg.querySelector(`[data-side="${side}"]`);
+      if (!glyph) return false;
+      return [...glyph.querySelectorAll("circle")].some((c) => c.getAttribute("stroke-width") === "0.5");
+    };
+    // Nível 5 → strokeWidth 0.3 + min(0.5, 5*0.04)=0.2 → 0.5. O aro só existe no azul.
+    expect(ringOn("blue")).toBe(true);
+    expect(ringOn("red")).toBe(false);
+  });
+
+  it("rótulo de território neutro usa branco SEM chroma (sem franja magenta)", () => {
+    const config = buildBattleConfig({
+      nation: defaultNation,
+      mission: missionById("m-apagao"),
+      deck: startingDeck,
+      commander: commanders[0]!,
+      doctrine: commanders[0]!.doctrine,
+      seed: 13,
+    });
+    const state = createBattle(config);
+    const { container } = render(
+      <BattleArena
+        state={state}
+        selectedUnitId={null}
+        onSelectUnit={vi.fn()}
+        onMoveSelected={vi.fn()}
+        operationActive={false}
+        baseLabels={{}}
+        originId={null}
+        destination={null}
+        onPickOrigin={vi.fn()}
+        onPickDestination={vi.fn()}
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    // Um território neutro tem o nome desenhado em branco NEUTRO: `oklch(1 1 1)`
+    // (chroma 1) era rosa saturado e produzia o artefato magenta no campo.
+    const labels = [...svg.querySelectorAll("text")].filter((t) =>
+      /^[A-ZÀ-Ú ]{3,}$/.test((t.textContent ?? "").trim()),
+    );
+    expect(labels.length).toBeGreaterThan(0);
+    for (const l of labels) {
+      expect(l.getAttribute("fill") ?? "").not.toMatch(/oklch\(1 1 1/);
+    }
+  });
+
   it("desenha o teatro com câmera em perspectiva alinhada, sem mudar a lógica", () => {
     const config = buildBattleConfig({
       nation: defaultNation,

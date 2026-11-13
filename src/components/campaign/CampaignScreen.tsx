@@ -101,17 +101,22 @@ export function CampaignScreen() {
     });
   }, [view, profile, pendingDeck]);
 
-  // Entrar num capítulo: com dilema, passa pela decisão; sem dilema, direto ao briefing.
-  const enterChapter = (chapterId: string) => {
-    setView(
-      decisionFor(chapterId) ? { kind: "dilemma", chapterId } : { kind: "briefing", chapterId },
-    );
-  };
-
   // Abre o briefing com o baralho ativo como ponto de partida.
   const openBriefing = (chapterId: string) => {
     setPendingDeck(effectiveDeck(profile));
     setView({ kind: "briefing", chapterId });
+  };
+
+  // Caminho ÚNICO para começar um capítulo: se ele tem dilema ainda não resolvido,
+  // passa pela decisão; caso contrário (sem dilema ou já decidido) vai direto ao
+  // briefing. Todos os botões que iniciam uma missão passam por aqui, então a tela
+  // de escolha de cartas nunca aparece duas vezes na mesma ida ao capítulo.
+  const enterChapter = (chapterId: string) => {
+    if (decisionFor(chapterId) && !profile.decisions[chapterId]) {
+      setView({ kind: "dilemma", chapterId });
+      return;
+    }
+    openBriefing(chapterId);
   };
 
   if (view.kind === "collection") {
@@ -310,7 +315,7 @@ export function CampaignScreen() {
               </button>
               {nextMeta && (
                 <button
-                  onClick={() => openBriefing(nextMeta.id)}
+                  onClick={() => enterChapter(nextMeta.id)}
                   className="border border-primary px-5 py-2 font-mono text-xs uppercase tracking-[0.2em] text-primary transition hover:bg-primary/10"
                 >
                   Escolher cartas
