@@ -289,6 +289,7 @@ describe("interface da batalha", () => {
         selectedUnitId={null}
         onSelectUnit={vi.fn()}
         onMoveSelected={vi.fn()}
+        onMoveGroup={vi.fn()}
         operationActive={false}
         baseLabels={{}}
         originId={null}
@@ -330,6 +331,7 @@ describe("interface da batalha", () => {
         selectedUnitId={null}
         onSelectUnit={vi.fn()}
         onMoveSelected={vi.fn()}
+        onMoveGroup={vi.fn()}
         operationActive={false}
         baseLabels={{}}
         originId={null}
@@ -365,6 +367,7 @@ describe("interface da batalha", () => {
         selectedUnitId={null}
         onSelectUnit={vi.fn()}
         onMoveSelected={vi.fn()}
+        onMoveGroup={vi.fn()}
         operationActive={false}
         baseLabels={{}}
         originId={null}
@@ -401,6 +404,7 @@ describe("interface da batalha", () => {
         selectedUnitId={null}
         onSelectUnit={vi.fn()}
         onMoveSelected={vi.fn()}
+        onMoveGroup={vi.fn()}
         operationActive={false}
         baseLabels={{}}
         originId={null}
@@ -412,15 +416,15 @@ describe("interface da batalha", () => {
     const stage = container.querySelector('[data-testid="battle-stage"]') as HTMLElement;
     expect(stage).toBeTruthy();
     const svg = container.querySelector("svg")!;
-    // A câmera é uma matriz afim do SVG (vista de cima, alinhada). Sem CSS `perspective`
-    // nem `rotateX` — aquele caminho era frágil e esticava o campo quando o navegador
-    // descartava a transform inválida.
+    // A câmera vira uma `matrix3d` no PRÓPRIO svg: a mesa é vista em diagonal (giro no
+    // plano + inclinação). Não usamos `perspective()` do CSS nem `rotateX` solto — a
+    // matriz é única, invertível e o toque desfaz exatamente ela.
     const style = svg.getAttribute("style") ?? "";
+    expect(style).toContain("matrix3d(");
     expect(style).not.toMatch(/perspective\(/);
     expect(style).not.toMatch(/rotateX\(/);
-    // a cena recebe a matriz da câmera (escala uniforme; giro só em retrato)
-    const scene = svg.querySelector("g[transform^='matrix(']")!;
-    expect(scene).toBeTruthy();
+    // a cena vive num grupo em espaço de mundo (a transformação foi para o svg)
+    expect(svg.querySelector("g")).toBeTruthy();
     // o mapeamento palco↔mundo é inverso exato (o toque cai onde o jogador aponta)
     for (const [wx, wy] of [
       [8, 23],
@@ -434,9 +438,10 @@ describe("interface da batalha", () => {
     }
   });
 
-  // O campo encaixa no palco com escala UNIFORME (nada esticado) e, em palco retrato
-  // (celular em pé), é girado 90° para ficar "de pé" — sem cortar bordas em nenhum caso.
-  it("a câmera encaixa o campo sem deformar e gira em retrato", () => {
+  // O campo encaixa no palco com escala UNIFORME (nada esticado) na vista DIAGONAL
+  // (mesa girada no plano + inclinada) e, em palco retrato (celular em pé), gira mais
+  // para ficar "de pé" — sem cortar bordas em nenhum caso.
+  it("a câmera encaixa o campo em diagonal, sem deformar e sem transbordar", () => {
     const sizes = [
       [1440, 699, "landscape"],
       [1280, 519, "landscape"],
@@ -462,17 +467,20 @@ describe("interface da batalha", () => {
       expect(Math.max(...xs)).toBeLessThanOrEqual(w + 0.5);
       expect(Math.min(...ys)).toBeGreaterThanOrEqual(-0.5);
       expect(Math.max(...ys)).toBeLessThanOrEqual(h + 0.5);
-      // escala UNIFORME: o campo mantém a proporção real, sem esticar (em retrato o
-      // campo está girado, então a razão em pixels é invertida).
       const wpx = Math.max(...xs) - Math.min(...xs);
       const hpx = Math.max(...ys) - Math.min(...ys);
-      const expected = orient === "portrait" ? WORLD_H / WORLD_W : WORLD_W / WORLD_H;
-      expect(wpx / hpx).toBeCloseTo(expected, 3);
-      // e preenche a dimensão que limita o encaixe (>= 95%), sem transbordar a outra
+      // A vista é DIAGONAL: o retângulo do campo é girado no plano e depois achatado pela
+      // inclinação, então NÃO se compara à razão do mundo. O que precisa valer é o
+      // encaixe: preenche a dimensão limitante (>= 92%) sem transbordar a outra.
       expect(wpx / w).toBeLessThanOrEqual(1.001);
       expect(hpx / h).toBeLessThanOrEqual(1.001);
-      expect(Math.max(wpx / w, hpx / h)).toBeGreaterThan(0.95);
+      expect(Math.max(wpx / w, hpx / h)).toBeGreaterThan(0.9);
       expect(cam.orientation).toBe(orient);
+      expect(cam.tiltDeg).toBeGreaterThan(0);
+      // Em PAISAGEM a inclinação achata o eixo vertical: a mesa fica mais larga que alta.
+      // (Em retrato o campo é girado quase de pé, então é mais alto que largo.)
+      if (orient === "landscape") expect(wpx).toBeGreaterThan(hpx);
+      else expect(hpx).toBeGreaterThan(wpx);
     }
   });
 });

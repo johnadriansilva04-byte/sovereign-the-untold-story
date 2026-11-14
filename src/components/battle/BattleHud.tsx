@@ -199,9 +199,15 @@ export function HandBar({
 export function OrderBar({
   onOrder,
   hasSelection,
+  captureTarget,
+  onCapture,
 }: {
   onOrder: (o: Order) => void;
   hasSelection: boolean;
+  /** Alvo de captura disponível em campo (chanceler adversário ou a unidade da carta
+   *  nova). Quando existe, o botão CAPTURAR aparece e manda a tropa selecionada prender. */
+  captureTarget?: { id: string; name: string } | null;
+  onCapture?: (targetUnitId: string) => void;
 }) {
   const orders: { o: Order; label: string }[] = [
     { o: "avancar", label: "Avançar" },
@@ -221,6 +227,15 @@ export function OrderBar({
           {x.label}
         </button>
       ))}
+      {captureTarget && onCapture && (
+        <button
+          data-testid="order-capture"
+          onClick={() => onCapture(captureTarget.id)}
+          className="animate-pulse border border-destructive px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-destructive transition hover:bg-destructive/15"
+        >
+          Capturar {captureTarget.name}
+        </button>
+      )}
     </div>
   );
 }

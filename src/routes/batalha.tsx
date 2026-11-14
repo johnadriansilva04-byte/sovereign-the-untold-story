@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { GameShell, pageHead } from "@/components/game/shell";
 import { BattleScreen } from "@/components/battle/BattleScreen";
@@ -27,9 +27,16 @@ export const Route = createFileRoute("/batalha")({
 
 function Page() {
   const { missao, dificuldade } = Route.useSearch();
+  const navigate = useNavigate();
+  // Tela cheia de verdade: sem cabeçalho de navegação, só o teatro. A saída é o botão
+  // "Sair" dentro da própria batalha, que devolve o jogador ao mapa.
   return (
-    <GameShell full>
-      <BattleScreen initialMissionId={missao} initialDifficulty={dificuldade} />
+    <GameShell full bare>
+      <BattleScreen
+        initialMissionId={missao}
+        initialDifficulty={dificuldade}
+        onExit={() => void navigate({ to: "/mapa" })}
+      />
     </GameShell>
   );
 }

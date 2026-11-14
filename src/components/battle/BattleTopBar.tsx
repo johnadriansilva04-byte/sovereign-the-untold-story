@@ -14,7 +14,7 @@ export function BattleTopBar({ state }: { state: BattleState }) {
   const pressure = state.phase === "pressao";
 
   return (
-    <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-border bg-background/95 px-2 py-1.5 sm:gap-3 sm:px-4">
+    <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 py-1.5 sm:gap-3 sm:px-4">
       <SideBadge state={state} side="blue" align="left" />
 
       <div className="text-center">

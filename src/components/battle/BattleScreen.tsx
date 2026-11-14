@@ -186,6 +186,19 @@ export function LiveBattle({
   const { state, result } = battle;
   // Som de combate ligado aos eventos REAIS do motor (explosão/impacto/disparo).
   const [soundOn, setSoundOn] = useState(() => !isAudioMuted());
+  // Tela cheia REAL (Fullscreen API): o botão expande o documento, para a arena tomar o
+  // monitor inteiro. Se o navegador bloquear, o clique simplesmente não faz nada.
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (typeof document === "undefined") return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen?.();
+  }, []);
   useBattleAudio(state, soundOn && !battle.paused);
   // Seleção da OPERAÇÃO: quantas unidades de cada carta (1 clique = +1). O envio é
   // em lote, de uma base escolhida para um destino clicado. Nada de mão rotativa.
@@ -407,6 +420,13 @@ export function LiveBattle({
     [battle],
   );
 
+  const handleMoveGroup = useCallback(
+    (groupId: string, x: number, y: number, target?: DeployTarget) => {
+      battle.moveGroup(groupId, x, y, target);
+    },
+    [battle],
+  );
+
   // Clicar/tocar no mapa com cartas na mão = DEFINIR DESTINO E ENVIAR NA HORA. Sem
   // etapa de confirmação: o clique no campo já manda a tropa marchar (era o "clico no
   // mapa e não acontece nada / tenho que clicar em Enviar tropa").
@@ -422,6 +442,19 @@ export function LiveBattle({
   const handleOrder = useCallback(
     (order: Order) => {
       battle.issueOrder(order, selectedUnitId ?? undefined);
+    },
+    [battle, selectedUnitId],
+  );
+
+  // Alvo de captura visível em campo: o chanceler adversário (ou a unidade que porta a
+  // carta nova). É o objetivo decisivo — prendê-lo e conduzi-lo à base vence a guerra.
+  const captureTargetUnit = state.red.units.find((u) => u.alive && u.captureTarget) ?? null;
+
+  const handleCapture = useCallback(
+    (targetUnitId: string) => {
+      const sel = selectedUnitId ? { unitId: selectedUnitId } : {};
+      const ok = battle.capture(sel, targetUnitId);
+      if (!ok) toast.error("Selecione uma tropa capaz de prender (assalto ou fuzileiros).");
     },
     [battle, selectedUnitId],
   );
@@ -442,22 +475,6 @@ export function LiveBattle({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Barra superior compacta: relógio, bandeiras e vida da base */}
-      <div className="flex items-stretch">
-        {onExit && (
-          <button
-            onClick={() => setConfirmExit(true)}
-            aria-label="Abandonar operação"
-            className="shrink-0 border-b border-r border-border bg-background/95 px-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:text-destructive"
-          >
-            ✕ Sair
-          </button>
-        )}
-        <div className="min-w-0 flex-1">
-          <BattleTopBar state={state} />
-        </div>
-      </div>
-
       {/* Diálogo de confirmação de saída */}
       <Dialog open={confirmExit} onOpenChange={setConfirmExit}>
         <DialogContent className="max-w-sm border-destructive/40 bg-background">
@@ -478,7 +495,8 @@ export function LiveBattle({
         </DialogContent>
       </Dialog>
 
-      {/* Teatro de operações: ocupa TODO o espaço restante, sem rolagem */}
+      {/* Teatro de operações: ocupa TODA a tela (tela cheia), sem rolagem. Só as cartas
+          ficam por baixo, num dock enxuto. */}
       <div
         ref={stageRef}
         className="relative flex min-h-0 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_center,oklch(0.2_0.02_120),oklch(0.12_0.01_120))]"
@@ -488,6 +506,7 @@ export function LiveBattle({
           selectedUnitId={selectedUnitId}
           onSelectUnit={setSelectedUnitId}
           onMoveSelected={handleMoveSelected}
+          onMoveGroup={handleMoveGroup}
           operationActive={operationActive}
           baseLabels={baseLabels}
           originId={originId}
@@ -496,47 +515,26 @@ export function LiveBattle({
           onPickDestination={handlePickDestination}
         />
 
-        {/* ANALÓGICO do chanceler: só aparece com o herói em campo. No PC as setas fazem
-            o mesmo; no celular este disco é o volante. */}
-        {blueHero && !operationActive && (
-          <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-            <div className="pointer-events-auto">
-              <BattleJoystick onChange={drive} />
+        {/* HUD SOBREPOSTO (tela cheia): relógio/bases e comandos flutuam sobre a arena, que
+            ocupa a tela inteira. Só as cartas ficam no dock de baixo. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
+          <div className="pointer-events-auto border-b border-border/60 bg-background/75 backdrop-blur-sm">
+            <div className="flex items-stretch">
+              {onExit && (
+                <button
+                  onClick={() => setConfirmExit(true)}
+                  aria-label="Abandonar operação"
+                  className="shrink-0 border-r border-border/60 px-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:text-destructive"
+                >
+                  ✕ Sair
+                </button>
+              )}
+              <div className="min-w-0 flex-1">
+                <BattleTopBar state={state} />
+              </div>
             </div>
           </div>
-        )}
-
-        {/* Aviso de comandante LLM, sobreposto no topo do campo */}
-        {battle.llmActive && (
-          <p className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 border border-ai/40 bg-background/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-ai">
-            Comandante IA (LLM) ativo
-          </p>
-        )}
-
-        {/* Inspeção da unidade selecionada: agora é uma faixa no dock, abaixo do
-            teatro — não sobrepõe o campo nem abre painel de texto sobre ele. */}
-
-        {/* Relatório de batalha: log tático + leitura da IA, sob demanda */}
-        <Dialog open={showReport} onOpenChange={setShowReport}>
-          <DialogContent className="max-h-[80vh] max-w-lg overflow-hidden border-primary/40 bg-background">
-            <DialogHeader>
-              <DialogTitle className="text-left">
-                <span className="label-mono text-primary">Relatório de batalha</span>
-              </DialogTitle>
-            </DialogHeader>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-              <ObjectiveStrip state={state} />
-              <AiCommanderPanel state={state} />
-              <BattleLogPanel state={state} />
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Dock de controle: relógio/pausa + energia + cartas + ordens, sem rolagem */}
-      <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur">
-        <div className="flex w-full flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-b from-background/70 to-transparent px-2 py-1">
             <CommandBar side={state.blue} compact />
             <FrontLineScore state={state} />
             <div className="flex items-center gap-1.5">
@@ -581,9 +579,63 @@ export function LiveBattle({
                   </button>
                 ))}
               </div>
+              <GameButton
+                variant="ghost"
+                aria-label={fullscreen ? "Sair da tela cheia" : "Tela cheia"}
+                onClick={toggleFullscreen}
+              >
+                {fullscreen ? "⤡" : "⛶"}
+              </GameButton>
             </div>
           </div>
+        </div>
 
+        {/* ANALÓGICO do chanceler: só aparece com o herói em campo. No PC as setas fazem
+            o mesmo; no celular este disco é o volante. */}
+        {blueHero && !operationActive && (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10">
+            <div className="pointer-events-auto">
+              <BattleJoystick onChange={drive} />
+            </div>
+          </div>
+        )}
+
+        {/* Aviso de comandante LLM, sobreposto no topo do campo */}
+        {battle.llmActive && (
+          <p className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 border border-ai/40 bg-background/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-ai">
+            Comandante IA (LLM) ativo
+          </p>
+        )}
+
+        {/* ALERTA CRÍTICO: o chanceler é a peça decisiva. Morto ou capturado, a guerra
+            acaba — para os dois lados. A faixa fica vermelha e pulsando sobre o campo
+            para o jogador não perder o momento que decide a partida. */}
+        <HeroAlert state={state} />
+
+        {/* Inspeção da unidade selecionada: agora é uma faixa no dock, abaixo do
+            teatro — não sobrepõe o campo nem abre painel de texto sobre ele. */}
+
+        {/* Relatório de batalha: log tático + leitura da IA, sob demanda */}
+        <Dialog open={showReport} onOpenChange={setShowReport}>
+          <DialogContent className="max-h-[80vh] max-w-lg overflow-hidden border-primary/40 bg-background">
+            <DialogHeader>
+              <DialogTitle className="text-left">
+                <span className="label-mono text-primary">Relatório de batalha</span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              <ObjectiveStrip state={state} />
+              <AiCommanderPanel state={state} />
+              <BattleLogPanel state={state} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Dock de controle: SÓ as cartas e as ordens — o relógio/energia já vivem no HUD
+          sobreposto. Enxuto para a arena tomar a tela de fora a fora. */}
+      <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur">
+        <div className="flex w-full flex-col gap-1.5">
           <HandBar
             side={state.blue}
             counts={counts}
@@ -607,7 +659,14 @@ export function LiveBattle({
           />
 
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-            <OrderBar onOrder={handleOrder} hasSelection={Boolean(selectedUnitId)} />
+            <OrderBar
+              onOrder={handleOrder}
+              hasSelection={Boolean(selectedUnitId)}
+              captureTarget={
+                captureTargetUnit ? { id: captureTargetUnit.id, name: "chanceler" } : null
+              }
+              onCapture={handleCapture}
+            />
             {selectedUnit ? (
               <SelectedUnitStrip unit={selectedUnit} />
             ) : (
@@ -736,10 +795,63 @@ function FrontLineScore({ state }: { state: BattleState }) {
   );
 }
 
+// ALERTA CRÍTICO do campo: anuncia a sorte dos chanceleres. A morte de QUALQUER um
+// dos dois encerra a partida; a captura do SEU chanceler rumo à base adversária também.
+// A faixa é interativa (toque para recolher) e fica no topo do teatro, em vermelho.
+function HeroAlert({ state }: { state: BattleState }) {
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const alert = heroAlertFor(state);
+  if (!alert || dismissed === alert.key) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-1.5 z-20 flex justify-center px-2">
+      <button
+        type="button"
+        data-testid="hero-alert"
+        onClick={() => setDismissed(alert.key)}
+        className="pointer-events-auto flex max-w-md animate-pulse items-center gap-2 border border-destructive bg-destructive/15 px-3 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider text-destructive backdrop-blur transition hover:bg-destructive/25"
+      >
+        <span aria-hidden className="text-sm leading-none">
+          ☠
+        </span>
+        <span>{alert.text}</span>
+        <span aria-hidden className="ml-1 text-[9px] opacity-70">
+          ✕
+        </span>
+      </button>
+    </div>
+  );
+}
+
+// Regras de decisão do alerta (o alerta mais grave ganha):
+//  1. SEU chanceler morto → derrota consumada.
+//  2. Chanceler INIMIGO morto → vitória consumada.
+//  3. SEU chanceler preso e sendo levado à base adversária → derrota iminente.
+//  4. Chanceler INIMIGO preso rumo à sua base → vitória iminente.
+function heroAlertFor(state: BattleState): { key: string; text: string } | null {
+  const blue = state.heroes.blue;
+  const red = state.heroes.red;
+  const carFor = (captiveSide: "blue" | "red") =>
+    (state.prisonCars ?? []).find(
+      (c) => c.captiveSide === captiveSide && c.captiveKind === "chanceler" && !c.captured && !c.lost,
+    );
+  if (blue.state === "morto")
+    return { key: "blue-morto", text: "SEU CHANCELER MORREU — A GUERRA ESTÁ PERDIDA." };
+  if (red.state === "morto")
+    return { key: "red-morto", text: "CHANCELER INIMIGO ELIMINADO — A GUERRA ESTÁ VENCIDA." };
+  if (carFor("blue"))
+    return { key: "blue-preso", text: "SEU CHANCELER FOI CAPTURADO — SENDO LEVADO À BASE INIMIGA!" };
+  if (carFor("red"))
+    return { key: "red-preso", text: "CHANCELER INIMIGO CAPTURADO — CONDUZINDO-O À SUA BASE." };
+  if (blue.state === "preso")
+    return { key: "blue-cativo", text: "SEU CHANCELER ESTÁ CATIVO — RESGATE-O ANTES QUE O LEVEM." };
+  if (red.state === "preso")
+    return { key: "red-cativo", text: "CHANCELER INIMIGO CATIVO — CONDUZA-O À SUA BASE." };
+  return null;
+}
+
 function chapterIdFor(missionId: string): string {
   return missionToChapter[missionById(missionId).id] ?? "c1";
 }
-
 const missionToChapter: Record<string, string> = Object.fromEntries(
   Object.entries(chapterMission).map(([chapter, mission]) => [mission, chapter]),
 );

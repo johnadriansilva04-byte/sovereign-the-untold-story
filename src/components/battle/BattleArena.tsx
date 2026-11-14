@@ -13,6 +13,7 @@ import { polygonCentroid, polygonPath, voronoiRegions, type Polygon } from "@/ga
 
 import {
   cameraFor,
+  cameraMatrix3d,
   cameraScale,
   stageToWorld,
   uprightText,
@@ -42,6 +43,9 @@ interface Props {
   selectedUnitId: string | null;
   onSelectUnit: (id: string | null) => void;
   onMoveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => void;
+  /** Move a TROPA inteira (grupo) selecionada — o jogador clica em qualquer unidade do
+   *  grupo e o esquadrão todo recebe a ordem, sem separar em avulsos. */
+  onMoveGroup: (groupId: string, x: number, y: number, target?: DeployTarget) => void;
   /** Há uma operação de envio em curso (cartas selecionadas): o toque escolhe
    *  a base de origem ou o destino, em vez de selecionar/mover unidades. */
   operationActive: boolean;
@@ -57,6 +61,10 @@ interface Props {
 
 const ALLY = "var(--ally)";
 const ENEMY = "var(--enemy)";
+
+// Folga do chão além do campo: com a mesa inclinada, as beiradas entram na tela e o chão
+// precisa cobrir até o canto, senão aparece o fundo do teatro por baixo.
+const GROUND_PAD = 60;
 
 const sideColor = (s: Side): string => (s === "blue" ? ALLY : ENEMY);
 
@@ -225,6 +233,7 @@ export function BattleArena({
   selectedUnitId,
   onSelectUnit,
   onMoveSelected,
+  onMoveGroup,
   operationActive,
   baseLabels,
   originId,
@@ -236,6 +245,19 @@ export function BattleArena({
   const stageRef = useRef<HTMLDivElement | null>(null);
   // Tamanho de layout do palco: alimenta a câmera (encaixe uniforme + giro em retrato).
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
+  // TROPA SELECIONADA (grupo). O jogador clica numa unidade e toda a tropa do MESMO
+  // lançamento (o mesmo grupo) fica selecionada: um clique no mapa move o esquadrão
+  // inteiro, sem precisar repetir a ordem unidade a unidade. Selecionar uma unidade de
+  // outro lançamento troca a tropa ativa (Tropa A, depois Tropa B, ...).
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedUnitId) {
+      setSelectedGroup(null);
+      return;
+    }
+    const u = [...state.blue.units, ...state.red.units].find((x) => x.id === selectedUnitId);
+    setSelectedGroup(u?.groupId ?? null);
+  }, [selectedUnitId, state.blue.units, state.red.units]);
   useEffect(() => {
     const el = stageRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -250,7 +272,6 @@ export function BattleArena({
   const stageH = stageSize?.h ?? 540;
   const cam: Camera = cameraFor(stageW, stageH);
   // Em retrato a cena está girada; os rótulos de texto recebem +90° para ficarem em pé.
-  const portrait = cam.orientation === "portrait";
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
   // REGIÕES TERRITORIAIS: cada ponto de expansão vira uma ÁREA COMPLETA (polígono de
@@ -299,11 +320,11 @@ export function BattleArena({
       onPickDestination(coords.x, coords.y, pickTarget(coords.x, coords.y));
       return;
     }
-    // Sem operação: o clique sobre um inimigo manda a unidade SELECIONADA atacá-lo.
+    // Sem operação: o clique sobre um inimigo manda a TROPA selecionada atacá-lo.
     const enemyId = pickEnemyUnit(coords.x, coords.y);
     if (selectedUnitId && enemyId) {
       const enemy = units.find((u) => u.id === enemyId);
-      if (enemy) onMoveSelected(selectedUnitId, enemy.x, enemy.y, { unitId: enemyId });
+      if (enemy) issueMove(coords.x, coords.y, { unitId: enemyId });
       return;
     }
     // Clique sobre uma unidade ALIADA: seleciona-a (ou desmarca se já estava).
@@ -312,13 +333,25 @@ export function BattleArena({
       onSelectUnit(hitId === selectedUnitId ? null : hitId);
       return;
     }
-    // Com uma unidade selecionada, o clique no restante do teatro é uma ORDEM de
-    // movimento: ela marcha até o ponto (ou até a estrutura/território clicado).
+    // Com uma tropa selecionada, o clique no restante do teatro é uma ORDEM de
+    // movimento: o ESQUADRÃO inteiro marcha até o ponto (ou até o alvo clicado).
     if (selectedUnitId) {
-      onMoveSelected(selectedUnitId, coords.x, coords.y, pickTarget(coords.x, coords.y));
+      issueMove(coords.x, coords.y, pickTarget(coords.x, coords.y));
       return;
     }
     onSelectUnit(null);
+  };
+
+  // A ordem vai para a TROPA (grupo) quando ela tem mais de uma unidade; só cai para a
+  // unidade avulsa quando a seleção é de um combatente solto. Assim "Tropa A" e "Tropa
+  // B" (lançamentos diferentes) se movem como blocos independentes.
+  const issueMove = (x: number, y: number, target?: DeployTarget) => {
+    if (!selectedUnitId) return;
+    const groupSize = selectedGroup
+      ? state.blue.units.filter((u) => u.alive && u.groupId === selectedGroup).length
+      : 0;
+    if (selectedGroup && groupSize > 1) onMoveGroup(selectedGroup, x, y, target);
+    else onMoveSelected(selectedUnitId, x, y, target);
   };
 
   // Base de lançamento aliada sob o toque (base principal ou base avançada operacional).
@@ -408,6 +441,34 @@ export function BattleArena({
   const units = [...state.blue.units, ...state.red.units];
   const selected = units.find((u) => u.id === selectedUnitId) ?? null;
 
+  // MOVIMENTO SUAVE: o motor anda em passos de 100 ms (10 Hz), o que fazia a tropa
+  // "teleportar" de quadrinho em quadrinho. Aqui o DESENHO persegue a posição real a
+  // cada quadro com interpolação exponencial (independente da taxa de quadros), então a
+  // marcha sai contínua. É só apresentação: o motor, o alcance e a colisão seguem na
+  // posição verdadeira — o desenho é que corre atrás dela.
+  const smoothRef = useRef<{ t: number; pos: Map<string, { x: number; y: number }> }>({
+    t: 0,
+    pos: new Map(),
+  });
+  const smoothed = useMemo(() => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const prevT = smoothRef.current.t || now;
+    const dt = Math.min(0.12, Math.max(0.001, (now - prevT) / 1000));
+    const k = 1 - Math.exp(-dt * 18);
+    const out = new Map<string, { x: number; y: number }>();
+    for (const u of units) {
+      const prev = smoothRef.current.pos.get(u.id);
+      out.set(
+        u.id,
+        prev
+          ? { x: prev.x + (u.x - prev.x) * k, y: prev.y + (u.y - prev.y) * k }
+          : { x: u.x, y: u.y },
+      );
+    }
+    smoothRef.current = { t: now, pos: out };
+    return out;
+  }, [units]);
+
   // Rota da força até o destino da operação — calculada do MESMO motor que o envio
   // usa, para o preview nunca mentir (a tropa sai da base escolhida).
   const destPoint = destination ?? (originId ? null : ghost);
@@ -442,6 +503,11 @@ export function BattleArena({
             "h-full w-full touch-none select-none",
             operationActive ? "cursor-crosshair" : "cursor-default",
           )}
+          style={{
+            transform: cameraMatrix3d(cam, stageW, stageH),
+            transformOrigin: "0 0",
+            transformStyle: "preserve-3d",
+          }}
           onPointerDown={handlePointer}
           onPointerMove={handleMove}
           onPointerLeave={clearGhost}
@@ -476,12 +542,21 @@ export function BattleArena({
             </pattern>
           </defs>
 
-          {/* O campo inteiro é desenhado em coordenadas do mundo; a câmera (matriz afim)
-            é aplicada a este grupo. A cena toda — terreno, territórios, estruturas,
-            unidades, projéteis e efeitos — vive aqui. */}
-          <g transform={`matrix(${cam.a} ${cam.b} ${cam.c} ${cam.d} ${cam.e} ${cam.f})`}>
-            {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria */}
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill={ground.base} />
+          {/* O campo inteiro é desenhado em coordenadas do mundo. A câmera (afim +
+            inclinação) vai no PRÓPRIO svg via `matrix3d`; este grupo fica em espaço de
+            mundo. A cena toda — terreno, territórios, estruturas, unidades, projéteis e
+            efeitos — vive aqui. */}
+          <g>
+            {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria.
+                Estende ALÉM do campo para cobrir as folgas que a inclinação expõe: a mesa
+                vai de fora a fora da tela, sem "buracos" no fundo. */}
+            <rect
+              x={-GROUND_PAD}
+              y={-GROUND_PAD}
+              width={WORLD_W + GROUND_PAD * 2}
+              height={WORLD_H + GROUND_PAD * 2}
+              fill={ground.base}
+            />
             {/* BEIRADA: faixa de borda fora da área de manobra (bases nunca encostam na parede) */}
             <rect
               x={FIELD_MARGIN_X}
@@ -631,35 +706,41 @@ export function BattleArena({
                 key={t.id}
                 territory={t}
                 region={regionPolys[i] ?? []}
-                portrait={portrait}
+                cam={cam}
               />
             ))}
 
             {/* Pontos de controle */}
             {arena.controlPoints.map((p) => (
-              <ControlPointGlyph key={p.id} point={p} portrait={portrait} />
+              <ControlPointGlyph key={p.id} point={p} cam={cam} />
             ))}
 
             {/* Estruturas */}
             {state.structures.map((s) => (
-              <StructureGlyph key={s.id} structure={s} portrait={portrait} />
+              <StructureGlyph key={s.id} structure={s} cam={cam} />
             ))}
 
             {/* Zonas de efeito (fumaça, gás, reconhecimento) */}
             {state.zones.map((z) => (
-              <ZoneGlyph key={z.id} zone={z} portrait={portrait} />
+              <ZoneGlyph key={z.id} zone={z} cam={cam} />
             ))}
 
             {/* Unidades */}
             {units.map((u) => {
               const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
+              const inTroop =
+                u.side === "blue" && selectedGroup !== null && u.groupId === selectedGroup;
+              const p = smoothed.get(u.id);
+              // O glifo recebe a posição SUAVIZADA (cópia rasa) para desenhar a marcha
+              // contínua; o resto dos atributos continua vindo da unidade real do motor.
+              const drawn = p ? { ...u, x: p.x, y: p.y } : u;
               return (
                 <UnitGlyph
                   key={u.id}
-                  unit={u}
-                  selected={u.id === selectedUnitId}
+                  unit={drawn}
+                  selected={u.id === selectedUnitId || inTroop}
                   dim={dim}
-                  portrait={portrait}
+                  cam={cam}
                 />
               );
             })}
@@ -747,8 +828,13 @@ export function BattleArena({
             className="h-full w-full"
             viewBox={`0 0 ${stageW} ${stageH}`}
             preserveAspectRatio="xMidYMid meet"
+            style={{
+              transform: cameraMatrix3d(cam, stageW, stageH),
+              transformOrigin: "0 0",
+              transformStyle: "preserve-3d",
+            }}
           >
-            <g transform={`matrix(${cam.a} ${cam.b} ${cam.c} ${cam.d} ${cam.e} ${cam.f})`}>
+            <g>
               {state.structures
                 .filter(
                   (s) =>
@@ -788,7 +874,7 @@ export function BattleArena({
                         fontFamily="var(--font-mono)"
                         fontWeight="700"
                         fill={chosen ? "var(--primary-foreground)" : ALLY}
-                        transform={uprightText(portrait, s.x, s.y - s.radius - 2)}
+                        transform={uprightText(cam, s.x, s.y - s.radius - 2)}
                       >
                         {n ?? "?"}
                       </text>
@@ -813,7 +899,7 @@ export function BattleArena({
 // Zonas de efeito (fumaça, gás lacrimogêneo, reconhecimento)
 // ---------------------------------------------------------------------------
 
-function ZoneGlyph({ zone: z, portrait = false }: { zone: EffectZone; portrait?: boolean }) {
+function ZoneGlyph({ zone: z, cam }: { zone: EffectZone; cam?: Pick<Camera, "rotateDeg" | "tiltDeg"> }) {
   if (z.kind === "gas") {
     return (
       <g>
@@ -872,7 +958,7 @@ function ZoneGlyph({ zone: z, portrait = false }: { zone: EffectZone; portrait?:
           fontFamily="var(--font-mono)"
           fill="oklch(0.9 0.2 115)"
           fontWeight={700}
-          transform={uprightText(portrait, z.x, z.y - z.radius - 0.6)}
+          transform={uprightText(cam, z.x, z.y - z.radius - 0.6)}
         >
           GÁS
         </text>
@@ -986,10 +1072,10 @@ function PrisonGlyph({ s, color }: { s: Structure; color: string }) {
 
 function StructureGlyph({
   structure: s,
-  portrait = false,
+  cam,
 }: {
   structure: Structure;
-  portrait?: boolean;
+  cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
 }) {
   const color = sideColor(s.side);
   const hpPct = Math.max(0, s.hp / s.maxHp);
@@ -1050,7 +1136,7 @@ function StructureGlyph({
           fontSize="2"
           fontFamily="var(--font-mono)"
           fill="var(--doc)"
-          transform={uprightText(portrait, s.x, s.y - s.radius - 3)}
+          transform={uprightText(cam, s.x, s.y - s.radius - 3)}
         >
           {Math.round(s.buildProgress)}%
         </text>
@@ -1383,11 +1469,11 @@ function NeutralBaseArt({
 function TerritoryGlyph({
   territory: t,
   region,
-  portrait = false,
+  cam,
 }: {
   territory: Territory;
   region: Polygon;
-  portrait?: boolean;
+  cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
 }) {
   const owned = t.owner !== "neutro";
   const color = owned ? sideColor(t.owner as Side) : "oklch(0.98 0 0)";
@@ -1481,7 +1567,7 @@ function TerritoryGlyph({
           fontFamily="var(--font-mono)"
           fill="var(--enemy)"
           fontWeight={700}
-          transform={uprightText(portrait, t.x, t.y - t.radius - 0.9)}
+          transform={uprightText(cam, t.x, t.y - t.radius - 0.9)}
         >
           DISPUTA
         </text>
@@ -1497,7 +1583,7 @@ function TerritoryGlyph({
         fill={owned ? color : "oklch(1 0 0)"}
         opacity={owned ? 0.85 : 0.55}
         fontWeight={600}
-        transform={uprightText(portrait, c.x, c.y)}
+        transform={uprightText(cam, c.x, c.y)}
       >
         {t.name.toUpperCase()}
       </text>
@@ -1536,10 +1622,10 @@ function TerritoryGlyph({
 
 function ControlPointGlyph({
   point,
-  portrait = false,
+  cam,
 }: {
   point: ControlPoint;
-  portrait?: boolean;
+  cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
 }) {
   const color = point.owner === "neutro" ? "oklch(0.98 0 0)" : sideColor(point.owner);
   const bluePct = point.progress.blue;
@@ -1594,7 +1680,7 @@ function ControlPointGlyph({
           fontFamily="var(--font-mono)"
           fill="var(--enemy)"
           fontWeight={700}
-          transform={uprightText(portrait, point.x, point.y - point.radius - 1)}
+          transform={uprightText(cam, point.x, point.y - point.radius - 1)}
         >
           DISPUTA
         </text>
@@ -1607,7 +1693,7 @@ function ControlPointGlyph({
         fontFamily="var(--font-mono)"
         fill={color}
         fontWeight={700}
-        transform={uprightText(portrait, point.x, point.y - point.radius - (contested ? 3.2 : 0.9))}
+        transform={uprightText(cam, point.x, point.y - point.radius - (contested ? 3.2 : 0.9))}
       >
         {point.sector.toUpperCase()}
       </text>
@@ -1625,12 +1711,12 @@ function UnitGlyph({
   unit,
   selected,
   dim = false,
-  portrait = false,
+  cam,
 }: {
   unit: BattleUnit;
   selected: boolean;
   dim?: boolean;
-  portrait?: boolean;
+  cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
 }) {
   const color = sideColor(unit.side);
   const airborne = unit.domain === "aereo";
@@ -1643,8 +1729,17 @@ function UnitGlyph({
   // Corpo na diagonal FIXA (leitura isométrica). As peças com TORRE (canhão, tanque,
   // lançador…) recebem um giro LOCAL = mira − base, então a torre segue o alvo enquanto
   // o casco permanece na diagonal. Ambos os ângulos no espaço de tela.
-  const bodyDeg = UNIT_DIAGONAL_SCREEN_DEG + (portrait ? 90 : 0);
+  // Compensa o giro da câmera para o casco manter SEMPRE a mesma diagonal na tela
+  // (isométrica), em qualquer aparelho, e a torre continuar mirando o alvo.
+  const camRot = cam?.rotateDeg ?? 0;
+  const bodyDeg = UNIT_DIAGONAL_SCREEN_DEG - camRot;
   const turretDeg = TURRET_MODELS.has(unit.model) ? (unit.aim * 180) / Math.PI - bodyDeg : 0;
+  // Chão marcado pela guerra: os veículos de esteira deixam rastro e os feridos
+  // sangram no solo. Tudo é decal determinístico (deriva do id da unidade), então não
+  // treme a cada quadro e não polui a leitura do campo.
+  const tracked = TRACKED_MODELS.has(unit.model);
+  const wounded = unit.hp < unit.maxHp * 0.7;
+  const bleed = unit.hp < unit.maxHp * 0.5 || unit.hitFlash > 0;
   return (
     <g
       pointerEvents="none"
@@ -1653,6 +1748,40 @@ function UnitGlyph({
       data-model={unit.model}
       data-side={unit.side}
     >
+      {/* RASTRO DE ESTEIRA: par de linhas atrás do veículo, na direção contrária à mira.
+          Só nos blindados/artilharia rebocados — infantaria não deixa rastro. */}
+      {tracked && (
+        <g transform={`translate(${unit.x} ${unit.y}) rotate(${(unit.aim * 180) / Math.PI})`}>
+          {[-0.55, 0.55].map((off) => (
+            <line
+              key={off}
+              x1={-r * 1.1}
+              y1={off * r * 0.7}
+              x2={-r * 3.2}
+              y2={off * r * 0.7}
+              stroke="oklch(0.12 0.01 80 / 0.5)"
+              strokeWidth="0.28"
+              strokeDasharray="0.9 0.7"
+              strokeLinecap="round"
+            />
+          ))}
+        </g>
+      )}
+      {/* SANGUE no chão: soldado ferido perde sangue onde está. Determinístico. */}
+      {(wounded || bleed) && (
+        <g fill="oklch(0.32 0.16 26 / 0.75)">
+          {bloodSpots(unit.id).map((s, i) => (
+            <ellipse
+              key={i}
+              cx={unit.x + s.dx * r}
+              cy={unit.y + s.dy * r}
+              rx={s.rx * r}
+              ry={s.ry * r}
+              transform={`rotate(${s.rot} ${unit.x + s.dx * r} ${unit.y + s.dy * r})`}
+            />
+          ))}
+        </g>
+      )}
       {airborne && (
         <ellipse
           cx={unit.x}
@@ -1782,7 +1911,7 @@ function UnitGlyph({
             fill={LEVEL_TONE(unit.level)}
             fontWeight={700}
             transform={uprightText(
-              portrait,
+              cam,
               unit.x - unit.short.length * 0.62 - 1.4,
               y + r * 0.5 + 1.95,
             )}
@@ -1839,6 +1968,44 @@ const TURRET_MODELS = new Set<BattleUnit["model"]>([
   "caca-tanques",
   "aa",
 ]);
+
+// Veículos de ESTEIRA (ou rebocados por trator): deixam rastro duplo no solo. A
+// infantaria e os drones não deixam — o rastro é assinatura de blindado, não decoração.
+const TRACKED_MODELS = new Set<BattleUnit["model"]>([
+  "tanque",
+  "vbld",
+  "caca-tanques",
+  "canhao",
+  "artilharia-pesada",
+  "lmf",
+  "lancador-missil",
+  "comboio",
+  "carro-prisao",
+  "aa",
+]);
+
+// Manchas de sangue no solo de uma unidade ferida. Determinísticas (hash do id) para o
+// decal não tremer a cada quadro; levemente espalhadas em volta do corpo.
+function bloodSpots(id: string): { dx: number; dy: number; rx: number; ry: number; rot: number }[] {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const rnd = () => {
+    h ^= h << 13;
+    h ^= h >>> 17;
+    h ^= h << 5;
+    return ((h >>> 0) % 1000) / 1000;
+  };
+  return Array.from({ length: 3 }, () => ({
+    dx: (rnd() - 0.5) * 2.4,
+    dy: (rnd() - 0.5) * 2.4,
+    rx: 0.3 + rnd() * 0.35,
+    ry: 0.22 + rnd() * 0.28,
+    rot: rnd() * 180,
+  }));
+}
 
 // Desenha o modelo da unidade centrado na origem, com o "nariz" apontando para +x.
 function unitModel(

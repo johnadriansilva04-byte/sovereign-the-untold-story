@@ -33,6 +33,101 @@ const CATEGORY_TONE: Record<string, string> = {
   apoio: "border-fiction text-fiction",
 };
 
+// Cada categoria tem cor própria na carta. O tom é a "identidade" da carta: a moldura,
+// a faixa de arte e o selo de custo mudam de cor conforme a função da unidade.
+const CATEGORY_ACCENT: Record<string, string> = {
+  infantaria: "var(--fact)",
+  blindado: "var(--primary)",
+  artilharia: "var(--doc)",
+  defesa: "var(--ally)",
+  reconhecimento: "var(--ai)",
+  apoio: "var(--fiction)",
+};
+
+// Carta da Coleção: bloco alto no formato de carta de jogo — faixa de arte com o selo de
+// custo, nome, nível em pips, quantidade possuída e a barra de progressão. Interativa:
+// o clique abre o detalhe completo. É a mesma peça nos dois painéis (arsenal e baralho).
+function CollectionCardTile({
+  cardId,
+  level,
+  qty,
+  selected,
+  locked = false,
+  onClick,
+}: {
+  cardId: string;
+  level: number;
+  qty: number;
+  selected?: boolean;
+  locked?: boolean | undefined;
+  onClick: () => void;
+}) {
+  const card = cardById(cardId);
+  if (!card) return null;
+  const need = copiesToLevel(level);
+  const maxed = level >= MAX_CARD_LEVEL;
+  const accent = CATEGORY_ACCENT[card.category] ?? "var(--border)";
+  const progress = maxed ? 100 : Math.min(100, (qty / Math.max(1, need)) * 100);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Carta ${card.name}`}
+      className={cn(
+        "group relative flex flex-col overflow-hidden border bg-card text-left transition duration-150",
+        "hover:-translate-y-0.5 hover:shadow-brass",
+        selected ? "border-primary shadow-brass" : "border-border",
+        locked && "opacity-55 hover:opacity-80",
+      )}
+    >
+      {/* Faixa de arte: silhueta da categoria + selo de custo de energia. */}
+      <div
+        className="relative flex h-14 items-center justify-center border-b border-black/40"
+        style={{ background: `linear-gradient(160deg, ${accent}44, oklch(0.14 0.01 120))` }}
+      >
+        <span
+          className="font-display text-2xl font-black uppercase leading-none tracking-tight"
+          style={{ color: accent }}
+        >
+          {card.short}
+        </span>
+        <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border border-primary/70 bg-background/90 font-mono text-[10px] font-bold text-primary">
+          {card.cost}
+        </span>
+        {qty > 1 && (
+          <span className="absolute left-1 top-1 border border-foreground/40 bg-background/85 px-1 font-mono text-[9px] uppercase tracking-wider text-foreground">
+            ×{qty}
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1 p-1.5">
+        <p className="font-display text-[11px] font-bold uppercase leading-tight">{card.name}</p>
+        <div className="flex items-center gap-1">
+          {Array.from({ length: MAX_CARD_LEVEL }).map((_, i) => (
+            <span
+              key={i}
+              className={cn(
+                "h-1.5 w-1.5 rotate-45 border",
+                i < level ? "border-primary bg-primary" : "border-border bg-transparent",
+              )}
+            />
+          ))}
+          <span className="ml-auto font-mono text-[8px] uppercase text-muted-foreground">
+            nv {level}
+          </span>
+        </div>
+        <div className="mt-auto h-1 w-full overflow-hidden bg-muted">
+          <div className="h-full transition-all" style={{ width: `${progress}%`, background: accent }} />
+        </div>
+        <p className="font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
+          {maxed ? "nível máximo" : `${Math.max(0, need - qty)} cópias p/ nv ${level + 1}`}
+        </p>
+      </div>
+    </button>
+  );
+}
+
 export function CollectionScreen({ onExit }: { onExit?: (() => void) | undefined } = {}) {
   const { profile, saveDeck, setActiveDeck } = useProfile();
   const [tab, setTab] = useState<Tab>("cartas");
@@ -211,33 +306,18 @@ export function CollectionScreen({ onExit }: { onExit?: (() => void) | undefined
             <div className="grid h-full min-h-0 grid-cols-1 gap-2.5 lg:grid-cols-2">
               <div className="hud-panel hud-corners flex min-h-0 flex-col p-3">
                 <p className="label-mono mb-2">Baralho ativo · {activeDeck.cards.length}/8</p>
-                <div className="grid min-h-0 flex-1 grid-cols-3 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-4">
+                <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
                   {ownedCards.map((c) => {
                     const on = activeDeck.cards.includes(c.id);
                     return (
-                      <button
+                      <CollectionCardTile
                         key={c.id}
+                        cardId={c.id}
+                        level={profile.cardLevels[c.id] ?? 1}
+                        qty={profile.inventory.cards[c.id] ?? 0}
+                        selected={on}
                         onClick={() => toggleDeckCard(c.id)}
-                        className={cn(
-                          "border p-1.5 text-left transition",
-                          on ? "border-primary bg-accent" : "border-border hover:border-primary/50",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "border px-1 font-mono text-[8px] uppercase",
-                            CATEGORY_TONE[c.category],
-                          )}
-                        >
-                          {c.short}
-                        </span>
-                        <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
-                          {c.name}
-                        </p>
-                        <p className="font-mono text-[9px] text-muted-foreground">
-                          custo {c.cost} · nv {profile.cardLevels[c.id] ?? 1}
-                        </p>
-                      </button>
+                      />
                     );
                   })}
                 </div>
@@ -297,58 +377,19 @@ function CardColumn({
           Alcance a faixa de comandante e a tecnologia exigida para liberar.
         </p>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-y-auto pr-1">
+      <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
         {cards.map((c) => {
           const qty = profile.inventory.cards[c.id] ?? 0;
           const level = profile.cardLevels[c.id] ?? 1;
-          const need = copiesToLevel(level);
-          const unlocked = isCardUnlocked(profile, c.id);
-          const maxed = level >= MAX_CARD_LEVEL;
           return (
-            <div
+            <CollectionCardTile
               key={c.id}
-              className={cn(
-                "border p-1.5",
-                locked && "border-border/50 opacity-60",
-                !unlocked && !locked && "border-border/70",
-              )}
-            >
-              <button onClick={() => onOpen(c.id)} className="w-full text-left">
-                <div className="flex items-center justify-between">
-                  <span
-                    className={cn(
-                      "border px-1 font-mono text-[8px] uppercase",
-                      CATEGORY_TONE[c.category],
-                    )}
-                  >
-                    {c.short}
-                  </span>
-                  <span className="font-mono text-[9px] text-primary">nv {level}</span>
-                </div>
-                <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
-                  {c.name}
-                </p>
-                <p className="font-mono text-[9px] text-muted-foreground">
-                  custo {c.cost} · ×{qty}
-                  {!unlocked && !locked ? ` · ${tierOf.get(c.id) ?? "tecnologia"}` : ""}
-                </p>
-              </button>
-              {/* Progressão automática: ganhar cópias sobe o nível sozinho. A barra mostra
-                  quanto falta para o próximo nível (não há mais botão de evoluir). */}
-              <div className="mt-1 h-1 w-full overflow-hidden bg-muted">
-                <div
-                  className="h-full bg-primary transition-all"
-                  style={{
-                    width: maxed ? "100%" : `${Math.min(100, (qty / Math.max(1, need)) * 100)}%`,
-                  }}
-                />
-              </div>
-              <p className="mt-0.5 font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
-                {maxed
-                  ? "nível máximo"
-                  : `${need - qty > 0 ? need - qty : 0} cópias p/ nv ${level + 1}`}
-              </p>
-            </div>
+              cardId={c.id}
+              level={level}
+              qty={qty}
+              locked={locked}
+              onClick={() => onOpen(c.id)}
+            />
           );
         })}
       </div>

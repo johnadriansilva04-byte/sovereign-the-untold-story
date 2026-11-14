@@ -98,10 +98,6 @@ const HERO_THREAT_RADIUS = 18;
 // Regeneração do chanceler parado (% da vida máxima por segundo). Compensa o atrito
 // em marcha e faz o herói se recuperar ao segurar posição — o desgaste não o mata.
 const HERO_REGEN = 0.03;
-// Tempo (s) para o chanceler NÃO-DECISIVO reagrupar na base depois de tombar em combate.
-// Nas missões comuns o comandante em campo não decide a guerra sozinho: se cair, volta.
-const HERO_RESPAWN = 22;
-
 const WEAR_IDLE = 0.001; // fração da vida máxima perdida por segundo parado
 const WEAR_MOVE = 0.006; // fração extra por segundo em deslocamento
 const WEAR_FIELD = 40; // distância (mundo) em que o fator de suprimento dobra o atrito
@@ -500,12 +496,10 @@ function updatePrisonCars(state: BattleState, _dt: number): void {
           "captura",
           "Chanceler adversário entregue na base: cativeiro confirmado.",
         );
-        // Capturar o chefe de Estado adversário e conduzi-lo à base só DECIDE a guerra nas
-        // missões de história do herói (heroDecisive). Nas demais, o cativeiro o tira de
-        // campo, mas a vitória continua por objetivo/base.
-        if (state.config.heroDecisive === false) {
-          pushLog(state, rec.side, "captura", "O chanceler adversário segue cativo na base.");
-        } else if (rec.side === "blue") {
+        // Conduzir o chefe de Estado adversário à própria base CONFIRMA o cativeiro e
+        // encerra a guerra — para os dois lados. Não importa o cenário da missão: perder
+        // o chanceler é perder a partida.
+        if (rec.side === "blue") {
           finish(
             state,
             "vitoria",
@@ -657,23 +651,19 @@ function liberatePrison(state: BattleState, prison: Structure, liberator: Battle
   );
 }
 
-// Morreu um chanceler. A morte NÃO decide sozinha: só vence quem também já tem o
-// PRÓPRIO chanceler em segurança (livre ou resgatado e em casa). Um lado com o
-// chanceler preso ou fugindo elimina o adversário, mas a guerra segue até ele voltar.
+// Morreu um chanceler. Quem perde o chefe perde a guerra — para os DOIS lados. A
+// partida encerra na hora, salvo quando o adversário também está com o chanceler fora
+// de combate (aí o empate é tratado em checkHeroVictory).
 function heroDied(state: BattleState, unit: BattleUnit): void {
   const side = unit.side;
   const cfg = side === "blue" ? state.blue : state.red;
-  // Chanceler NÃO-decisivo (missões comuns): o comandante tomba, mas o posto de comando
-  // reagrupa — ele volta à base depois de HERO_RESPAWN. Não decide a guerra.
-  if (state.config.heroDecisive === false) {
-    state.heroes[side] = { state: "morto", unitId: unit.id, respawnAt: state.t + HERO_RESPAWN };
-    pushLog(state, side, "evento", `Chanceler ${cfg.countryName} foi ferido — reagrupando.`);
-    return;
-  }
+  // A morte do chanceler é DECISIVA para os DOIS lados: quem perde o chefe perde a
+  // guerra. Vale para o chanceler aliado e para o inimigo — o abate encerra a partida
+  // na hora (o posto de comando não se reagrupa). Só não decide quando o outro lado
+  // também está com o chanceler fora de combate (aí é empate, tratado em checkHeroVictory).
   state.heroes[side] = { state: "morto", unitId: unit.id };
   pushLog(state, other(side), "evento", `Chanceler ${cfg.countryName} foi eliminado.`);
   if (!checkHeroVictory(state)) {
-    // O outro lado ainda não pode vencer (chanceler preso ou fugindo): continua.
     const foe = other(side);
     if (state.heroes[foe].state === "preso")
       pushLog(state, foe, "evento", "Resgate o seu chanceler antes de reivindicar a vitória.");
@@ -766,19 +756,6 @@ function heroHome(state: BattleState, side: Side): { x: number; y: number } | nu
 function updateHeroes(state: BattleState): void {
   for (const side of ["blue", "red"] as Side[]) {
     const st = state.heroes[side];
-    // REAGRUPAMENTO: nas missões não-decisivas o chanceler abatido volta à base.
-    if (st.state === "morto" && st.respawnAt !== undefined) {
-      if (state.t >= st.respawnAt) {
-        const home = heroHome(state, side);
-        if (home) {
-          const hero = spawnChancellor(state, side, home.x, home.y);
-          state.heroes[side] = { state: "livre", unitId: hero.id };
-          const cfg = side === "blue" ? state.blue : state.red;
-          pushLog(state, side, "evento", `Chanceler ${cfg.countryName} reagrupou na base.`);
-        }
-      }
-      continue;
-    }
     if (st.state !== "fugindo" || !st.unitId) continue;
     const cfg = side === "blue" ? state.blue : state.red;
     const hero = cfg.units.find((u) => u.id === st.unitId && u.alive);
@@ -1162,9 +1139,11 @@ function deployOne(
   const card = cardById(cardId);
   const cost = effectiveCost(card, cfg.doctrine);
   if (cfg.command < cost) return false;
-  const inHand = cfg.deck.hand.find((h) => h.cardId === cardId);
+  // O baralho pode ter a MESMA carta em vários espaços (ex.: 8× canhão). Cada lançamento
+  // consome um espaço PRONTO; procurar só por `cardId` reaproveitava sempre o primeiro e
+  // travava o resto da mão — o lado só conseguia lançar 1 unidade por ciclo.
+  const inHand = cfg.deck.hand.find((h) => h.cardId === cardId && h.ready);
   if (!inHand) return false;
-  if (!inHand.ready) return false;
 
   if (card.kind === "militar") {
     // Teto de exército: recusa a carta se as unidades não couberem em campo (uma carta
@@ -1998,14 +1977,16 @@ export function issueOrder(
   order: Order,
   unitId?: string,
   objectiveId?: string,
-  opts: { preserveGoals?: boolean } = {},
+  opts: { preserveGoals?: boolean; groupId?: string } = {},
 ): boolean {
   const cfg = side === "blue" ? state.blue : state.red;
   // Ordens GLOBAIS (sem alvo) não arrastam o chanceler: o herói só se move por ordem
   // direta ao próprio (unitId), para o jogador não jogá-lo na frente de batalha sem querer.
-  const targets = unitId
-    ? cfg.units.filter((u) => u.id === unitId && u.alive)
-    : cfg.units.filter((u) => u.alive && !u.hero);
+  const targets = opts.groupId
+    ? cfg.units.filter((u) => u.alive && u.groupId === opts.groupId)
+    : unitId
+      ? cfg.units.filter((u) => u.id === unitId && u.alive)
+      : cfg.units.filter((u) => u.alive && !u.hero);
   if (targets.length === 0) return false;
   for (const u of targets) {
     u.order = order;

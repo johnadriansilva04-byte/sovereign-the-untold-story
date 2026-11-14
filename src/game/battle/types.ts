@@ -700,8 +700,6 @@ export interface HeroStatus {
   // O chanceler foi CAPTURADO em campo (levado pelo carro-prisão), não apenas começa
   // cativo numa prisão de cenário. Diferencia "preso por captura" de "preso a resgatar".
   captured?: boolean;
-  /** Instante (s) em que um chanceler não-decisivo volta à base depois de tombar. */
-  respawnAt?: number;
 }
 
 export interface BattleResult {

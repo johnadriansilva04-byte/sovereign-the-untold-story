@@ -56,6 +56,11 @@ export interface UseBattle {
   issueOrder: (order: Order, unitId?: string, objectiveId?: string) => void;
   /** Manda a unidade selecionada para um ponto do mapa, ou para cima de um alvo. */
   moveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => boolean;
+  /** Manda a TROPA inteira (grupo/esquadrão) para um ponto do mapa. */
+  moveGroup: (groupId: string, x: number, y: number, target?: DeployTarget) => boolean;
+  /** Ordem de CAPTURA: a tropa selecionada persegue e prende o alvo (chanceler ou a
+   *  unidade da carta nova). Ao prender, um carro-prisão conduz o cativo à base. */
+  capture: (sel: { groupId?: string; unitId?: string }, targetUnitId: string) => boolean;
   /** Vetor de comando em tempo real do chanceler (setas/analógico); (0,0) solta. */
   driveUnit: (unitId: string, dx: number, dy: number) => boolean;
   restart: () => void;
@@ -233,6 +238,47 @@ export function useBattle(
     [],
   );
 
+  const moveGroup = useCallback(
+    (groupId: string, x: number, y: number, target?: DeployTarget) => {
+      const action: {
+        type: "reposicionar";
+        side: Side;
+        groupId: string;
+        x: number;
+        y: number;
+        holdAtArrival: boolean;
+        targetUnitId?: string;
+        targetStructureId?: string;
+        targetTerritoryId?: string;
+      } = { type: "reposicionar", side: "blue", groupId, x, y, holdAtArrival: false };
+      if (target?.unitId) action.targetUnitId = target.unitId;
+      if (target?.structureId) action.targetStructureId = target.structureId;
+      if (target?.territoryId) action.targetTerritoryId = target.territoryId;
+      const ok = applyAction(stateRef.current, action).ok;
+      forceRender();
+      return ok;
+    },
+    [],
+  );
+
+  const capture = useCallback(
+    (sel: { groupId?: string; unitId?: string }, targetUnitId: string) => {
+      const action: {
+        type: "capturar";
+        side: Side;
+        targetUnitId: string;
+        groupId?: string;
+        unitId?: string;
+      } = { type: "capturar", side: "blue", targetUnitId };
+      if (sel.groupId) action.groupId = sel.groupId;
+      if (sel.unitId) action.unitId = sel.unitId;
+      const ok = applyAction(stateRef.current, action).ok;
+      forceRender();
+      return ok;
+    },
+    [],
+  );
+
   const issueOrder = useCallback((order: Order, unitId?: string, objectiveId?: string) => {
     const action = { type: "ordem", side: "blue", order } as {
       type: "ordem";
@@ -291,6 +337,8 @@ export function useBattle(
     sendBatch,
     issueOrder,
     moveSelected,
+    moveGroup,
+    capture,
     driveUnit,
     restart,
     cardMeta,
