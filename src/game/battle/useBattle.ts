@@ -34,6 +34,8 @@ const LLM_MAX_FAILURES = 3; // depois disso, cai para a IA tática local
 export interface UseBattle {
   state: BattleState;
   result: BattleResult | null;
+  /** Lado que o jogador controla nesta partida (PvP: host=blue, convidado=red). */
+  localSide: Side;
   paused: boolean;
   speed: number;
   llmActive: boolean;
@@ -70,8 +72,10 @@ export interface UseBattle {
 
 export function useBattle(
   config: BattleConfig,
-  opts: { llmCommander?: boolean | undefined } = {},
+  opts: { llmCommander?: boolean | undefined; localSide?: Side | undefined } = {},
 ): UseBattle {
+  const local: Side = opts.localSide ?? "blue";
+  const enemy: Side = local === "blue" ? "red" : "blue";
   const [, forceRender] = useReducer((n: number) => n + 1, 0);
   const stateRef = useRef<BattleState>(createBattle(config));
   const [paused, setPaused] = useState(false);
@@ -126,15 +130,15 @@ export function useBattle(
           if (llmTimerRef.current >= LLM_INTERVAL && !llmInFlightRef.current) {
             llmTimerRef.current = 0;
             llmInFlightRef.current = true;
-            const context = buildCommanderContext(st, "red");
+            const context = buildCommanderContext(st, enemy);
             void requestCommanderDecision({ data: { context } })
               .then((res) => {
                 const cur = stateRef.current;
                 if (res.ok && cur.running) {
                   const legal = context.legalCardIds.includes(res.cardId);
                   if (legal) {
-                    deploy(cur, "red", res.cardId, res.x, res.y);
-                    pushCommanderLog(cur, "red", `IA: ${res.reason}`);
+                    deploy(cur, enemy, res.cardId, res.x, res.y);
+                    pushCommanderLog(cur, enemy, `IA: ${res.reason}`);
                   }
                   llmFailuresRef.current = 0;
                 } else {
@@ -159,30 +163,33 @@ export function useBattle(
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [wantsLlm]);
+  }, [wantsLlm, enemy]);
 
-  const playCard = useCallback((cardId: string, x: number, y: number, target?: DeployTarget) => {
-    const st = stateRef.current;
-    // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
-    // inimigo (holdAtArrival=false) — não congela no destino. Quando o clique
-    // acertou um alvo (inimigo/estrutura/território), a força já marcha para atacá-lo.
-    const order: {
-      x: number;
-      y: number;
-      holdAtArrival: boolean;
-      targetUnitId?: string;
-      targetStructureId?: string;
-      targetTerritoryId?: string;
-      escortId?: string;
-    } = { x, y, holdAtArrival: false };
-    if (target?.unitId) order.targetUnitId = target.unitId;
-    if (target?.structureId) order.targetStructureId = target.structureId;
-    if (target?.territoryId) order.targetTerritoryId = target.territoryId;
-    if (target?.escortId) order.escortId = target.escortId;
-    const ok = deploy(st, "blue", cardId, x, y, order);
-    forceRender();
-    return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
-  }, []);
+  const playCard = useCallback(
+    (cardId: string, x: number, y: number, target?: DeployTarget) => {
+      const st = stateRef.current;
+      // Ordem do JOGADOR: a força marcha até o ponto e, de lá, volta a caçar o
+      // inimigo (holdAtArrival=false) — não congela no destino. Quando o clique
+      // acertou um alvo (inimigo/estrutura/território), a força já marcha para atacá-lo.
+      const order: {
+        x: number;
+        y: number;
+        holdAtArrival: boolean;
+        targetUnitId?: string;
+        targetStructureId?: string;
+        targetTerritoryId?: string;
+        escortId?: string;
+      } = { x, y, holdAtArrival: false };
+      if (target?.unitId) order.targetUnitId = target.unitId;
+      if (target?.structureId) order.targetStructureId = target.structureId;
+      if (target?.territoryId) order.targetTerritoryId = target.territoryId;
+      if (target?.escortId) order.escortId = target.escortId;
+      const ok = deploy(st, local, cardId, x, y, order);
+      forceRender();
+      return ok ? { ok } : { ok: false, error: "Comando insuficiente ou posição inválida." };
+    },
+    [local],
+  );
 
   const sendBatch = useCallback(
     (
@@ -208,11 +215,11 @@ export function useBattle(
       if (target?.structureId) order.targetStructureId = target.structureId;
       if (target?.territoryId) order.targetTerritoryId = target.territoryId;
       if (target?.escortId) order.escortId = target.escortId;
-      const res = deployBatch(st, "blue", requests, order);
+      const res = deployBatch(st, local, requests, order);
       forceRender();
       return res;
     },
-    [],
+    [local],
   );
 
   const moveSelected = useCallback(
@@ -227,7 +234,7 @@ export function useBattle(
         targetUnitId?: string;
         targetStructureId?: string;
         targetTerritoryId?: string;
-      } = { type: "reposicionar", side: "blue", unitId, x, y, holdAtArrival: false };
+      } = { type: "reposicionar", side: local, unitId, x, y, holdAtArrival: false };
       if (target?.unitId) action.targetUnitId = target.unitId;
       if (target?.structureId) action.targetStructureId = target.structureId;
       if (target?.territoryId) action.targetTerritoryId = target.territoryId;
@@ -235,31 +242,28 @@ export function useBattle(
       forceRender();
       return ok;
     },
-    [],
+    [local],
   );
 
-  const moveGroup = useCallback(
-    (groupId: string, x: number, y: number, target?: DeployTarget) => {
-      const action: {
-        type: "reposicionar";
-        side: Side;
-        groupId: string;
-        x: number;
-        y: number;
-        holdAtArrival: boolean;
-        targetUnitId?: string;
-        targetStructureId?: string;
-        targetTerritoryId?: string;
-      } = { type: "reposicionar", side: "blue", groupId, x, y, holdAtArrival: false };
-      if (target?.unitId) action.targetUnitId = target.unitId;
-      if (target?.structureId) action.targetStructureId = target.structureId;
-      if (target?.territoryId) action.targetTerritoryId = target.territoryId;
-      const ok = applyAction(stateRef.current, action).ok;
-      forceRender();
-      return ok;
-    },
-    [],
-  );
+  const moveGroup = useCallback((groupId: string, x: number, y: number, target?: DeployTarget) => {
+    const action: {
+      type: "reposicionar";
+      side: Side;
+      groupId: string;
+      x: number;
+      y: number;
+      holdAtArrival: boolean;
+      targetUnitId?: string;
+      targetStructureId?: string;
+      targetTerritoryId?: string;
+    } = { type: "reposicionar", side: local, groupId, x, y, holdAtArrival: false };
+    if (target?.unitId) action.targetUnitId = target.unitId;
+    if (target?.structureId) action.targetStructureId = target.structureId;
+    if (target?.territoryId) action.targetTerritoryId = target.territoryId;
+    const ok = applyAction(stateRef.current, action).ok;
+    forceRender();
+    return ok;
+  }, []);
 
   const capture = useCallback(
     (sel: { groupId?: string; unitId?: string }, targetUnitId: string) => {
@@ -269,42 +273,48 @@ export function useBattle(
         targetUnitId: string;
         groupId?: string;
         unitId?: string;
-      } = { type: "capturar", side: "blue", targetUnitId };
+      } = { type: "capturar", side: local, targetUnitId };
       if (sel.groupId) action.groupId = sel.groupId;
       if (sel.unitId) action.unitId = sel.unitId;
       const ok = applyAction(stateRef.current, action).ok;
       forceRender();
       return ok;
     },
-    [],
+    [local],
   );
 
-  const issueOrder = useCallback((order: Order, unitId?: string, objectiveId?: string) => {
-    const action = { type: "ordem", side: "blue", order } as {
-      type: "ordem";
-      side: Side;
-      order: Order;
-      unitId?: string;
-      objectiveId?: string;
-    };
-    if (unitId) action.unitId = unitId;
-    if (objectiveId) action.objectiveId = objectiveId;
-    applyAction(stateRef.current, action);
-    forceRender();
-  }, []);
+  const issueOrder = useCallback(
+    (order: Order, unitId?: string, objectiveId?: string) => {
+      const action = { type: "ordem", side: local, order } as {
+        type: "ordem";
+        side: Side;
+        order: Order;
+        unitId?: string;
+        objectiveId?: string;
+      };
+      if (unitId) action.unitId = unitId;
+      if (objectiveId) action.objectiveId = objectiveId;
+      applyAction(stateRef.current, action);
+      forceRender();
+    },
+    [local],
+  );
 
   // CONTROLE DIRETO: define o vetor de comando do chanceler (setas/analógico). Fica
   // gravado na unidade e é lido a cada passo do motor; (0,0) solta o volante.
-  const driveUnit = useCallback((unitId: string, dx: number, dy: number) => {
-    const st = stateRef.current;
-    for (const u of st.blue.units) {
-      if (u.id !== unitId) continue;
-      u.driveX = dx;
-      u.driveY = dy;
-      return true;
-    }
-    return false;
-  }, []);
+  const driveUnit = useCallback(
+    (unitId: string, dx: number, dy: number) => {
+      const st = stateRef.current;
+      for (const u of st[local].units) {
+        if (u.id !== unitId) continue;
+        u.driveX = dx;
+        u.driveY = dy;
+        return true;
+      }
+      return false;
+    },
+    [local],
+  );
 
   const restart = useCallback(() => {
     stateRef.current = createBattle(config);
@@ -321,13 +331,14 @@ export function useBattle(
 
   const cardMeta = useCallback((cardId: string) => cardById(cardId), []);
   const costOf = useCallback(
-    (cardId: string) => effectiveCost(cardById(cardId), state.blue.doctrine),
-    [state.blue.doctrine],
+    (cardId: string) => effectiveCost(cardById(cardId), state[local].doctrine),
+    [state[local].doctrine, local],
   );
 
   return {
     state,
     result,
+    localSide: local,
     paused,
     speed,
     llmActive,

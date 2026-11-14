@@ -4,7 +4,16 @@ import type { BattlePhase, BattleState, Side, Structure } from "@/game/battle/ty
 
 // Barra superior da batalha: relógio no centro, bases nas laterais.
 // Mostra a vida da BASE PRINCIPAL de cada lado — é o que decide a partida.
-export function BattleTopBar({ state }: { state: BattleState }) {
+export function BattleTopBar({
+  state,
+  localSide = "blue",
+}: {
+  state: BattleState;
+  /** Lado do jogador: fica à esquerda. O adversário fica à direita. */
+  localSide?: Side | undefined;
+}) {
+  const me: Side = localSide;
+  const foe: Side = me === "blue" ? "red" : "blue";
   const remaining = Math.max(0, state.config.duration - state.t);
   const mm = Math.floor(remaining / 60);
   const ss = Math.floor(remaining % 60)
@@ -15,7 +24,7 @@ export function BattleTopBar({ state }: { state: BattleState }) {
 
   return (
     <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 py-1.5 sm:gap-3 sm:px-4">
-      <SideBadge state={state} side="blue" align="left" />
+      <SideBadge state={state} side={me} align="left" />
 
       <div className="text-center">
         <p
@@ -37,7 +46,7 @@ export function BattleTopBar({ state }: { state: BattleState }) {
         <PrizeBadge state={state} />
       </div>
 
-      <SideBadge state={state} side="red" align="right" />
+      <SideBadge state={state} side={foe} align="right" />
     </div>
   );
 }

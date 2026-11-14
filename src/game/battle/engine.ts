@@ -3755,6 +3755,25 @@ export function applyAction(state: BattleState, action: BattleAction): ActionRes
     const n = separate(state, action.side, action.groupId);
     return n > 0 ? { ok: true } : { ok: false, error: "Nenhuma tropa para separar." };
   }
+  if (action.type === "lote") {
+    const order: DeployOrder = { x: action.x, y: action.y };
+    if (action.holdAtArrival !== undefined) order.holdAtArrival = action.holdAtArrival;
+    if (action.originStructureId) order.originStructureId = action.originStructureId;
+    if (action.targetUnitId) order.targetUnitId = action.targetUnitId;
+    if (action.targetStructureId) order.targetStructureId = action.targetStructureId;
+    if (action.targetTerritoryId) order.targetTerritoryId = action.targetTerritoryId;
+    if (action.escortId) order.escortId = action.escortId;
+    const res = deployBatch(state, action.side, action.requests, order);
+    return res.ok ? { ok: true } : { ok: false, error: res.error ?? "Envio recusado." };
+  }
+  if (action.type === "dirigir") {
+    const cfg = action.side === "blue" ? state.blue : state.red;
+    const u = cfg.units.find((x) => x.id === action.unitId);
+    if (!u) return { ok: false, error: "Unidade não encontrada." };
+    u.driveX = action.dx;
+    u.driveY = action.dy;
+    return { ok: true };
+  }
   if (action.type === "capturar") {
     const cfg = action.side === "blue" ? state.blue : state.red;
     const ids = action.groupId

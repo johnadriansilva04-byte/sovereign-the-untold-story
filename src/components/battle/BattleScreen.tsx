@@ -28,7 +28,7 @@ import {
   missionById,
   type MissionDef,
 } from "@/game/battle/missions";
-import { useBattle } from "@/game/battle/useBattle";
+import { useBattle, type UseBattle } from "@/game/battle/useBattle";
 import { orientationFor } from "@/game/battle/world";
 import { useBattleAudio } from "@/game/battle/useBattleAudio";
 import { isAudioMuted, primeAudio, setAudioMuted } from "@/game/battle/audio";
@@ -167,6 +167,8 @@ export function BattleScreen(props: BattleScreenProps) {
 
 interface LiveProps {
   config: BattleConfig;
+  /** Lado controlado por este cliente. No PvP online: host=blue, convidado=red. */
+  localSide?: Side | undefined;
   llmCommander?: boolean;
   onComplete: (result: BattleResult) => void;
   onReplay: () => void;
@@ -174,16 +176,67 @@ interface LiveProps {
   onExit?: (() => void) | undefined;
 }
 
+/** Fonte da batalha: de onde vêm estado e comandos. A mesma view serve para a batalha
+ *  LOCAL (IA no mesmo aparelho) e para a batalha ONLINE (lockstep PvP em tempo real). */
+export interface BattleSource {
+  useBattle: () => UseBattle;
+}
+
+export interface BattleViewProps {
+  config: BattleConfig;
+  /** De onde vêm estado e comandos (local ou online). */
+  source: BattleSource;
+  /** Lado controlado por este cliente. No PvP online: host=blue, convidado=red. */
+  localSide?: Side | undefined;
+  onComplete: (result: BattleResult) => void;
+  onReplay: () => void;
+  onNewMission?: (() => void) | undefined;
+  onExit?: (() => void) | undefined;
+}
+
+/** Batalha LOCAL: a IA roda no mesmo aparelho (campanha, treino, PvP assíncrono). */
 export function LiveBattle({
   config,
+  localSide = "blue",
   llmCommander,
   onComplete,
   onReplay,
   onNewMission,
   onExit,
 }: LiveProps) {
-  const battle = useBattle(config, { llmCommander });
+  const source = useMemo<BattleSource>(
+    () => ({ useBattle: () => useBattle(config, { llmCommander, localSide }) }),
+
+    [config, llmCommander, localSide],
+  );
+  return (
+    <BattleView
+      config={config}
+      source={source}
+      localSide={localSide}
+      onComplete={onComplete}
+      onReplay={onReplay}
+      onNewMission={onNewMission}
+      onExit={onExit}
+    />
+  );
+}
+
+export function BattleView({
+  config,
+  source,
+  localSide = "blue",
+  onComplete,
+  onReplay,
+  onNewMission,
+  onExit,
+}: BattleViewProps) {
+  const battle = source.useBattle();
   const { state, result } = battle;
+  // O lado local manda na interface: comandante, base, mão de cartas e herói vêm do
+  // lado do jogador; o "inimigo" é sempre o oposto.
+  const me: Side = localSide;
+  const enemy: Side = me === "blue" ? "red" : "blue";
   // Som de combate ligado aos eventos REAIS do motor (explosão/impacto/disparo).
   const [soundOn, setSoundOn] = useState(() => !isAudioMuted());
   // Tela cheia REAL (Fullscreen API): o botão expande o documento, para a arena tomar o
@@ -237,12 +290,12 @@ export function LiveBattle({
     .filter(
       (s) =>
         s.alive &&
-        s.side === "blue" &&
+        s.side === me &&
         (s.kind === "base-principal" || (s.kind === "base-avancada" && !s.underConstruction)),
     )
     .map((s) => s.id)
     .join(",");
-  const bases = useMemo(() => launchBases(state, "blue"), [baseKey]);
+  const bases = useMemo(() => launchBases(state, me), [baseKey]);
   const baseLabels = useMemo(() => {
     const labels: Record<string, number> = {};
     bases.forEach((b, i) => (labels[b.id] = i + 1));
@@ -264,12 +317,12 @@ export function LiveBattle({
   const addCard = useCallback(
     (cardId: string) => {
       const cost = battle.costOf(cardId);
-      if (state.blue.command - spent < cost) return;
+      if (state[me].command - spent < cost) return;
       // Primeira carta da operação: a origem padrão é a base principal (nº 1).
       setOriginId((o) => o ?? bases[0]?.id ?? null);
       setCounts((cur) => ({ ...cur, [cardId]: (cur[cardId] ?? 0) + 1 }));
     },
-    [battle, state.blue.command, spent, bases],
+    [battle, state, me, spent, bases],
   );
 
   const removeCard = useCallback((cardId: string) => {
@@ -306,20 +359,20 @@ export function LiveBattle({
 
   // CHANCELER em campo (aliado): habilita o CONTROLE DIRETO (setas no PC, analógico no
   // celular). Sem ele em campo, não há volante para dirigir.
-  const blueHero = state.blue.units.find((u) => u.hero && u.alive) ?? null;
+  const localHero = state[me].units.find((u) => u.hero && u.alive) ?? null;
   // O vetor chega no espaço da TELA (o dedo empurra "para cima" na tela). Em retrato o
   // campo está girado +90°, então o vetor é convertido para o mundo antes de virar
   // comando: empurrar para cima move o chanceler para a base inimiga (mundo +x).
   const stageRef = useRef<HTMLDivElement | null>(null);
   const drive = useCallback(
     (dx: number, dy: number) => {
-      if (!blueHero) return;
+      if (!localHero) return;
       const el = stageRef.current;
       const portrait = el ? orientationFor(el.clientWidth, el.clientHeight) === "portrait" : false;
-      if (portrait) battle.driveUnit(blueHero.id, -dy, dx);
-      else battle.driveUnit(blueHero.id, dx, dy);
+      if (portrait) battle.driveUnit(localHero.id, -dy, dx);
+      else battle.driveUnit(localHero.id, dx, dy);
     },
-    [battle, blueHero],
+    [battle, localHero, localSide],
   );
 
   // Teclas direcionais seguradas viram um VETOR (permite diagonal). Ao soltar todas, o
@@ -340,7 +393,7 @@ export function LiveBattle({
     handleSend,
     clearSelection,
     bases,
-    deck: state.blue.deck.hand,
+    deck: state[me].deck.hand,
     heldKeys,
     applyKeys,
   });
@@ -349,7 +402,7 @@ export function LiveBattle({
     handleSend,
     clearSelection,
     bases,
-    deck: state.blue.deck.hand,
+    deck: state[me].deck.hand,
     heldKeys,
     applyKeys,
   };
@@ -448,7 +501,7 @@ export function LiveBattle({
 
   // Alvo de captura visível em campo: o chanceler adversário (ou a unidade que porta a
   // carta nova). É o objetivo decisivo — prendê-lo e conduzi-lo à base vence a guerra.
-  const captureTargetUnit = state.red.units.find((u) => u.alive && u.captureTarget) ?? null;
+  const captureTargetUnit = state[enemy].units.find((u) => u.alive && u.captureTarget) ?? null;
 
   const handleCapture = useCallback(
     (targetUnitId: string) => {
@@ -459,7 +512,7 @@ export function LiveBattle({
     [battle, selectedUnitId],
   );
 
-  const selectedUnit = state.blue.units.find((u) => u.id === selectedUnitId) ?? null;
+  const selectedUnit = state[me].units.find((u) => u.id === selectedUnitId) ?? null;
 
   if (result) {
     return (
@@ -503,6 +556,7 @@ export function LiveBattle({
       >
         <BattleArena
           state={state}
+          localSide={me}
           selectedUnitId={selectedUnitId}
           onSelectUnit={setSelectedUnitId}
           onMoveSelected={handleMoveSelected}
@@ -530,12 +584,12 @@ export function LiveBattle({
                 </button>
               )}
               <div className="min-w-0 flex-1">
-                <BattleTopBar state={state} />
+                <BattleTopBar state={state} localSide={me} />
               </div>
             </div>
           </div>
           <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-b from-background/70 to-transparent px-2 py-1">
-            <CommandBar side={state.blue} compact />
+            <CommandBar side={state[me]} compact />
             <FrontLineScore state={state} />
             <div className="flex items-center gap-1.5">
               <button
@@ -592,7 +646,7 @@ export function LiveBattle({
 
         {/* ANALÓGICO do chanceler: só aparece com o herói em campo. No PC as setas fazem
             o mesmo; no celular este disco é o volante. */}
-        {blueHero && !operationActive && (
+        {localHero && !operationActive && (
           <div className="pointer-events-none absolute bottom-3 left-3 z-10">
             <div className="pointer-events-auto">
               <BattleJoystick onChange={drive} />
@@ -637,7 +691,7 @@ export function LiveBattle({
       <div className="shrink-0 border-t border-border bg-background/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur">
         <div className="flex w-full flex-col gap-1.5">
           <HandBar
-            side={state.blue}
+            side={state[me]}
             counts={counts}
             spent={spent}
             costOf={battle.costOf}
@@ -654,7 +708,7 @@ export function LiveBattle({
             onPickOrigin={setOriginId}
             totalUnits={totalUnits}
             spent={spent}
-            command={state.blue.command}
+            command={state[me].command}
             onClear={clearSelection}
           />
 

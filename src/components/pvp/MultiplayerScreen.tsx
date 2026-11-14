@@ -24,9 +24,11 @@ import {
 } from "@/game/progress/pvp";
 import { useProfile } from "@/game/progress/store";
 import { cardById } from "@/game/battle/catalog";
+import { OnlineBattle } from "./OnlineBattle";
 
 type View =
   | { kind: "lobby" }
+  | { kind: "online" }
   | { kind: "stakes" }
   | { kind: "battle"; config: BattleConfig }
   | { kind: "result"; result: BattleResult; stake: StakeResult; opponent: string };
@@ -85,6 +87,10 @@ export function MultiplayerScreen() {
     });
     setView({ kind: "result", result, stake, opponent: opponent.name });
   };
+
+  if (view.kind === "online") {
+    return <OnlineBattle onExit={() => setView({ kind: "lobby" })} />;
+  }
 
   if (view.kind === "battle") {
     return (
@@ -333,6 +339,12 @@ export function MultiplayerScreen() {
             className="bg-primary px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"
           >
             {modeDef.stakeCards > 0 ? "Definir apostas" : "Iniciar partida"}
+          </button>
+          <button
+            onClick={() => setView({ kind: "online" })}
+            className="border border-primary px-6 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary hover:bg-accent"
+          >
+            Sala online · tempo real
           </button>
           <p className="font-mono text-[11px] text-muted-foreground">
             {opponent.flag} {opponent.name} · {modeDef.summary}

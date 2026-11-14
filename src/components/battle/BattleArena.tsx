@@ -40,6 +40,8 @@ import type {
 
 interface Props {
   state: BattleState;
+  /** Lado que o jogador controla (padrão azul). No PvP o convidado controla o vermelho. */
+  localSide?: Side | undefined;
   selectedUnitId: string | null;
   onSelectUnit: (id: string | null) => void;
   onMoveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => void;
@@ -230,6 +232,7 @@ function TerrainDetailGlyph({
 
 export function BattleArena({
   state,
+  localSide = "blue",
   selectedUnitId,
   onSelectUnit,
   onMoveSelected,
@@ -243,6 +246,12 @@ export function BattleArena({
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // Lado local e adversário: a arena era fixa no azul. Parametrizar aqui deixa o
+  // convidado do PvP (vermelho) jogar com a mesma interface, sem duplicar componentes.
+  const ally: Side = localSide;
+  const foe: Side = localSide === "blue" ? "red" : "blue";
+  const allyUnits = state[ally].units;
+  const foeUnits = state[foe].units;
   // Tamanho de layout do palco: alimenta a câmera (encaixe uniforme + giro em retrato).
   const [stageSize, setStageSize] = useState<{ w: number; h: number } | null>(null);
   // TROPA SELECIONADA (grupo). O jogador clica numa unidade e toda a tropa do MESMO
@@ -358,7 +367,7 @@ export function BattleArena({
   const pickLaunchBase = (ax: number, ay: number): Structure | null => {
     let best: { s: Structure; d: number } | null = null;
     for (const s of state.structures) {
-      if (!s.alive || s.side !== "blue") continue;
+      if (!s.alive || s.side !== ally) continue;
       const launchable =
         s.kind === "base-principal" || (s.kind === "base-avancada" && !s.underConstruction);
       if (!launchable) continue;
@@ -370,11 +379,11 @@ export function BattleArena({
 
   // Unidade aliada mais próxima do ponto, dentro de uma tolerância em pixels.
   const pickAllyUnit = (ax: number, ay: number): string | null => {
-    return pickUnit(ax, ay, state.blue.units);
+    return pickUnit(ax, ay, allyUnits);
   };
 
   const pickEnemyUnit = (ax: number, ay: number): string | null => {
-    return pickUnit(ax, ay, state.red.units);
+    return pickUnit(ax, ay, foeUnits);
   };
 
   const pickUnit = (ax: number, ay: number, list: BattleUnit[]): string | null => {
@@ -400,7 +409,7 @@ export function BattleArena({
   const pickTarget = (ax: number, ay: number): DeployTarget | undefined => {
     // Soltar sobre o PRÓPRIO chanceler: destaca a tropa para escoltá-lo.
     const allyId = pickAllyUnit(ax, ay);
-    if (allyId && state.blue.units.find((u) => u.id === allyId)?.hero) return { escortId: allyId };
+    if (allyId && allyUnits.find((u) => u.id === allyId)?.hero) return { escortId: allyId };
     const enemyId = pickEnemyUnit(ax, ay);
     if (enemyId) return { unitId: enemyId };
     const struct = nearestStructure(ax, ay);
@@ -413,7 +422,7 @@ export function BattleArena({
   const nearestStructure = (ax: number, ay: number): Structure | null => {
     let best: { s: Structure; d: number } | null = null;
     for (const s of state.structures) {
-      if (!s.alive || s.side === "blue") continue;
+      if (!s.alive || s.side === ally) continue;
       const d = Math.hypot(ax - s.x, ay - s.y);
       if (d <= s.radius + 2 && (!best || d < best.d)) best = { s, d };
     }
@@ -423,7 +432,7 @@ export function BattleArena({
   const nearestTerritory = (ax: number, ay: number): Territory | null => {
     let best: { t: Territory; d: number } | null = null;
     for (const t of state.territories) {
-      if (t.owner === "blue") continue;
+      if (t.owner === ally) continue;
       const d = Math.hypot(ax - t.x, ay - t.y);
       if (d <= t.radius + 1.5 && (!best || d < best.d)) best = { t, d };
     }
@@ -475,7 +484,7 @@ export function BattleArena({
   const ghostOrigin = destPoint
     ? originId
       ? (state.structures.find((s) => s.id === originId) ?? null)
-      : originFor(state, "blue", destPoint.x, destPoint.y)
+      : originFor(state, ally, destPoint.x, destPoint.y)
     : null;
   const ghostValid = Boolean(originId);
 
@@ -667,7 +676,7 @@ export function BattleArena({
             {/* Zonas de desdobramento */}
             {(["red", "blue"] as Side[]).map((s) => {
               const z = arena.deployZone[s];
-              const active = operationActive && s === "blue";
+              const active = operationActive && s === ally;
               return (
                 <rect
                   key={s}
@@ -702,12 +711,7 @@ export function BattleArena({
             {/* REGIÕES TERRITORIAIS: o campo inteiro particionado em áreas completas
                 (um polígono por ponto de expansão). Conquistar pinta a área toda. */}
             {state.territories.map((t, i) => (
-              <TerritoryGlyph
-                key={t.id}
-                territory={t}
-                region={regionPolys[i] ?? []}
-                cam={cam}
-              />
+              <TerritoryGlyph key={t.id} territory={t} region={regionPolys[i] ?? []} cam={cam} />
             ))}
 
             {/* Pontos de controle */}
@@ -727,9 +731,9 @@ export function BattleArena({
 
             {/* Unidades */}
             {units.map((u) => {
-              const dim = u.side === "red" && !u.seen.blue && u.revealed <= 0;
+              const dim = u.side === foe && !u.seen[ally] && u.revealed <= 0;
               const inTroop =
-                u.side === "blue" && selectedGroup !== null && u.groupId === selectedGroup;
+                u.side === ally && selectedGroup !== null && u.groupId === selectedGroup;
               const p = smoothed.get(u.id);
               // O glifo recebe a posição SUAVIZADA (cópia rasa) para desenhar a marcha
               // contínua; o resto dos atributos continua vindo da unidade real do motor.
@@ -740,6 +744,7 @@ export function BattleArena({
                   unit={drawn}
                   selected={u.id === selectedUnitId || inTroop}
                   dim={dim}
+                  allySide={ally}
                   cam={cam}
                 />
               );
@@ -839,7 +844,7 @@ export function BattleArena({
                 .filter(
                   (s) =>
                     s.alive &&
-                    s.side === "blue" &&
+                    s.side === ally &&
                     (s.kind === "base-principal" ||
                       (s.kind === "base-avancada" && !s.underConstruction)),
                 )
@@ -899,7 +904,13 @@ export function BattleArena({
 // Zonas de efeito (fumaça, gás lacrimogêneo, reconhecimento)
 // ---------------------------------------------------------------------------
 
-function ZoneGlyph({ zone: z, cam }: { zone: EffectZone; cam?: Pick<Camera, "rotateDeg" | "tiltDeg"> }) {
+function ZoneGlyph({
+  zone: z,
+  cam,
+}: {
+  zone: EffectZone;
+  cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
+}) {
   if (z.kind === "gas") {
     return (
       <g>
@@ -1711,11 +1722,13 @@ function UnitGlyph({
   unit,
   selected,
   dim = false,
+  allySide = "blue",
   cam,
 }: {
   unit: BattleUnit;
   selected: boolean;
   dim?: boolean;
+  allySide?: Side;
   cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
 }) {
   const color = sideColor(unit.side);
@@ -1808,7 +1821,7 @@ function UnitGlyph({
       {/* Insígnia de veterania: só nas tropas PRÓPRIAS. No adversário o aro virava
           ruído em volta de cada inimigo e poluía a leitura do campo — a patente do
           inimigo é informação do relatório, não do teatro. */}
-      {unit.level > 1 && unit.side === "blue" && (
+      {unit.level > 1 && unit.side === allySide && (
         <circle
           cx={unit.x}
           cy={y}

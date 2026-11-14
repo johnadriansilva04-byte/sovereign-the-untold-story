@@ -816,5 +816,40 @@ export interface CaptureAction {
   targetUnitId: string;
 }
 
+// LOTE: envia várias cartas de uma vez (a "operação" do HUD) a partir de uma base. O
+// motor já fazia isso em `deployBatch`; expor como ação permite o lockstep do PvP
+// aplicar o MESMO lote nos dois clientes com um único comando.
+export interface BatchDeployAction {
+  type: "lote";
+  side: Side;
+  requests: { cardId: string; count: number }[];
+  x: number;
+  y: number;
+  originStructureId?: string;
+  targetUnitId?: string;
+  targetStructureId?: string;
+  targetTerritoryId?: string;
+  escortId?: string;
+  holdAtArrival?: boolean;
+}
+
+// CONTROLE DIRETO: define o vetor do chanceler (setas/analógico). No PvP é um comando
+// efêmero reenviado enquanto a tecla/analógico está pressionado; o lockstep o aplica
+// no tick agendado, mantendo os dois clientes iguais.
+export interface DriveAction {
+  type: "dirigir";
+  side: Side;
+  unitId: string;
+  dx: number;
+  dy: number;
+}
+
 export type BattleAction =
-  DeployAction | SupportAction | OrderAction | RepositionAction | SeparateAction | CaptureAction;
+  | DeployAction
+  | SupportAction
+  | OrderAction
+  | RepositionAction
+  | SeparateAction
+  | CaptureAction
+  | BatchDeployAction
+  | DriveAction;

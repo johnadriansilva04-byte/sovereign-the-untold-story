@@ -106,6 +106,46 @@ leitura de mundo, embalada como obra de ficção.
 - Sincronização opcional com Supabase (perfil, campanha, inventário, decks, registros de
   batalha e lobbies PvP), sempre **silenciosa** — falha de rede nunca interrompe uma batalha.
 
+### 3.4 PvP em tempo real (núcleo construído)
+- **Lockstep determinístico** (`src/game/pvp/live.ts`): os dois clientes rodam a MESMA
+  simulação com a MESMA semente e trocam apenas os COMANDOS. O motor é determinístico (RNG
+  semeado, sem `Math.random`/relógio dentro de `stepBattle`), então o estado só diverge se os
+  comandos divergirem — e `stateHash` detecta a divergência.
+- **Janela de entrada** (`INPUT_DELAY_TICKS = 4`, ~400 ms): cada jogador pode avançar alguns
+  ticks à frente do adversário, dando tempo de o comando atravessar a rede.
+- **`LiveSim`**: fila de comandos ordenada por (tick, seat, seq), `hash()`, `snapshot()`,
+  `noteRemoteProgress` e `applySnapshot` (o host é a autoridade e ressincroniza).
+- **`LiveMatch`** (`match.ts`): relógio com tempo INJETADO (`advance(elapsedMs)` — o `rAF` do
+  hook passa o tempo; nos testes o laço é determinístico e não usa `setInterval`). Emite
+  heartbeats de progresso (200 ms) e de hash (1,5 s); compara o hash do adversário no MESMO
+  tick (janela ±3) e pede snapshot ao host em caso de divergência.
+- **Transporte** (`transport.ts`): abstração `LiveTransport` sobre o Realtime do Supabase em
+  modo BROADCAST (efêmero, sem gravar no banco, sem migração). Sem Supabase, cai num transporte
+  vazio (no-op) e o jogo continua offline. Nos testes, `createFakeTransportPair` liga dois peers
+  em memória.
+- **Lobby** (`lobby.ts`): matchmaking determinístico/testável via presence, com código de sala
+  compartilhável (`makeRoomCode`, alfabeto sem caracteres ambíguos).
+- **Lado do jogador parametrizado** (`localSide`): a interface toda (arena, HUD, topo, herói,
+  mão de cartas, economia) passou a derivar do lado local — host joga **azul**, convidado joga
+  **vermelho**. Antes a arena era fixa no azul; o padrão continua `blue`, então campanha/treino
+  não mudam.
+- **Chanceler no PvP**: `buildLiveConfig` aplica a MESMA regra de 1 chanceler por batalha,
+  alternando `defender`/`capturar` pela paridade da semente (os dois clientes chegam ao mesmo
+  resultado).
+- **Ações novas no motor** (`lote` e `dirigir`): expostas como `BattleAction` para o lockstep
+  aplicar o mesmo lote de envio e o mesmo vetor do chanceler nos dois clientes.
+- **Interface da partida** (`useLivePvp.ts` + `OnlineBattle.tsx`, CONSTRUÍDA 13/11): a
+  `BattleView` (extraída de `BattleScreen.tsx`) é a MESMA tela para batalha local e online — ela
+  recebe uma "fonte" (`BattleSource`) que, no online, publica cada comando no lockstep em vez de
+  rodar a IA. `useLivePvp` cria o `LiveMatch` uma única vez, dirige o relógio pelo `rAF` e expõe
+  a API idêntica à da batalha local (`sendBatch`, `issueOrder`, `moveSelected`, `capture`,
+  `driveUnit`, `costOf`).
+- **Fluxo de sala** (`OnlineBattle.tsx`): menu "criar sala / entrar por código", tela de espera
+  com o código compartilhável e a partida. O código é **determinístico** (`encodeRoom`/
+  `decodeRoom`): empacota semente + terreno, então o convidado reconstrói a MESMA config só com o
+  código — sem canal extra de anúncio. Botão de acesso: **"Sala online · tempo real"** no lobby
+  de `MultiplayerScreen`.
+
 ---
 
 ## 4. O que falta desenvolver (prioridades)
@@ -173,14 +213,21 @@ leitura de mundo, embalada como obra de ficção.
 - [ ] Amarrar cada decisão de campanha a um efeito visível na batalha seguinte.
 
 ### P2 — multiplayer e banco
-- [ ] PvP **em tempo real** (hoje é assíncrono por lobby). Exige servidor de salas — fora do
-      escopo do front-end atual; planejar como fase futura.
+- [x] **PvP em tempo real** (núcleo CONSTRUÍDO 13/11, `src/game/pvp/`): lockstep determinístico
+      + transporte efêmero (Realtime BROADCAST do Supabase, sem migração) + lobby por código de
+      sala + ressincronização por hash/snapshot. Ver a seção 3.4. O modo assíncrono por lobby
+      (tabela `pvp_matches`) continua existindo para partidas "por correspondência".
+- [x] **UI do PvP online** (CONCLUÍDA 13/11): botão "Sala online · tempo real" no lobby de
+      `MultiplayerScreen`, menu criar/entrar, tela de espera e a batalha pela `BattleView`
+      compartilhada. O PvP assíncrono local (`game/progress/pvp.ts`) continua disponível.
+- [x] **Teste do lobby e da sala** (`src/test/pvp-room.test.ts`, CONCLUÍDO 13/11): pareamento
+      (`pairUp`/`roleForMe`/`pairingCode`), barramento em memória e ida-e-volta do código de sala.
 - [ ] **Corrigir o seed de novos usuários no Supabase** (feito via Lovable, não à mão): a função
       `handle_new_user` semeia 5 ids de carta que **não existem** no catálogo. Os ids corretos do
       baralho inicial são: `inf-fuzileiros`, `inf-assalto`, `inf-antitanque`, `inf-engenheiro`,
       `art-canhao`, `bld-vbld`, `rec-drone`, `sup-gas`.
 - [ ] Expor a chave pública do Supabase (`VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`)
-      para ligar a sincronização — sem ela o jogo roda 100% offline.
+      para ligar a sincronização e o Realtime do PvP — sem ela o jogo roda 100% offline.
 
 ### P3 — acabamento
 - [ ] Acessibilidade (foco, contraste, navegação por teclado) e legendas.
@@ -191,10 +238,25 @@ leitura de mundo, embalada como obra de ficção.
 
 ## 5. Estado atual verificado (13/11/2026)
 
-- Suíte de testes: **255 passando / 4 pulados** (`npx vitest run`).
-- `tsc --noEmit`: limpo.
-- Batalha em tela cheia e campo em diagonal verificados no navegador.
-- Banco Supabase: esquema íntegro (7 tabelas, RLS em todas); **1 bug de seed** descrito no P2.
+- Suíte de testes: **276 passando / 7 pulados** (`npx vitest run`).
+- `tsc --noEmit`: limpo. `eslint`: sem erros (só avisos de dependências de hooks já existentes).
+- **Geometria do campo conferida por cálculo** (`cameraFor`/`worldToStage`):
+  - **Diagonal**: em paisagem o campo vai de (3%,57%) a (97%,43%) — a faixa azul→vermelha
+    cruza a tela na diagonal e ocupa a tela inteira. Em retrato gira para preencher a altura.
+  - **Bases nos cantos**: em paisagem a base aliada projeta em **26%,68%** e a inimiga em
+    **74%,32%** (cantos inferior-esquerdo e superior-direito do losango). Em retrato: 36%,69% e
+    64%,31%.
+- **Guerra medida** (`war-sim.test.ts`, `SIM=1`): duelos 33×33 por carta, espelhados e misturados.
+  Canhão de campanha × canhão de campanha: **vitória azul, 177 s, picos 33/33, base inimiga 34%**.
+  No variado (8 cartas, limite por carta) os dois lados enchem os **33** e o resultado alterna.
+- **PvP online conferido no navegador** (13/11): o botão abre o menu de sala, "Criar e aguardar"
+  gera o código (ex.: `92U3R`) e mostra a tela de espera; sem as chaves do Supabase a conexão
+  falha de forma limpa ("Falha na conexão"), como esperado — o restante do jogo segue offline.
+  A batalha LOCAL (campanha) foi reaberta após a extração da `BattleView` e continua funcionando.
+- **Banco Supabase**: esquema íntegro — 7 tabelas (`profiles`, `nation_state`,
+  `campaign_progress`, `inventory`, `decks`, `battle_records`, `pvp_matches`), **RLS em todas**,
+  triggers de `updated_at`, e todas as tabelas que o front usa existem no schema. Falta apenas o
+  **bug de seed** descrito no P2 e expor as chaves públicas para ligar a sincronização.
 
 ---
 
