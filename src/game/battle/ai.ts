@@ -103,6 +103,11 @@ interface AiMemory {
 // Estado interno por batalha: cada lado tem o seu.
 const memory: WeakMap<BattleState, Record<Side, AiMemory>> = new WeakMap();
 
+// Distância (em unidades de campo) a partir da qual uma ameaça visível deixa de ser
+// "colada" no chanceler. Serve para o recuo do posto e para decidir se vale destacar a
+// guarda: um exército que fica parado protegendo o chefe de longe nunca empurra o objetivo.
+const HERO_SAFE_RADIUS = 16;
+
 function memFor(state: BattleState, side: Side): AiMemory {
   let both = memory.get(state);
   if (!both) {
@@ -285,8 +290,10 @@ function escortRetreatingHero(state: BattleState, side: Side): void {
   }
 }
 
-// Move o chanceler do lado para uma posição tática: atrás da própria linha de frente,
-// na direção do objetivo. Se o chanceler está preso (não está em campo), nada acontece.
+// Move o chanceler do lado para uma posição tática: o POSTO RECUADO, atrás da própria
+// base. Ele não segue a linha de frente — um chefe de Estado na vanguarda morre à toa e,
+// no modo "defender", a batalha acaba em segundos. Só sai do posto para se afastar de uma
+// ameaça que se aproxima demais.
 function moveChancellor(state: BattleState, side: Side, mem: AiMemory): void {
   const st = state.heroes[side];
   if (st.state !== "livre" || !st.unitId) return;
@@ -295,24 +302,56 @@ function moveChancellor(state: BattleState, side: Side, mem: AiMemory): void {
   if (state.t - mem.lastHeroMoveAt < 6) return;
   mem.lastHeroMoveAt = state.t;
 
-  const enemy = other(side);
-  const front = frontCentroid(state, side);
-  const target = chooseTarget(
-    state,
-    side,
-    readBattle(state, side),
-    sideState(state, side).commander.personality,
-    mem.weights,
-  );
-  // Recuo tático: mantém-se ~10 unidades ATRÁS do próprio ponto mais avançado.
-  const dir = side === "blue" ? 1 : -1;
-  const gx = clampToWorld({ x: front.x - dir * 10, y: front.y }).x;
-  const gy = clampToWorld({ x: gx, y: (front.y + target.y) / 2 }).y;
-  // Nunca avança além da própria linha (evita correr para dentro do inimigo).
-  const safeX = side === "blue" ? Math.min(gx, front.x) : Math.max(gx, front.x);
-  void enemy;
+  const post = heroRearPost(state, side);
+  const threat = nearestVisibleEnemy(state, side, hero);
+  let goal = post;
+  if (threat && dist(threat.x, threat.y, hero.x, hero.y) < HERO_SAFE_RADIUS) {
+    // Ameaça colada: recua na direção oposta, para trás do posto.
+    const dx = hero.x - threat.x;
+    const dy = hero.y - threat.y;
+    const len = Math.hypot(dx, dy) || 1;
+    goal = clampToWorld({ x: hero.x + (dx / len) * 12, y: hero.y + (dy / len) * 12 });
+  }
   issueOrder(state, side, "avancar", hero.id, undefined, {});
-  repositionHero(state, hero, clampToWorld({ x: safeX, y: gy }));
+  repositionHero(state, hero, clampToWorld(goal));
+}
+
+// Posto recuado do chanceler: atrás da própria base, afastado do centro do campo. É onde
+// o comandante observa a batalha sem entrar no alcance das armas de longo alcance.
+function heroRearPost(state: BattleState, side: Side): { x: number; y: number } {
+  const own = state.config.arena.structures.find(
+    (s) => s.side === side && s.kind === "base-principal",
+  );
+  if (!own) {
+    const zone = state.config.arena.deployZone[side];
+    return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };
+  }
+  const foe = state.config.arena.structures.find(
+    (s) => s.side === other(side) && s.kind === "base-principal",
+  );
+  const midX = (own.x + (foe?.x ?? own.x + 1)) / 2;
+  const f = own.x < midX ? -1 : 1;
+  return { x: own.x + f * own.radius * 0.6, y: own.y };
+}
+
+// Inimigo visível mais próximo do chanceler (para decidir recuo e guarda).
+function nearestVisibleEnemy(
+  state: BattleState,
+  side: Side,
+  hero: BattleUnit,
+): { x: number; y: number } | null {
+  const cfg = sideState(state, other(side));
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (const e of cfg.units) {
+    if (!e.alive || !isVisibleTo(state, e, side)) continue;
+    const d = dist(hero.x, hero.y, e.x, e.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { x: e.x, y: e.y };
+    }
+  }
+  return best;
 }
 
 // Reposiciona o herói para um ponto, mantendo o comando direto (sem arrastar tropas).
@@ -541,28 +580,6 @@ function enemyHeroOnField(state: BattleState, side: Side): BattleUnit | null {
   return cfg.units.find((u) => u.id === st.unitId && u.alive) ?? null;
 }
 
-// Ponto mais ameaçador para o NOSSO chanceler (inimigo mais próximo dele), usado para
-// posicionar a guarda entre a ameaça e o herói — em vez de deixar a escolta parada.
-function heroThreatPoint(
-  state: BattleState,
-  side: Side,
-  hero: BattleUnit,
-): { x: number; y: number } | null {
-  const enemy = other(side);
-  const cfg = enemy === "blue" ? state.blue : state.red;
-  let best: BattleUnit | null = null;
-  let bestD = Infinity;
-  for (const e of cfg.units) {
-    if (!e.alive) continue;
-    const d = dist(hero.x, hero.y, e.x, e.y);
-    if (d < bestD) {
-      bestD = d;
-      best = e;
-    }
-  }
-  return best ? { x: best.x, y: best.y } : null;
-}
-
 // O "cérebro" do turno. Ordem de prioridade (recalibrada a cada chamada):
 //   1. RESGATE   — o nosso chanceler está preso: a guerra depende de soltá-lo.
 //   2. EXTRAÇÃO  — ele foi solto e está fugindo: escoltar de volta para casa.
@@ -663,11 +680,14 @@ export function aiStrategy(
       };
   }
 
-  // 4. GUARDA — proteger o nosso chanceler: cerrar o cerco pelo lado da ameaça.
+  // 4. GUARDA — proteger o nosso chanceler SOMENTE quando há ameaça real chegando perto
+  // do posto dele. Exigir "inimigos visíveis em qualquer lugar" fazia o exército parar de
+  // empurrar o objetivo para escoltar o chefe de longe: o azul dominava o campo e a partida
+  // travava em empate. A guarda é reação à proximidade, não uma escolta permanente.
   if (mine.state === "livre" && mine.unitId) {
     const hero = cfg.units.find((u) => u.id === mine.unitId && u.alive);
-    const threat = hero ? heroThreatPoint(state, side, hero) : null;
-    if (hero && threat && read.visible.length >= 2) {
+    const threat = hero ? nearestVisibleEnemy(state, side, hero) : null;
+    if (hero && threat && dist(hero.x, hero.y, threat.x, threat.y) < HERO_SAFE_RADIUS) {
       // Ponto à frente do herói, na direção da ameaça (a tropa barra a aproximação).
       const dx = threat.x - hero.x;
       const dy = threat.y - hero.y;

@@ -577,15 +577,21 @@ export interface BattleConfig {
   // CARTAS-ESPÓLIO: cartas do arsenal adversário que o jogador ainda não possui. As
   // tropas azuis as reconhecem em campo e priorizam abatê-las para capturar a carta.
   bountyCardIds?: string[];
-  // CHANCELERES: onde cada herói começa. "livre" = unidade em campo desde o início;
-  // "preso" = cativo dentro de uma PRISÃO inimiga, libertado quando ela é destruída.
+  // CHANCELER: onde o único herói da batalha começa. "livre" = unidade em campo desde o
+  // início; "preso" = cativo dentro de uma PRISÃO inimiga, libertado quando ela é destruída.
   heroSetup?: HeroSetup[];
-  // O chanceler DECIDE a partida? Nas missões de história do herói (cativeiro, resgate)
-  // sim: matar o adversário vence / perder o seu perde. Nas demais ele é só o comandante
-  // em campo — não decide por si (a vitória continua por objetivo/base) e, se tomba,
-  // reagrupa na base depois de um tempo.
+  // MODO DO CHANCELER: cada batalha tem UM único chanceler em campo, e o modo diz de
+  // quem ele é. "defender" = o NOSSO chanceler está em campo (proteja-o: se ele cai, a
+  // batalha está perdida). "capturar" = o chanceler ADVERSÁRIO está em campo (tome-o ou
+  // elimine-o: isso vence a batalha).
+  chancellorMode?: ChancellorMode;
+  // O chanceler DECIDE a partida? No modo "defender" perder o seu perde; no modo
+  // "capturar" neutralizar o adversário vence. Sem este campo, a partida usa as regras
+  // clássicas (destruir a base principal).
   heroDecisive?: boolean;
 }
+
+export type ChancellorMode = "defender" | "capturar";
 
 export interface HeroSetup {
   side: Side;
@@ -692,7 +698,7 @@ export interface HeroStatus {
    *  - "livre":   em campo sob comando (livre para ir e vir).
    *  - "preso":   cativo numa prisão adversária; só entra em campo se for resgatado.
    *  - "fugindo": recém-resgatado, ainda em território hostil. PRECISA voltar para casa.
-   *  - "seguro":  resgatado E de volta ao território controlado — só então pode vencer.
+   *  - "seguro":  resgatado E de volta ao território controlado.
    *  - "morto":   eliminado; o lado perdeu a guerra.
    */
   state: "livre" | "preso" | "fugindo" | "seguro" | "morto";

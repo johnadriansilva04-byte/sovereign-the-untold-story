@@ -88,6 +88,13 @@ leitura de mundo, embalada como obra de ficção.
   (em paisagem, à esquerda e à direita), cada uma no seu canto do losango projetado.
 - **Motor determinístico** (`src/game/battle/engine.ts`): bases, torres, territórios de Voronoi,
   bases avançadas, armas com projéteis reais, captura, suprimento, heróis, prêmios.
+- **1 chanceler por batalha, em dois modos** (`chancellorModeFor`): cada confronto tem **um
+  único chanceler decisivo** em campo — o **nosso** (modo `defender`, proteger) ou o do
+  **adversário** (modo `capturar`, prender/eliminar). A missão declara o modo quando quer
+  (`MissionDef.chancellor`); sem declaração, ele **alterna por índice**. O modo define a
+  condição de fim: no `defender`, perder o nosso chanceler é derrota imediata; no `capturar`,
+  neutralizar o adversário é vitória imediata. O posto de comando nasce **recuado, atrás da
+  própria base**, e a IA o mantém ali (não o leva ao front).
 - **Teto de exército = 33 unidades por lado** (`MAX_UNITS_PER_SIDE`), contando só quem está em
   campo (prisioneiros, chanceler e heróis não ocupam vaga).
 - **IA tática local** (`src/game/battle/ai.ts`) com personalidades de comandante (Metódico,
@@ -129,23 +136,36 @@ leitura de mundo, embalada como obra de ficção.
       - **Nota de medição:** o harness de espelho `war-sim.test.ts` NÃO modela nível de carta
         nem dificuldade (usa um config próprio) — para medir o teto de verdade, usar o
         caminho de `buildBattleConfig` com `cardLevels`/`aiDifficulty`.
-- [ ] **Duelo espelhado (carta × carta) simétrico**: no espelho exato, o resultado ainda diverge
-      (ex.: `bld-tanque` e `bld-vbld` espelhados dão resultados diferentes por lado). Investigar
-      a ordem de atualização/implantação para garantir simetria real.
-      - Medição (13/11, 8× mesma carta dos dois lados, Sov infinito): a maioria dos espelhos é
-        quase simétrica (picos iguais, baixas iguais ±1). As divergências maiores aparecem com
-        `def-aa`, `bld-vbld` e `rec-drone` (picos 22/22, 20/19 e 16/21). Com economia REAL a
-        assimetria cresce (ex.: `bld-vbld` pico 16/23, `bld-tanque` 19/20) — o lado que captura
-        território primeiro regenera Sov e sustenta mais tropas.
-- [ ] **Composições misturadas equilibradas**: hoje "fogo vs blindado" vence fácil demais em um
-      sentido; falta calibrar custo/alcance/dano para que a pedra-papel-tesoura seja estável.
-      - Medição (13/11, Sov infinito): "fogo vs blindado" perde no sentido testado (18/23) e
-        "infantaria vs fogo" perde (18/33); "blindado vs infantaria" e "blindado vs blindado"
-        vencem com folga (28/22 e 33/22). Falta simetria na matriz de contramedida.
-- [ ] **1 chanceler por lado**: hoje o cenário "civis" (padrão) coloca UM chanceler por lado,
-      mas os cenários de refém ("resgatar-nosso"/"nos-temos-o-deles") já usam um cativo +
-      um livre. Ideia do usuário: padronizar 1 chanceler por lado para simplificar o
-      objetivo (defender OU capturar). Avaliar impacto nas missões de resgate antes de mudar.
+- [x] **Duelo espelhado (carta × carta) — assimetria ERA DO HARNESS, não do motor** (esclarecido
+      13/11). A causa de "um lado sempre vence" era o teste: `buildBattleConfig` põe o AZUL
+      como o JOGADOR (bônus de economia `economyBonus` 0.072 vs 0.03, comandante e doutrina
+      próprios). O harness "espelhado" herdava isso, então o azul lutava com vantagem — não era
+      o motor. Com espelho DE VERDADE (mesma economia, comandante e doutrina) e vários seeds,
+      o duelo fica ~50/50 (medição: 9 azul / 7 vermelho em 16 partidas, com viradas). O motor
+      já alterna a ordem de atualização a cada tick para dividir a iniciativa.
+      - **Lição:** ao medir simetria, iguale `economyBonus`, `regen`, `commandMax`, comandante e
+        doutrina dos dois lados — senão você mede o balanceamento do jogador, não o do motor.
+- [x] **Composição variada com limite por carta** (esclarecido 13/11). O jogo JÁ impede "33 do
+      mesmo boneco": o baralho tem 8 espaços e cada carta entra no máximo UMA vez
+      (`deck.includes(id)` em CampaignScreen/BattlePrep). Não há regra de cópias duplicadas.
+      Com baralho de 8 cartas distintas e ambos os lados cheios (33), os duelos ficam variados
+      e simétricos. Medição no harness (`war-sim`, bloco "33×33 VARIADO", limite de 3–5 por
+      carta): resultados mistos entre os lados, sem "um sempre vence".
+- [x] **1 chanceler por batalha (defender/capturar)** (RESOLVIDO 13/11). Cada batalha tem um
+      único chanceler decisivo, e o modo define o objetivo:
+      - `defender` — o **nosso** chanceler em campo; perdê-lo é derrota imediata.
+      - `capturar` — o chanceler **adversário** em campo; neutralizá-lo é vitória imediata.
+      - **Alternância:** `chancellorModeFor(mission)` usa `MissionDef.chancellor` quando a
+        missão declara; senão alterna por índice (ímpar = `capturar`).
+      - **Posto recuado:** o chanceler nasce **atrás da própria base** (não no front); a IA o
+        mantém no posto e só reage a ameaça real (`HERO_THREAT_RADIUS`), em vez de segui-lo.
+      - **Motor:** `heroOutOfAction()`/`resolveChancellorOutcome()` decidem a partida pelo modo;
+        `heroDied()` encerra na hora; a entrega do carro-prisão também resolve pelo modo.
+      - **HUD:** `HeroObjective` e `HeroAlert` mostram **um** chanceler (o do modo), com estado
+        e alerta coerentes.
+      - **Cenários de refém** (prisão inicial, resgate/extração) continuam existindo no motor,
+        mas **nenhuma missão da campanha os usa** hoje; os testes que os cobrem montam o
+        `heroSetup` à mão.
 
 ### P1 — narrativa e campanha
 - [ ] Revisar os 50 capítulos quanto a ritmo, tamanho de texto e ganchos entre atos.

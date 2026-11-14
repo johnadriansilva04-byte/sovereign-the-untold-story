@@ -960,13 +960,10 @@ describe("motor de batalha — chanceler, prisão e escolta", () => {
     expect(state.blue.units.some((u) => u.hero && u.alive)).toBe(true);
   });
 
-  it("eliminar o chanceler adversário encerra a partida em vitória", () => {
-    // Neste cenário o NOSSO chanceler começa livre em campo (seguro para vencer).
+  it("modo capturar: neutralizar o chanceler adversário vence na hora", () => {
     const base = testConfig({ duration: 300 });
-    base.heroSetup = [
-      { side: "blue", status: "livre", x: 34, y: 46 },
-      { side: "red", status: "livre", x: 150, y: 46 },
-    ];
+    base.heroSetup = [{ side: "red", status: "livre", x: 150, y: 46 }];
+    base.chancellorMode = "capturar";
     base.heroDecisive = true;
     const state = createBattle(base);
     const redHero = state.red.units.find((u) => u.hero)!;
@@ -980,13 +977,12 @@ describe("motor de batalha — chanceler, prisão e escolta", () => {
     expect(state.heroes.red.state).toBe("morto");
   });
 
-  it("perder o próprio chanceler é derrota imediata", () => {
-    const state = createBattle(heroConfig());
-    const prison = state.structures.find((s) => s.kind === "prisao")!;
-    prison.hp = 1;
-    state.blue.command = 999;
-    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
-    deploy(state, "blue", "sup-aereo", prison.x, prison.y); // liberta o azul
+  it("modo defender: perder o próprio chanceler é derrota imediata", () => {
+    const base = testConfig({ duration: 300 });
+    base.heroSetup = [{ side: "blue", status: "livre", x: 34, y: 46 }];
+    base.chancellorMode = "defender";
+    base.heroDecisive = true;
+    const state = createBattle(base);
     const blueHero = state.blue.units.find((u) => u.hero)!;
     blueHero.hp = 1;
     state.red.command = 999;
@@ -1055,10 +1051,8 @@ describe("motor de batalha — economia de Sov finito", () => {
 describe("motor de batalha — resgate exige extração (fugindo → seguro)", () => {
   function heroConfig(): BattleConfig {
     const base = testConfig({ duration: 300 });
-    base.heroSetup = [
-      { side: "blue", status: "preso", x: 118, y: 46 }, // preso longe, no lado vermelho
-      { side: "red", status: "livre", x: 150, y: 46 },
-    ];
+    base.heroSetup = [{ side: "blue", status: "preso", x: 118, y: 46 }];
+    base.chancellorMode = "defender";
     base.heroDecisive = true;
     return base;
   }
@@ -1072,16 +1066,10 @@ describe("motor de batalha — resgate exige extração (fugindo → seguro)", (
     deploy(state, "blue", "sup-aereo", prison.x, prison.y);
     expect(prison.alive).toBe(false);
     expect(state.heroes.blue.state).toBe("fugindo"); // resgatado, mas ainda longe de casa
-    // Matar o chanceler vermelho agora NÃO vence: o nosso ainda não está em segurança.
-    const redHero = state.red.units.find((u) => u.hero)!;
-    redHero.hp = 1;
-    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
-    deploy(state, "blue", "sup-aereo", redHero.x, redHero.y);
-    expect(state.heroes.red.state).toBe("morto");
     expect(state.running).toBe(true); // a guerra continua até a extração
   });
 
-  it("trazer o chanceler de volta ao território controlado o torna 'seguro' e habilita a vitória", () => {
+  it("trazer o chanceler de volta ao território controlado o torna 'seguro'", () => {
     const state = createBattle(heroConfig());
     const prison = state.structures.find((s) => s.kind === "prisao")!;
     prison.hp = 1;
@@ -1094,14 +1082,7 @@ describe("motor de batalha — resgate exige extração (fugindo → seguro)", (
     blueHero.y = 46;
     stepBattle(state, 0.1);
     expect(state.heroes.blue.state).toBe("seguro");
-    // Agora sim: eliminar o chanceler vermelho vence.
-    const redHero = state.red.units.find((u) => u.hero)!;
-    redHero.hp = 1;
-    state.blue.command = 999;
-    state.blue.deck.hand[0] = { cardId: "sup-aereo", ready: true };
-    deploy(state, "blue", "sup-aereo", redHero.x, redHero.y);
-    expect(state.running).toBe(false);
-    expect(state.outcome).toBe("vitoria");
+    expect(state.running).toBe(true); // extraído, mas a guerra segue pelas regras de objetivo/base
   });
 });
 

@@ -686,30 +686,31 @@ export function LiveBattle({
 // Estado do objetivo central: onde está cada chanceler. Traduz o `heroes` do motor em
 // uma leitura direta — PRESO / EM CAMPO / MORTO — com a vida do nosso quando exposto.
 function HeroObjective({ state }: { state: BattleState }) {
-  const label = (side: Side) => {
-    const h = state.heroes[side];
+  // Cada batalha tem UM único chanceler: o nosso (modo "defender") ou o adversário
+  // (modo "capturar"). O HUD mostra apenas esse, com o seu estado.
+  const mode = state.config.chancellorMode ?? "defender";
+  const side: Side = mode === "defender" ? "blue" : "red";
+  const h = state.heroes[side];
+  const unit = (side === "blue" ? state.blue : state.red).units.find(
+    (u) => u.id === h.unitId && u.alive,
+  );
+  const label = () => {
     if (h.state === "morto") return "morto";
     if (h.state === "preso") return "preso";
     if (h.state === "fugindo") return "fugindo";
-    const unit = (side === "blue" ? state.blue : state.red).units.find(
-      (u) => u.id === h.unitId && u.alive,
-    );
     const pct = unit ? `${Math.round((unit.hp / unit.maxHp) * 100)}%` : "em campo";
     return h.state === "seguro" ? `${pct} seguro` : pct;
   };
-  const tone = (side: Side) => {
-    const h = state.heroes[side];
-    if (h.state === "morto") return side === "blue" ? "text-enemy" : "text-ally";
+  const tone = () => {
+    if (h.state === "morto") return mode === "defender" ? "text-enemy" : "text-ally";
     if (h.state === "preso" || h.state === "fugindo") return "text-primary";
     return "text-foreground";
   };
   return (
     <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
       <span aria-hidden>👤</span>
-      Chanceler
-      <span className={cn("tabular-nums", tone("blue"))}>{label("blue")}</span>
-      <span className="text-border">×</span>
-      <span className={cn("tabular-nums", tone("red"))}>{label("red")}</span>
+      {mode === "defender" ? "Seu chanceler" : "Chanceler inimigo"}
+      <span className={cn("tabular-nums", tone())}>{label()}</span>
     </span>
   );
 }
@@ -795,8 +796,8 @@ function FrontLineScore({ state }: { state: BattleState }) {
   );
 }
 
-// ALERTA CRÍTICO do campo: anuncia a sorte dos chanceleres. A morte de QUALQUER um
-// dos dois encerra a partida; a captura do SEU chanceler rumo à base adversária também.
+// ALERTA CRÍTICO do campo: anuncia a sorte do ÚNICO chanceler da batalha. No modo
+// "defender" o risco é perder o nosso; no "capturar", é deixar escapar o adversário.
 // A faixa é interativa (toque para recolher) e fica no topo do teatro, em vermelho.
 function HeroAlert({ state }: { state: BattleState }) {
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -822,30 +823,27 @@ function HeroAlert({ state }: { state: BattleState }) {
   );
 }
 
-// Regras de decisão do alerta (o alerta mais grave ganha):
-//  1. SEU chanceler morto → derrota consumada.
-//  2. Chanceler INIMIGO morto → vitória consumada.
-//  3. SEU chanceler preso e sendo levado à base adversária → derrota iminente.
-//  4. Chanceler INIMIGO preso rumo à sua base → vitória iminente.
 function heroAlertFor(state: BattleState): { key: string; text: string } | null {
-  const blue = state.heroes.blue;
-  const red = state.heroes.red;
+  const mode = state.config.chancellorMode ?? "defender";
+  const side: Side = mode === "defender" ? "blue" : "red";
+  const h = state.heroes[side];
   const carFor = (captiveSide: "blue" | "red") =>
     (state.prisonCars ?? []).find(
-      (c) => c.captiveSide === captiveSide && c.captiveKind === "chanceler" && !c.captured && !c.lost,
+      (c) =>
+        c.captiveSide === captiveSide && c.captiveKind === "chanceler" && !c.captured && !c.lost,
     );
-  if (blue.state === "morto")
-    return { key: "blue-morto", text: "SEU CHANCELER MORREU — A GUERRA ESTÁ PERDIDA." };
-  if (red.state === "morto")
-    return { key: "red-morto", text: "CHANCELER INIMIGO ELIMINADO — A GUERRA ESTÁ VENCIDA." };
-  if (carFor("blue"))
-    return { key: "blue-preso", text: "SEU CHANCELER FOI CAPTURADO — SENDO LEVADO À BASE INIMIGA!" };
-  if (carFor("red"))
-    return { key: "red-preso", text: "CHANCELER INIMIGO CAPTURADO — CONDUZINDO-O À SUA BASE." };
-  if (blue.state === "preso")
-    return { key: "blue-cativo", text: "SEU CHANCELER ESTÁ CATIVO — RESGATE-O ANTES QUE O LEVEM." };
-  if (red.state === "preso")
-    return { key: "red-cativo", text: "CHANCELER INIMIGO CATIVO — CONDUZA-O À SUA BASE." };
+  if (h.state === "morto")
+    return mode === "defender"
+      ? { key: "blue-morto", text: "SEU CHANCELER MORREU — A GUERRA ESTÁ PERDIDA." }
+      : { key: "red-morto", text: "CHANCELER INIMIGO ELIMINADO — A GUERRA ESTÁ VENCIDA." };
+  if (carFor(side))
+    return mode === "defender"
+      ? { key: "blue-preso", text: "SEU CHANCELER FOI CAPTURADO — SENDO LEVADO À BASE INIMIGA!" }
+      : { key: "red-preso", text: "CHANCELER INIMIGO CAPTURADO — CONDUZINDO-O À SUA BASE." };
+  if (h.state === "preso")
+    return mode === "defender"
+      ? { key: "blue-cativo", text: "SEU CHANCELER ESTÁ CATIVO — RESGATE-O ANTES QUE O LEVEM." }
+      : { key: "red-cativo", text: "CHANCELER INIMIGO CATIVO — CONDUZA-O À SUA BASE." };
   return null;
 }
 

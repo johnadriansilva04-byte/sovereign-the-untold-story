@@ -20,19 +20,22 @@ function battle(missionId: string) {
 }
 
 describe("chanceler: presença e controle em tempo real", () => {
-  it("nasce em campo nas operações com cenário de herói", () => {
-    const st = battle("m-trolls");
-    const blue = st.blue.units.filter((u) => u.hero && u.alive);
-    const red = st.red.units.filter((u) => u.hero && u.alive);
-    // "nos-temos-o-deles": o azul está livre, o vermelho preso (nasce ao ser resgatado).
-    expect(blue.length, "o chanceler azul deveria estar em campo").toBe(1);
-    expect(red.length).toBe(0);
-    expect(st.heroes.blue.state).toBe("livre");
-    expect(st.heroes.red.state).toBe("preso");
+  it("nasce em campo conforme o MODO da operação (um único chanceler por batalha)", () => {
+    // m-cidadeviva: modo "defender" — o NOSSO chanceler está em campo; o adversário não.
+    const def = battle("m-cidadeviva");
+    expect(def.blue.units.filter((u) => u.hero && u.alive).length).toBe(1);
+    expect(def.red.units.filter((u) => u.hero && u.alive).length).toBe(0);
+    expect(def.config.chancellorMode).toBe("defender");
+
+    // m-trolls: modo "capturar" — o chanceler ADVERSÁRIO está em campo; o nosso não.
+    const cap = battle("m-trolls");
+    expect(cap.red.units.filter((u) => u.hero && u.alive).length).toBe(1);
+    expect(cap.blue.units.filter((u) => u.hero && u.alive).length).toBe(0);
+    expect(cap.config.chancellorMode).toBe("capturar");
   });
 
   it("move para a direita com driveX=1 e para de mover ao zerar", () => {
-    const st = battle("m-trolls");
+    const st = battle("m-cidadeviva");
     const hero = st.blue.units.find((u) => u.hero && u.alive)!;
     hero.driveX = 1;
     hero.driveY = 0;
@@ -46,7 +49,7 @@ describe("chanceler: presença e controle em tempo real", () => {
   });
 
   it("respeita os limites do mundo ao empurrar contra a borda", () => {
-    const st = battle("m-trolls");
+    const st = battle("m-cidadeviva");
     const hero = st.blue.units.find((u) => u.hero && u.alive)!;
     hero.driveX = -1;
     hero.driveY = 0;

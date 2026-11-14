@@ -321,6 +321,10 @@ describe("interface da batalha", () => {
     });
     const state = createBattle(config);
     // Uma unidade de cada lado com nível > 1 (a patente que desenhava o aro).
+    // O vermelho só tem tropa depois de desdobrar: colocamos uma em campo.
+    state.red.command = 999;
+    state.red.deck.hand[0] = { cardId: "inf-fuzileiros", ready: true };
+    deploy(state, "red", "inf-fuzileiros", 150, 46);
     const ally = state.blue.units.find((u) => u.alive)!;
     const enemy = state.red.units.find((u) => u.alive)!;
     ally.level = 5;
@@ -344,7 +348,9 @@ describe("interface da batalha", () => {
     const ringOn = (side: string) => {
       const glyph = svg.querySelector(`[data-side="${side}"]`);
       if (!glyph) return false;
-      return [...glyph.querySelectorAll("circle")].some((c) => c.getAttribute("stroke-width") === "0.5");
+      return [...glyph.querySelectorAll("circle")].some(
+        (c) => c.getAttribute("stroke-width") === "0.5",
+      );
     };
     // Nível 5 → strokeWidth 0.3 + min(0.5, 5*0.04)=0.2 → 0.5. O aro só existe no azul.
     expect(ringOn("blue")).toBe(true);

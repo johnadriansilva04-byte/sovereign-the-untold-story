@@ -17,6 +17,7 @@ import type {
   BattleConfig,
   BattleOutcome,
   BattleResult,
+  ChancellorMode,
   Commander,
   Doctrine,
   HeroSetup,
@@ -124,11 +125,12 @@ export interface MissionDef {
   operational?: { controlPointId: string; seconds: number };
   militaryThreshold?: number;
   /**
-   * Cenário de CHANCELER: quando definido, a operação gira em torno dos chefes de
-   * Estado — resgatar o nosso, proteger o nosso, ou eliminar o adversário. Sem este
-   * campo, a missão usa as regras clássicas (destruir a base principal).
+   * MODO DO CHANCELER: cada batalha tem UM único chanceler em campo. "defender" = o
+   * NOSSO chanceler está em campo (se ele cai, a batalha está perdida); "capturar" = o
+   * chanceler ADVERSÁRIO está em campo (capturá-lo ou eliminá-lo vence). Sem este campo,
+   * a missão usa as regras clássicas (destruir a base principal).
    */
-  heroScenario?: "resgatar-nosso" | "eles-tem-o-nosso" | "nos-temos-o-deles" | "civis";
+  chancellor?: "defender" | "capturar";
 }
 
 // Cada missão nasce de um capítulo da campanha. O terreno vem da narrativa
@@ -587,7 +589,7 @@ export const missions: MissionDef[] = [
     terrain: "Floresta",
     objectiveKind: "operacional",
     objectiveText: "Impeça a operação de desestabilização na região.",
-    heroScenario: "eles-tem-o-nosso",
+    chancellor: "capturar",
     duration: 300,
     missionNote: "O roteiro do golpe foi escrito na Guatemala antes de ser lido no Brasil.",
     brief:
@@ -740,7 +742,7 @@ export const missions: MissionDef[] = [
     terrain: "Cidade",
     objectiveKind: "militar",
     objectiveText: "Defenda a vizinhança e negue o plano que a apaga.",
-    heroScenario: "civis",
+    chancellor: "defender",
     duration: 300,
     missionNote: "A cidade viva é uma forma de resistência.",
     brief: "O plano quer apagar a vizinhança. Defenda as ruas vivas e negue o avanço.",
@@ -932,7 +934,7 @@ export const missions: MissionDef[] = [
     terrain: "Cidade",
     objectiveKind: "militar",
     objectiveText: "Derrube a fábrica de propaganda estatal.",
-    heroScenario: "nos-temos-o-deles",
+    chancellor: "capturar",
     duration: 300,
     missionNote: "A mentira industrializada é uma arma de Estado.",
     brief: "Uma agência industrializa a mentira. Derrube os núcleos que inflamam a divisão.",
@@ -1082,7 +1084,7 @@ export const missions: MissionDef[] = [
     terrain: "Região fortificada",
     objectiveKind: "territorial",
     objectiveText: "Vença a batalha final com a Doutrina de Montanha da FEB desbloqueada.",
-    heroScenario: "resgatar-nosso",
+    chancellor: "defender",
     duration: 360,
     missionNote: "A guerra nunca acabou. Só trocou de uniforme.",
     brief:
@@ -1393,14 +1395,22 @@ export interface BuildBattleOptions {
   ownedCardIds?: string[];
 }
 
-// Traduz o cenário narrativo da missão no posicionamento dos chanceleres. A PRISÃO do
-// chanceler cativo fica no território do captor, adiantada na direção do centro — o
-// resgate exige uma ofensiva real, não um passeio até o fundo do mapa inimigo.
-function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
-  // O chanceler está presente em TODAS as missões (é o comandante em campo). Sem
-  // cenário narrativo declarado, vale o padrão "civis": os dois começam livres,
-  // atrás da própria base.
-  const scen = mission.heroScenario ?? "civis";
+// MODO do chanceler da missão. Cada batalha tem UM único chanceler em campo: o NOSSO
+// ("defender") ou o ADVERSÁRIO ("capturar"). A missão pode declarar o modo; sem declaração,
+// ele ALTERNA pela posição na lista (par = defender o nosso, ímpar = capturar o deles),
+// para que a guerra alterne entre proteger e caçar chefes de Estado.
+export function chancellorModeFor(mission: MissionDef): ChancellorMode {
+  if (mission.chancellor) return mission.chancellor;
+  const idx = missions.findIndex((m) => m.id === mission.id);
+  return idx >= 0 && idx % 2 === 1 ? "capturar" : "defender";
+}
+
+// Posiciona o ÚNICO chanceler da batalha conforme o modo. O posto de comando fica
+// RECUADO no fundo da própria base (abrigado pela defesa): no modo "defender" é o nosso,
+// que precisamos proteger; no modo "capturar" é o adversário, e tomá-lo exige uma
+// ofensiva real até o fundo do território inimigo.
+function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] {
+  const mode = chancellorModeFor(mission);
   const baseOf = (side: Side): { x: number; y: number; r: number } => {
     const b = arena.structures.find((s) => s.side === side && s.kind === "base-principal");
     return b ? { x: b.x, y: b.y, r: b.radius } : { ...HOME_POINT[side], r: 9 };
@@ -1408,47 +1418,18 @@ function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] | null {
   const blueBase = baseOf("blue");
   const redBase = baseOf("red");
   const mid = { x: (blueBase.x + redBase.x) / 2, y: (blueBase.y + redBase.y) / 2 };
-  const toward = (from: { x: number; y: number }, to: { x: number; y: number }, t: number) => ({
-    x: from.x + (to.x - from.x) * t,
-    y: from.y + (to.y - from.y) * t,
-  });
   // O chanceler livre nasce no FUNDO da base (atrás da instalação), abrigado pela
-  // própria defesa — o posto de comando fica recuado, longe do front. O recuo usa o raio
-  // da base para ele não ficar escondido sob o centro do vilarejo.
+  // própria defesa — o posto de comando fica recuado, longe do front.
   const rearPost = (base: { x: number; y: number; r: number }) => {
     const f = base.x < mid.x ? -1 : 1; // afasta-se do centro do campo
     return { x: base.x + f * base.r * 0.5, y: base.y };
   };
-  switch (scen) {
-    case "resgatar-nosso":
-    case "eles-tem-o-nosso": {
-      // O chanceler azul está preso no lado vermelho; o vermelho começa com o seu livre.
-      const prison = toward(redBase, mid, 0.45);
-      const redPost = rearPost(redBase);
-      return [
-        { side: "blue", status: "preso", x: prison.x, y: prison.y },
-        { side: "red", status: "livre", x: redPost.x, y: redPost.y },
-      ];
-    }
-    case "nos-temos-o-deles": {
-      // Nós capturamos o chanceler vermelho: ele está preso perto da NOSSA base.
-      const prison = toward(blueBase, mid, 0.45);
-      const bluePost = rearPost(blueBase);
-      return [
-        { side: "blue", status: "livre", x: bluePost.x, y: bluePost.y },
-        { side: "red", status: "preso", x: prison.x, y: prison.y },
-      ];
-    }
-    case "civis":
-    default:
-      // Sem reféns: os dois chanceleres começam em campo, atrás da própria base.
-      const bluePost = rearPost(blueBase);
-      const redPost = rearPost(redBase);
-      return [
-        { side: "blue", status: "livre", x: bluePost.x, y: bluePost.y },
-        { side: "red", status: "livre", x: redPost.x, y: redPost.y },
-      ];
+  if (mode === "capturar") {
+    const post = rearPost(redBase);
+    return [{ side: "red", status: "livre", x: post.x, y: post.y }];
   }
+  const post = rearPost(blueBase);
+  return [{ side: "blue", status: "livre", x: post.x, y: post.y }];
 }
 
 export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
@@ -1495,12 +1476,10 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
   };
   if (opts.mission.militaryThreshold !== undefined)
     config.militaryThreshold = opts.mission.militaryThreshold;
-  const heroSetup = heroSetupFor(opts.mission, arena);
-  if (heroSetup) config.heroSetup = heroSetup;
-  // O chanceler só DECIDE a partida nas missões de história do herói (as que declaram
-  // cenário: resgate, cativeiro, civis). Nas demais ele comanda, luta e reagrupa, mas a
-  // vitória continua sendo por objetivo/base.
-  config.heroDecisive = opts.mission.heroScenario !== undefined;
+  // Todo confronto tem UM chanceler decisivo: o nosso (defender) ou o adversário (capturar).
+  config.heroSetup = heroSetupFor(opts.mission, arena);
+  config.chancellorMode = chancellorModeFor(opts.mission);
+  config.heroDecisive = true;
   if (opts.mission.operational !== undefined) config.operationalTarget = opts.mission.operational;
   if (opts.aiDifficulty !== undefined) config.aiDifficulty = opts.aiDifficulty;
   if (opts.prizeCardId) config.prizeCardId = opts.prizeCardId;

@@ -496,18 +496,10 @@ function updatePrisonCars(state: BattleState, _dt: number): void {
           "captura",
           "Chanceler adversário entregue na base: cativeiro confirmado.",
         );
-        // Conduzir o chefe de Estado adversário à própria base CONFIRMA o cativeiro e
-        // encerra a guerra — para os dois lados. Não importa o cenário da missão: perder
-        // o chanceler é perder a partida.
-        if (rec.side === "blue") {
-          finish(
-            state,
-            "vitoria",
-            "Chanceler adversário capturado e conduzido à base — guerra vencida.",
-          );
-        } else {
-          finish(state, "derrota", "Seu chanceler foi capturado e conduzido à base adversária.");
-        }
+        // Conduzir o chefe de Estado adversário à própria base confirma o cativeiro. A
+        // sorte da partida sai do MODO da batalha: no "capturar" isso é a vitória; no
+        // "defender" é a derrota (perdemos o nosso chefe).
+        resolveChancellorOutcome(state);
       }
     }
   }
@@ -651,72 +643,41 @@ function liberatePrison(state: BattleState, prison: Structure, liberator: Battle
   );
 }
 
-// Morreu um chanceler. Quem perde o chefe perde a guerra — para os DOIS lados. A
-// partida encerra na hora, salvo quando o adversário também está com o chanceler fora
-// de combate (aí o empate é tratado em checkHeroVictory).
+// Morreu um chanceler. Quem perde o chefe perde a guerra — para os DOIS lados. A partida
+// encerra na hora: o posto de comando não se reagrupa.
 function heroDied(state: BattleState, unit: BattleUnit): void {
   const side = unit.side;
   const cfg = side === "blue" ? state.blue : state.red;
-  // A morte do chanceler é DECISIVA para os DOIS lados: quem perde o chefe perde a
-  // guerra. Vale para o chanceler aliado e para o inimigo — o abate encerra a partida
-  // na hora (o posto de comando não se reagrupa). Só não decide quando o outro lado
-  // também está com o chanceler fora de combate (aí é empate, tratado em checkHeroVictory).
   state.heroes[side] = { state: "morto", unitId: unit.id };
   pushLog(state, other(side), "evento", `Chanceler ${cfg.countryName} foi eliminado.`);
-  if (!checkHeroVictory(state)) {
-    const foe = other(side);
-    if (state.heroes[foe].state === "preso")
-      pushLog(state, foe, "evento", "Resgate o seu chanceler antes de reivindicar a vitória.");
-    else if (state.heroes[foe].state === "fugindo")
-      pushLog(
-        state,
-        foe,
-        "evento",
-        "Traga o seu chanceler em segurança antes de reivindicar a vitória.",
-      );
-  }
+  resolveChancellorOutcome(state);
 }
 
-// Um lado só pode VENCER com o próprio chanceler seguro: "livre" (nunca foi capturado)
-// ou "seguro" (resgatado e de volta ao território controlado). "preso" e "fugindo" não
-// contam. Decide o fim quando um chanceler morre; devolve true se encerrou a partida.
-// Nas missões NÃO-decisivas o chanceler não decide nada — a vitória segue por objetivo/base.
-function checkHeroVictory(state: BattleState): boolean {
-  if (state.config.heroDecisive === false) return false;
-  const blueOut =
-    state.heroes.blue.state === "morto" ||
-    (state.heroes.blue.state === "preso" && state.heroes.blue.captured === true);
-  const redOut =
-    state.heroes.red.state === "morto" ||
-    (state.heroes.red.state === "preso" && state.heroes.red.captured === true);
-  if (!blueOut && !redOut) return false;
-  const blueOk = canClaimVictory(state, "blue");
-  const redOk = canClaimVictory(state, "red");
-  if (blueOut && redOut) {
-    finish(state, "empate", "Os dois chanceleres foram neutralizados.");
-    return true;
-  }
-  if (redOut && blueOk) {
-    finish(
-      state,
-      "vitoria",
-      "Chanceler adversário neutralizado com o seu em segurança — guerra vencida.",
-    );
-    return true;
-  }
-  if (blueOut && redOk) {
-    finish(state, "derrota", "Seu chanceler foi neutralizado com o adversário em segurança.");
+// O chanceler do lado saiu de combate? "morto" sempre conta. "preso" só conta quando foi
+// CAPTURADO em campo (levado pelo carro-prisão): aí o chefe está nas mãos do adversário e
+// a guerra acabou para ele. Um chanceler apenas detido numa prisão inicial ainda pode ser
+// resgatado — não encerra a partida sozinho.
+function heroOutOfAction(state: BattleState, side: Side): boolean {
+  const st = state.heroes[side].state;
+  return st === "morto" || (st === "preso" && state.heroes[side].captured === true);
+}
+
+// Resolve a partida pela sorte do chanceler, conforme o MODO: no "defender", perder o
+// nosso perde; no "capturar", neutralizar o adversário vence. Devolve true se encerrou.
+function resolveChancellorOutcome(state: BattleState): boolean {
+  if (!state.running) return true;
+  if (state.config.heroDecisive !== true) return false;
+  const mode = state.config.chancellorMode ?? "defender";
+  if (mode === "capturar") {
+    if (heroOutOfAction(state, "red")) {
+      finish(state, "vitoria", "Chanceler adversário neutralizado — a guerra está vencida.");
+      return true;
+    }
+  } else if (heroOutOfAction(state, "blue")) {
+    finish(state, "derrota", "Seu chanceler foi neutralizado — a guerra está perdida.");
     return true;
   }
   return false;
-}
-
-// O chanceler do lado está em segurança para reivindicar a vitória? Só "livre" (nunca
-// saiu de campo) ou "seguro" (extraído). "preso"/"fugindo" — inclusive preso por captura
-// em campo — não contam: é preciso ter o seu próprio chanceler em mãos.
-function canClaimVictory(state: BattleState, side: Side): boolean {
-  const st = state.heroes[side].state;
-  return st === "livre" || st === "seguro";
 }
 
 // O ponto está em território CONTROLADO pelo lado? Vale a zona de desdobramento, um
@@ -763,7 +724,6 @@ function updateHeroes(state: BattleState): void {
     if (inFriendlyTerritory(state, side, hero.x, hero.y)) {
       state.heroes[side] = { state: "seguro", unitId: hero.id };
       pushLog(state, side, "evento", `Chanceler ${cfg.countryName} alcançou território seguro.`);
-      checkHeroVictory(state);
       continue;
     }
     // Fuga automática: o chanceler ESCOLHE A ROTA mais segura até o território aliado
@@ -3563,37 +3523,13 @@ function checkVictory(state: BattleState, dt: number): void {
   // (tratado em damageStructure). Objetivos alternativos só valem quando a MISSÃO os
   // define explicitamente — nunca por controle parcial, primeiro ponto ou metade do campo.
 
-  // CENÁRIO DE CHANCELER DECISIVO: a guerra gira em torno dos chefes de Estado. O
-  // relógio NÃO decide por vida de base aqui — quem perde o chanceler perde a guerra
-  // (tratado em heroDied). Só restam o colapso de recursos e a destruição da base.
-  // ATENÇÃO: só vale nas missões decisivas. Nas missões comuns o chanceler está em
-  // campo, mas a vitória continua sendo por OBJETIVO/BASE — não pode capturar o check.
-  if (state.config.heroDecisive === true) {
-    const blueStuck = sideIsBankrupt(state, "blue");
-    const redStuck = sideIsBankrupt(state, "red");
-    if (blueStuck && !redStuck)
-      return finish(state, "derrota", "Recursos esgotados: sem Sov nem tropas, a operação parou.");
-    if (redStuck && !blueStuck)
-      return finish(state, "vitoria", "Recursos esgotados: o adversário ficou sem como reagir.");
-    if (blueStuck && redStuck)
-      return finish(state, "empate", "Recursos esgotados nos dois lados: a guerra travou.");
-    // Janela da operação encerrada sem eliminação: decide quem está mais perto de
-    // vencer a guerra de chanceleres — quem tem o seu em campo e mais saudável.
-    if (state.t >= duration) {
-      const blue = heroHealthFraction(state, "blue");
-      const red = heroHealthFraction(state, "red");
-      if (red < blue - 0.02)
-        return finish(
-          state,
-          "vitoria",
-          "Janela encerrada: o chanceler adversário está mais exposto.",
-        );
-      if (blue < red - 0.02)
-        return finish(state, "derrota", "Janela encerrada: seu chanceler ficou mais exposto.");
-      return finish(state, "empate", "Janela encerrada: os dois chanceleres seguem em campo.");
-    }
-    return;
-  }
+  // CHANCELER DECISIVO: cada batalha tem UM único chanceler em campo — o nosso
+  // ("defender") ou o adversário ("capturar"). Ele é o prêmio da guerra:
+  //   · defender  — se o NOSSO chanceler cai, a batalha está perdida na hora.
+  //   · capturar  — neutralizar (capturar ou abater) o chanceler adversário vence na hora.
+  // Fora disso, a vitória/derrota segue as regras clássicas (base, objetivo, atrito)
+  // logo abaixo: o chanceler decide o JOGO, não substitui o objetivo da missão.
+  if (resolveChancellorOutcome(state)) return;
 
   // Objetivo "militar": neutralizar a capacidade de combate do adversário. Exige
   // EVIDÊNCIA de colapso real, não uma razão de baixas acumuladas — perder 70% de
@@ -3715,18 +3651,6 @@ function sideIsBankrupt(state: BattleState, side: Side): boolean {
   const hasIncome = state.territories.some((t) => t.owner === side);
   if (hasIncome) return false;
   return true;
-}
-
-// "Saúde" do chanceler de um lado para o desempate por tempo: 0 quando morto, 1 quando
-// vivo em campo com vida cheia, e 0.5 quando preso (ainda recuperável, mas sob risco).
-function heroHealthFraction(state: BattleState, side: Side): number {
-  const h = state.heroes[side];
-  if (h.state === "morto") return 0;
-  if (h.state === "preso") return 0.5;
-  const unit = (side === "blue" ? state.blue : state.red).units.find(
-    (u) => u.id === h.unitId && u.alive,
-  );
-  return unit ? Math.max(0, unit.hp / unit.maxHp) : 0.5;
 }
 
 // Fração de vida restante da Base Principal de um lado (1 = intacta).
