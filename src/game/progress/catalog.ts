@@ -489,7 +489,7 @@ export const difficulties: DifficultyDef[] = [
     name: "Recruta",
     summary: "O inimigo hesita e economiza demais. Ideal para aprender a arena.",
     aiIntervalMult: 1.45,
-    aiCommandMult: 0.94,
+    aiCommandMult: 0.95,
     aiReserveBonus: 2,
     rewardMult: 0.7,
   },
@@ -497,8 +497,8 @@ export const difficulties: DifficultyDef[] = [
     id: "veterano",
     name: "Veterano",
     summary: "Adversário sólido: responde à sua composição e joga pelas regras.",
-    aiIntervalMult: 1.25,
-    aiCommandMult: 0.98,
+    aiIntervalMult: 1.15,
+    aiCommandMult: 1.1,
     aiReserveBonus: 1,
     rewardMult: 1.0,
   },
@@ -506,8 +506,8 @@ export const difficulties: DifficultyDef[] = [
     id: "elite",
     name: "Elite",
     summary: "Decide rápido, contra-ataca e explora cada carta mal gasta.",
-    aiIntervalMult: 1.0,
-    aiCommandMult: 1.03,
+    aiIntervalMult: 0.85,
+    aiCommandMult: 1.22,
     aiReserveBonus: -1,
     rewardMult: 1.35,
   },
@@ -515,10 +515,11 @@ export const difficulties: DifficultyDef[] = [
     id: "soberano",
     name: "Soberano",
     summary: "Pressão constante, coordenação de cartas e leitura do seu erro. Vencer exige plano.",
-    // COMPETITIVO, NÃO IMBATÍVEL: 0.7/1.08 fazia o azul dominar (winrate ~0.85-0.9).
-    // 0.6/1.08 fica no ponto: adversário pressiona de verdade, mas o azul vence ~60-65%.
+    // ECONOMIA DE 500 SOV (era 1000): com o teto menor, a mesma dupla 0.6/1.08 deixava o
+    // azul dominar (~0.9). 0.6/1.30 devolve a competitividade (~0.65-0.70), com o
+    // adversário decidindo rápido E convertendo economia.
     aiIntervalMult: 0.6,
-    aiCommandMult: 1.08,
+    aiCommandMult: 1.3,
     aiReserveBonus: -2,
     rewardMult: 1.7,
   },

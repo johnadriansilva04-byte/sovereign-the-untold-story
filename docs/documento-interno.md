@@ -104,30 +104,31 @@ leitura de mundo, embalada como obra de ficção.
 ## 4. O que falta desenvolver (prioridades)
 
 ### P0 — fechar o núcleo de batalha
-- [ ] **IA atingir o teto de 33 com inteligência**: hoje a IA fica em ~20 de 33 em vários
-      confrontos e entesoura Sov. Investigado a fundo (13/11); a causa NÃO é dificuldade nem
-      nível de carta, é a ECONOMIA assimétrica entre atacante e defensor.
-      - **Medições.** A varredura roda a campanha inteira (50 caps., 5 tentativas cada, ≥1
-        vitória) com `cardLevels` e `aiDifficulty` reais de `enemyScalingForChapter`:
-        - Baseline (IA original, sem reforço): **0 falhas** — a campanha está calibrada.
-        - Com reforço (gastar o Sov excedente): **8–13 falhas**, dependendo do desenho.
-        - Neutralizando a dificuldade (interval/command/reserve = 1): **ainda 11 falhas**.
-        - Igualando o nível das cartas (vermelho = azul = nível 1): **ainda 10 falhas**.
-        - Ou seja: nem dificuldade nem nível explicam o desequilíbrio.
-      - **Causa raiz.** O lado que DEFENDE (vermelho) entesoura Sov, mantém o exército no
-        teto (33) e vence por atrito. O lado que ATACA (azul) gasta Sov cruzando o fogo das
-        torres/base e sangra até ~20 unidades. O reforço premia quem entesoura — por isso
-        empurra o vermelho para 33 e quebra os caps. de atrito (18–20, 25–32, 41–48).
-        O gargalo do azul é a MORTALIDADE no ataque, não a falta de Sov (o azul costuma
-        terminar com Sov sobrando). Medir "uso do teto" sem essa assimetria engana.
-      - **Próximo passo (balanceamento, não bug de IA).** Antes de ligar reforço: (a) dar
-        sustentação ao atacante (renda extra por território conquistado, ou menor atrito na
-        aproximação) OU (b) tornar o Sov regenerativo e reduzir a mortalidade; e então
-        re-medir os 50 caps. Enquanto isso, a IA original fica como está (verde).
+- [x] **IA atingir o teto de 33 com inteligência** (RESOLVIDO 13/11). A causa não era
+      dificuldade nem nível de carta: era a ECONOMIA. A correção veio de duas mudanças
+      combinadas:
+      - **Economia de 500 Sov** (`engine/SOV_START`, era 1000): menos Sov entesourado e um
+        teto de gasto mais baixo. Sozinha, já levava a campanha de 10 falhas para 1.
+      - **Reforço com paridade** (`ai/reinforceTuning`): com Sov acima da reserva, a IA
+        implanta cartas prontas até ALCANÇAR o inimigo visível (folga `slack=1`), no máximo
+        `maxExtra=2` cartas extras por ciclo. A paridade evita bola de neve; o limite por
+        ciclo preserva o foco de fogo.
+      - **Medição final** (varredura dos 50 caps., 5 tentativas cada, ≥1 vitória):
+        **0 falhas**. Curva de dificuldade monotônica: recruta 0.90, veterano 0.85,
+        elite 0.80, soberano 0.35. O exército azul chega às **33** nas batalhas de atrito
+        (5 das 50), com pico máximo 33/33.
+      - **Re-calibração dos presets** (`progress/catalog.difficulties`): com a economia de
+        500, os presets antigos achatavam a curva (soberano ~0.90). Novos valores:
+        recruta 1.45/0.95, veterano 1.15/1.10, elite 0.85/1.22, soberano 0.6/1.30. A
+        campanha usa `AI_ANCHORS` (curva própria), então não foi afetada.
+      - **Histórico da investigação.** Antes da economia de 500, o reforço com Sov=1000
+        quebrava a campanha (8–13 falhas): o lado que DEFENDE (vermelho) entesourava Sov,
+        mantinha o exército no teto e vencia por atrito, enquanto o azul sangrava no ataque.
+        Neutralizar a dificuldade (ainda 11 falhas) e igualar os níveis (ainda 10 falhas)
+        NÃO resolviam — confirmando que o problema era econômico, não de calibração de IA.
       - **Nota de medição:** o harness de espelho `war-sim.test.ts` NÃO modela nível de carta
-        nem dificuldade (usa um config próprio) — por isso o espelho parece simétrico (~20/20)
-        enquanto a campanha real diverge. Para medir o teto de verdade, usar o caminho de
-        `buildBattleConfig` com `cardLevels`/`aiDifficulty`.
+        nem dificuldade (usa um config próprio) — para medir o teto de verdade, usar o
+        caminho de `buildBattleConfig` com `cardLevels`/`aiDifficulty`.
 - [ ] **Duelo espelhado (carta × carta) simétrico**: no espelho exato, o resultado ainda diverge
       (ex.: `bld-tanque` e `bld-vbld` espelhados dão resultados diferentes por lado). Investigar
       a ordem de atualização/implantação para garantir simetria real.
@@ -141,6 +142,10 @@ leitura de mundo, embalada como obra de ficção.
       - Medição (13/11, Sov infinito): "fogo vs blindado" perde no sentido testado (18/23) e
         "infantaria vs fogo" perde (18/33); "blindado vs infantaria" e "blindado vs blindado"
         vencem com folga (28/22 e 33/22). Falta simetria na matriz de contramedida.
+- [ ] **1 chanceler por lado**: hoje o cenário "civis" (padrão) coloca UM chanceler por lado,
+      mas os cenários de refém ("resgatar-nosso"/"nos-temos-o-deles") já usam um cativo +
+      um livre. Ideia do usuário: padronizar 1 chanceler por lado para simplificar o
+      objetivo (defender OU capturar). Avaliar impacto nas missões de resgate antes de mudar.
 
 ### P1 — narrativa e campanha
 - [ ] Revisar os 50 capítulos quanto a ritmo, tamanho de texto e ganchos entre atos.

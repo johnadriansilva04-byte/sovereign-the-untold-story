@@ -12,13 +12,15 @@
 // Os pesos de decisão são ajustáveis por auto-treino (ver training.ts). A mesma função
 // comanda qualquer lado — é isso que permite a IA jogar contra si mesma milhares de vezes.
 
-import { cardById, doctrines } from "./catalog";
+import { cardById, doctrines, unitsPerDeploy } from "./catalog";
 import {
+  aliveUnits,
   deploy,
   dist,
   effectiveCost,
   isVisibleTo,
   issueOrder,
+  MAX_UNITS_PER_SIDE,
   nextRandom,
   other,
   startCapture,
@@ -42,6 +44,21 @@ import type {
 // ---------------------------------------------------------------------------
 // Pesos de decisão (tunáveis por auto-treino)
 // ---------------------------------------------------------------------------
+
+// REFORÇO: a IA lançava 1–2 cartas por ciclo e entesourava o Sov excedente, deixando o
+// exército na metade do teto. Este bloco gasta o excedente para CHEGAR ao teto, mas só
+// até a PARIDADE com o inimigo visível (folga `slack`), com no máximo `maxExtra` cartas
+// extras por ciclo. A paridade evita a bola de neve (quem já está à frente não converte
+// Sov em vantagem) e o limite por ciclo preserva o foco de fogo. Combina com a economia
+// de 500 Sov (engine/SOV_START): juntos, o exército enche as 33 sem quebrar a campanha.
+// `enabled` desliga (testes).
+export const reinforceTuning = {
+  enabled: true,
+  slack: 1,
+  overflowFactor: 1.5,
+  afterSeconds: 30,
+  maxExtra: 2,
+};
 
 export interface AiWeights {
   counter: number; // peso de contramedida contra a composição inimiga
@@ -382,6 +399,7 @@ interface BattleRead {
   behind: boolean;
   timeLeft: number;
   pressure: boolean;
+  enemyUnits: number;
 }
 
 function sideState(state: BattleState, side: Side) {
@@ -431,8 +449,43 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
   const deployList: AiDecision[] = [
     makeDecision(state, side, best.card, target, read, defensive, strategy),
   ];
+  let spent = effectiveCost(best.card, cfg.doctrine);
+  const used = new Set<string>([best.id]);
+
+  // REFORÇO: com Sov acima da reserva, seguir lançando cartas prontas até ALCANÇAR o
+  // inimigo visível (deficit + slack) — nunca para se distanciar. Enche o exército sem
+  // transformar vantagem inicial em bola de neve. Sem veto de score: com Sov sobrando,
+  // lançar a próxima da fila é melhor que entesourar.
+  const slots = MAX_UNITS_PER_SIDE - aliveUnits(state, side);
+  const overflow = cfg.command > reserve * reinforceTuning.overflowFactor;
+  const waveLimit = Math.max(
+    0,
+    Math.min(slots, read.enemyUnits - aliveUnits(state, side) + reinforceTuning.slack),
+  );
+  const reinforce =
+    reinforceTuning.enabled &&
+    overflow &&
+    state.t >= reinforceTuning.afterSeconds &&
+    slots > 1 &&
+    waveLimit > 0 &&
+    scored.length > 1;
+  if (reinforce) {
+    for (const s of scored) {
+      if (used.has(s.id)) continue;
+      const force = unitsPerDeploy(cfg.cardLevels?.[s.id] ?? 1);
+      if (force > slots - deployList.length) continue;
+      const cost = effectiveCost(s.card, cfg.doctrine);
+      if (cfg.command - spent - cost < reserve) break;
+      deployList.push(makeDecision(state, side, s.card, target, read, defensive, strategy));
+      used.add(s.id);
+      spent += cost;
+      if (deployList.length >= waveLimit) break;
+      if (deployList.length - 1 >= reinforceTuning.maxExtra) break;
+    }
+  }
 
   const wantsCombo =
+    !reinforce &&
     weights.coord * (cfg.commandMax - cfg.command < cfg.commandMax * 0.35 ? 1 : 0.4) > 0.5 &&
     (defensive ? read.enemyCats.infantaria + read.enemyCats.blindado >= 2 : true);
   if (wantsCombo && scored.length > 1) {
@@ -727,6 +780,7 @@ export function readBattle(state: BattleState, side: Side): BattleRead {
     behind: myScore + 4 < enemyScore,
     timeLeft: Math.max(0, state.config.duration - state.t),
     pressure: state.phase === "pressao",
+    enemyUnits: enemyCfg.units.filter((u) => u.alive && !u.hero).length,
   };
 }
 

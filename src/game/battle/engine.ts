@@ -74,7 +74,7 @@ const FORT_COVER_RADIUS = 10; // raio da cobertura concedida
 // passivamente — só volta a ter Sov conquistando território (base avançada operacional
 // paga um lote periódico) ou destruindo o inimigo (abate paga o valor do alvo + 50%).
 // Sem conquista, o lado quebra e perde: a guerra acaba quando o recurso acaba.
-const SOV_START = 1000; // Sov inicial e teto por lado: FINITO, NUNCA regenera sozinho
+const SOV_START = 500; // Sov inicial e teto por lado: FINITO, NUNCA regenera sozinho
 const SOV_PER_TERRITORY = 50; // cada território sob controle paga...
 const SOV_TERRITORY_INTERVAL = 60; // ...50 Sov a cada 60 segundos (1 minuto)
 const MIN_TERRITORY_GAP = 14; // distância mínima entre bases avançadas (evita obras empilhadas)
