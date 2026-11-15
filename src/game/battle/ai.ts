@@ -25,7 +25,7 @@ import {
   other,
   startCapture,
 } from "./engine";
-import { WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
+import { HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   BattleState,
   BattleUnit,
@@ -45,19 +45,18 @@ import type {
 // Pesos de decisão (tunáveis por auto-treino)
 // ---------------------------------------------------------------------------
 
-// REFORÇO: a IA lançava 1–2 cartas por ciclo e entesourava o Sov excedente, deixando o
-// exército na metade do teto. Este bloco gasta o excedente para CHEGAR ao teto, mas só
-// até a PARIDADE com o inimigo visível (folga `slack`), com no máximo `maxExtra` cartas
-// extras por ciclo. A paridade evita a bola de neve (quem já está à frente não converte
-// Sov em vantagem) e o limite por ciclo preserva o foco de fogo. Combina com a economia
-// de 500 Sov (engine/SOV_START): juntos, o exército enche as 33 sem quebrar a campanha.
-// `enabled` desliga (testes).
+// REFORÇO: a IA USA TODO O ARSENAL DISPONÍVEL. Com Sov acima da reserva e cartas prontas,
+// ela segue lançando até encher o teto de exército e/ou esgotar o caixa — exatamente os
+// mesmos freios do jogador (Sov finito, recarga da carta, teto de unidades). Não existe
+// mais o limite de "paridade com o inimigo visível": a IA não se enfraquece de propósito.
+// Se o jogador monta um exército grande, a IA monta o equivalente com o que tem.
 export const reinforceTuning = {
   enabled: true,
-  slack: 1,
-  overflowFactor: 1.5,
+  /** Fração da reserva que ainda conta como "excedente" gastável (folga sobre a reserva). */
+  overflowFactor: 1.0,
   afterSeconds: 30,
-  maxExtra: 2,
+  /** Teto de cartas extras lançadas por ciclo — alto o bastante para comprometer o arsenal. */
+  maxExtra: 4,
 };
 
 export interface AiWeights {
@@ -316,8 +315,9 @@ function moveChancellor(state: BattleState, side: Side, mem: AiMemory): void {
   repositionHero(state, hero, clampToWorld(goal));
 }
 
-// Posto recuado do chanceler: atrás da própria base, afastado do centro do campo. É onde
-// o comandante observa a batalha sem entrar no alcance das armas de longo alcance.
+// Posto recuado do chanceler: atrás da própria base, afastado do centro do campo NA
+// DIAGONAL (base noroeste ↔ base sudeste). Ele observa a batalha sem entrar no alcance
+// das armas de longo alcance.
 function heroRearPost(state: BattleState, side: Side): { x: number; y: number } {
   const own = state.config.arena.structures.find(
     (s) => s.side === side && s.kind === "base-principal",
@@ -329,9 +329,12 @@ function heroRearPost(state: BattleState, side: Side): { x: number; y: number } 
   const foe = state.config.arena.structures.find(
     (s) => s.side === other(side) && s.kind === "base-principal",
   );
-  const midX = (own.x + (foe?.x ?? own.x + 1)) / 2;
-  const f = own.x < midX ? -1 : 1;
-  return { x: own.x + f * own.radius * 0.6, y: own.y };
+  // Vetor do inimigo para a própria base: recuar ALÉM da base, no mesmo sentido (para o
+  // canto). Assim o posto fica sempre na ponta oposta ao adversário, seja qual for a diagonal.
+  const dx = own.x - (foe?.x ?? own.x - 1);
+  const dy = own.y - (foe?.y ?? own.y);
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: own.x + (dx / len) * own.radius * 0.6, y: own.y + (dy / len) * own.radius * 0.6 };
 }
 
 // Inimigo visível mais próximo do chanceler (para decidir recuo e guarda).
@@ -491,16 +494,12 @@ function planTurn(state: BattleState, side: Side, weights: AiWeights): AiPlan {
   let spent = effectiveCost(best.card, cfg.doctrine);
   const used = new Set<string>([best.id]);
 
-  // REFORÇO: com Sov acima da reserva, seguir lançando cartas prontas até ALCANÇAR o
-  // inimigo visível (deficit + slack) — nunca para se distanciar. Enche o exército sem
-  // transformar vantagem inicial em bola de neve. Sem veto de score: com Sov sobrando,
-  // lançar a próxima da fila é melhor que entesourar.
+  // REFORÇO: com Sov acima da reserva, seguir lançando TODAS as cartas prontas que cabem
+  // no teto de exército e no caixa. Sem veto de score (com Sov sobrando, lançar a próxima
+  // da fila é melhor que entesourar) e SEM paridade com o inimigo — a IA joga com tudo.
   const slots = MAX_UNITS_PER_SIDE - aliveUnits(state, side);
   const overflow = cfg.command > reserve * reinforceTuning.overflowFactor;
-  const waveLimit = Math.max(
-    0,
-    Math.min(slots, read.enemyUnits - aliveUnits(state, side) + reinforceTuning.slack),
-  );
+  const waveLimit = Math.max(0, slots);
   const reinforce =
     reinforceTuning.enabled &&
     overflow &&
@@ -1098,12 +1097,18 @@ function makeDecision(
   };
 }
 
-// Território neutro/inimigo mais ADIANTADO (na direção do inimigo) para o engenheiro
-// erguer a base avançada. O azul avança para leste (x crescente), o vermelho para oeste.
+// Território neutro/inimigo mais ADIANTADO (mais perto da base adversária) para o
+// engenheiro erguer a base avançada. Mede a distância à base inimiga — vale para
+// qualquer geometria (na diagonal atual o avanço não é só em X).
 function buildTerritory(state: BattleState, side: Side): Territory | null {
   const list = state.territories.filter((t) => t.owner !== side);
   if (list.length === 0) return null;
-  return list.sort((a, b) => (side === "blue" ? b.x - a.x : a.x - b.x))[0]!;
+  const foe = other(side);
+  const foeBase = state.structures.find(
+    (s) => s.alive && s.side === foe && s.kind === "base-principal",
+  );
+  const aim = foeBase ? { x: foeBase.x, y: foeBase.y } : HOME_POINT[foe];
+  return list.sort((a, b) => dist(a.x, a.y, aim.x, aim.y) - dist(b.x, b.y, aim.x, aim.y))[0]!;
 }
 
 function enemyStructurePressure(state: BattleState, side: Side): number {
@@ -1172,11 +1177,16 @@ function placement(
   defensive: boolean,
   strategy?: AiStrategy,
 ): { x: number; y: number; targetStructureId?: string; targetTerritoryId?: string } {
-  // Engenheiros: destino = território a conquistar/construir.
+  // Engenheiros: destino = território ALIADO a fortificar (é lá que ele constrói). Se
+  // ainda não há nenhum, ele espera junto da própria base — mandá-lo a um território
+  // neutro/inimigo o fazia peregrinar até um canteiro onde não pode erguer nada.
   if (card.builder) {
     const terr = buildTerritory(state, side);
     if (terr) return { x: terr.x, y: terr.y, targetTerritoryId: terr.id };
-    return { x: target.x, y: target.y };
+    const ownBase = state.structures.find(
+      (s) => s.alive && s.side === side && s.kind === "base-principal",
+    );
+    return ownBase ? { x: ownBase.x, y: ownBase.y } : { x: target.x, y: target.y };
   }
 
   // A INTENÇÃO ESTRATÉGICA manda: resgate (prisão), caça (chanceler móvel), extração
@@ -1203,6 +1213,10 @@ function placement(
         if (card.builder) {
           const terr = buildTerritory(state, side);
           if (terr) return { x: terr.x, y: terr.y, targetTerritoryId: terr.id };
+          const ownBase = state.structures.find(
+            (s) => s.alive && s.side === side && s.kind === "base-principal",
+          );
+          if (ownBase) return { x: ownBase.x, y: ownBase.y };
         }
         break;
       }

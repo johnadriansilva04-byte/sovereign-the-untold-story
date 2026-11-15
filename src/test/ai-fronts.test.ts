@@ -22,7 +22,9 @@ function captiveBlueState() {
     doctrine: commanders[0]!.doctrine,
     seed: 7,
   });
-  config.heroSetup = [{ side: "blue", status: "preso", x: 130, y: 46 }];
+  // Prisão do adversário no fundo do território vermelho (canto SUDESTE), na diagonal
+  // oposta à base azul (noroeste) — o resgate exige uma ofensiva real pelo mapa.
+  config.heroSetup = [{ side: "blue", status: "preso", x: 150, y: 118 }];
   config.chancellorMode = "defender";
   config.heroDecisive = true;
   return createBattle(config);

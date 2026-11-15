@@ -621,13 +621,12 @@ export function BattleArena({
               ))}
             </g>
 
-            {/* Metades: oeste = aliado (azul), leste = inimigo (vermelho) — tinta leve */}
-            <rect x="0" y="0" width={WORLD_W / 2} height={WORLD_H} fill="url(#allyZone)" />
-            <rect
-              x={WORLD_W / 2}
-              y="0"
-              width={WORLD_W / 2}
-              height={WORLD_H}
+            {/* Metades na DIAGONAL: noroeste = aliado (azul), sudeste = inimigo (vermelho).
+                O corte acompanha a disposição real das bases (canto superior esquerdo ↔
+                canto inferior direito), não mais a divisão oeste/leste do campo antigo. */}
+            <polygon points={`0,0 ${WORLD_W},0 0,${WORLD_H}`} fill="url(#allyZone)" />
+            <polygon
+              points={`${WORLD_W},0 ${WORLD_W},${WORLD_H} 0,${WORLD_H}`}
               fill="url(#enemyZone)"
             />
 
@@ -652,20 +651,21 @@ export function BattleArena({
               strokeWidth="0.3"
             />
 
-            {/* Linha divisória das metades (vertical: frente oeste↔leste) */}
+            {/* Linha divisória das metades (diagonal noroeste↔sudeste, perpendicular à
+                linha que liga as duas bases) */}
             <line
-              x1={WORLD_W / 2}
+              x1={WORLD_W}
               y1="0"
-              x2={WORLD_W / 2}
+              x2="0"
               y2={WORLD_H}
               stroke="oklch(0 0 0 / 0.22)"
               strokeWidth="0.35"
               strokeDasharray="2 2"
             />
             <line
-              x1={WORLD_W / 2 + 0.4}
+              x1={WORLD_W - 0.4}
               y1="0"
-              x2={WORLD_W / 2 + 0.4}
+              x2={-0.4}
               y2={WORLD_H}
               stroke="oklch(1 0 0 / 0.1)"
               strokeWidth="0.25"

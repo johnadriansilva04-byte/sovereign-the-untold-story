@@ -1235,10 +1235,12 @@ const terr = (
   ...(base ? { base: true } : {}),
 });
 
-// Bases principais + duas torres defensivas por lado. O azul defende o OESTE, o
-// vermelho o LESTE; os territórios neutros ficam entre eles, ao longo do front.
-// As demais posições defensivas NÃO nascem construídas: são conquistadas no campo
-// (territórios) e transformadas em bases avançadas pelos engenheiros durante a partida.
+// Bases principais + duas torres defensivas por lado. A disposição é DIAGONAL: o azul
+// defende o canto SUPERIOR ESQUERDO (noroeste) e o vermelho o canto INFERIOR DIREITO
+// (sudeste). Os territórios neutros ficam no eixo entre eles. Cada exército nasce na
+// ponta oposta, com a maior distância territorial possível — novas rotas de ataque e
+// defesa. As demais posições defensivas NÃO nascem construídas: são conquistadas no
+// campo (territórios) e transformadas em bases avançadas pelos engenheiros na partida.
 function standardStructures(): StructureSpec[] {
   return [
     {
@@ -1246,8 +1248,8 @@ function standardStructures(): StructureSpec[] {
       kind: "base-principal",
       side: "blue",
       name: "Base Principal Aliada",
-      x: 8,
-      y: 23,
+      x: 12,
+      y: 9,
       radius: 9,
       hp: 4000,
       dmg: 45,
@@ -1259,9 +1261,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-blue-w",
       kind: "torre",
       side: "blue",
-      name: "Bunker Norte",
-      x: 26,
-      y: 12,
+      name: "Bunker Noroeste",
+      x: 24,
+      y: 25,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -1273,9 +1275,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-blue-e",
       kind: "torre",
       side: "blue",
-      name: "Bunker Sul",
-      x: 26,
-      y: 34,
+      name: "Bunker Sudeste",
+      x: 32,
+      y: 5,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -1288,8 +1290,8 @@ function standardStructures(): StructureSpec[] {
       kind: "base-principal",
       side: "red",
       name: "Base Principal Inimiga",
-      x: 92,
-      y: 23,
+      x: 88,
+      y: 37,
       radius: 9,
       hp: 4000,
       dmg: 45,
@@ -1301,9 +1303,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-red-w",
       kind: "torre",
       side: "red",
-      name: "Bunker Norte",
-      x: 74,
-      y: 12,
+      name: "Bunker Noroeste",
+      x: 76,
+      y: 21,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -1315,9 +1317,9 @@ function standardStructures(): StructureSpec[] {
       id: "torre-red-e",
       kind: "torre",
       side: "red",
-      name: "Bunker Sul",
-      x: 74,
-      y: 34,
+      name: "Bunker Sudeste",
+      x: 68,
+      y: 41,
       radius: 5,
       hp: 1700,
       dmg: 60,
@@ -1328,79 +1330,73 @@ function standardStructures(): StructureSpec[] {
   ];
 }
 
-// Pontos de expansão do mapa padrão. Malha ENXUTA (posições e contagem) para manter o
-// campo legível sem poluir: 5 pontos por lado + 3 no centro, todos espelhados
-// (x → 100 − x) para que os dois lados nasçam com as mesmas oportunidades.
+// Pontos de expansão do mapa padrão. Disposição DIAGONAL: o lado azul ocupa o triângulo
+// superior esquerdo (a partir da base noroeste) e o vermelho o inferior direito — as
+// posições vermelhas são o ESPELHO 180° das azuis em torno do centro (x → 100 − x,
+// y → 46 − y), para que os dois lados nasçam com as mesmas oportunidades. Os neutros
+// ficam no eixo entre as bases, flanqueando o nó central.
 function standardTerritories(): Territory[] {
-  // MAPA LIMPO: cinco territórios por lado, bem espaçados. Menos marcadores significa
-  // menos "quebras" no terreno e áreas de captura maiores — dá para ler o campo de
-  // relance. As posições são as ORIGINAIS (nada de reposicionar o que já era lido): só
-  // a QUANTIDADE caiu pela metade. A malha cobre o lado inteiro — um ponto colado na
-  // base (renda garantida), um ao norte, um central, um ao sul e um avançado.
   const blue: [string, string, number, number, number][] = [
-    ["t-w1", "Ancoradouro", 16, 21, 4],
-    ["t-nw", "Colina Noroeste", 20, 7, 4],
-    ["t-w2", "Encruzilhada Oeste", 30, 24, 4.2],
-    ["t-sw", "Vau Sudoeste", 19, 38, 4],
-    ["t-w3", "Fronteira Oeste", 43, 24, 4],
+    ["t-w1", "Ancoradouro", 24, 17, 4],
+    ["t-nw", "Colina Noroeste", 14, 30, 4],
+    ["t-w2", "Encruzilhada Oeste", 34, 21, 4.2],
+    ["t-sw", "Vau Sudoeste", 26, 40, 4],
+    ["t-w3", "Fronteira Oeste", 44, 29, 4],
   ];
   const redNames: Record<string, [string, string]> = {
-    "t-w1": ["t-e1", "Depósito Leste"],
+    "t-w1": ["t-e1", "Depósito Sudeste"],
     "t-nw": ["t-ne", "Colina Nordeste"],
     "t-w2": ["t-e2", "Encruzilhada Leste"],
-    "t-sw": ["t-se", "Cume Sudeste"],
+    "t-sw": ["t-se", "Cume Norte"],
     "t-w3": ["t-e3", "Fronteira Leste"],
   };
+  // Espelho 180° em torno do centro do campo de projeto (50, 23): troca as bases de ponta.
+  const mirror = (x: number, y: number): [number, number] => [100 - x, 46 - y];
   const list: Territory[] = [
-    // BASES NEUTRAS no meio do mapa: instalações militares já erguidas, de ninguém.
-    // São o prêmio central da partida — quem as toma ganha posição no centro, sem
-    // precisar construir. Ladeiam o nó central.
-    terr("bn-n", "Base Neutra Norte", 50, 12, 6, true),
-    terr("bn-s", "Base Neutra Sul", 50, 34, 6, true),
+    // BASES NEUTRAS no eixo perpendicular à diagonal: instalações militares já erguidas,
+    // de ninguém. São o prêmio central — quem as toma ganha posição sem construir.
+    terr("bn-n", "Base Neutra Norte", 60, 8, 6, true),
+    terr("bn-s", "Base Neutra Sul", 40, 38, 6, true),
     // Nó central: ponto de expansão clássico (marcador de captura sem base erguida).
     terr("t-c", "Nó Central", 50, 23, 4.6),
   ];
   for (const [id, name, x, y, r] of blue) {
     list.push(terr(id, name, x, y, r));
     const [rid, rname] = redNames[id]!;
-    list.push(terr(rid, rname, 100 - x, y, r));
+    const [rx, ry] = mirror(x, y);
+    list.push(terr(rid, rname, rx, ry, r));
   }
   return list;
 }
 
-// Corredores de avanço: ligam a base principal aos territórios e desenham o CAMINHO
-// no terreno. Servem de leitura estratégica e de trilha de marcha.
+// Corredores de avanço: ligam cada base principal ao centro, passando pelos territórios.
+// Desenham o CAMINHO no terreno — leitura estratégica e trilha de marcha. Seguem a
+// DIAGONAL (base noroeste → nó central → base sudeste) e dois flancos paralelos.
 function standardRoutes(): { from: [number, number]; to: [number, number] }[] {
   const seg = (x1: number, y1: number, x2: number, y2: number) => ({
     from: [x1, y1] as [number, number],
     to: [x2, y2] as [number, number],
   });
   return [
-    // corredor norte
-    seg(8, 23, 20, 7),
-    seg(20, 7, 36, 8),
-    seg(36, 8, 45, 14),
-    seg(45, 14, 50, 12),
-    seg(50, 12, 55, 14),
-    seg(55, 14, 64, 8),
-    seg(64, 8, 80, 7),
-    seg(80, 7, 92, 23),
-    // corredor central
-    seg(8, 23, 30, 24),
-    seg(30, 24, 43, 24),
-    seg(43, 24, 50, 23),
-    seg(50, 23, 57, 24),
-    seg(57, 24, 70, 24),
-    seg(70, 24, 92, 23),
-    // corredor sul
-    seg(8, 23, 19, 38),
-    seg(19, 38, 35, 39),
-    seg(35, 39, 45, 33),
-    seg(45, 33, 50, 34),
-    seg(50, 34, 55, 33),
-    seg(55, 33, 65, 39),
-    seg(65, 39, 81, 38),
-    seg(81, 38, 92, 23),
+    // diagonal principal: base azul → territórios → nó central → territórios → base vermelha
+    seg(12, 9, 24, 17),
+    seg(24, 17, 34, 21),
+    seg(34, 21, 44, 29),
+    seg(44, 29, 50, 23),
+    seg(50, 23, 56, 17),
+    seg(56, 17, 66, 25),
+    seg(66, 25, 76, 29),
+    seg(76, 29, 88, 37),
+    // flanco sudoeste (pela colina oeste, vau sudoeste e base neutra sul)
+    seg(12, 9, 14, 30),
+    seg(14, 30, 26, 40),
+    seg(26, 40, 40, 38),
+    seg(40, 38, 50, 23),
+    // flanco nordeste (pela colina nordeste, cume norte e base neutra norte)
+    seg(88, 37, 86, 16),
+    seg(86, 16, 74, 6),
+    seg(74, 6, 60, 8),
+    seg(60, 8, 50, 23),
   ];
 }
 
@@ -1430,10 +1426,12 @@ function standardFrontiers(t: Territory[]): { from: [number, number]; to: [numbe
   return segs;
 }
 
-// Geometria padrão do teatro: oeste = azul, leste = vermelho. Cada arena troca
-// terreno, pontos de controle e obstáculos, mantendo a MESMA estrutura espacial.
-const BLUE_ZONE = { x: 2, y: 2, w: 22, h: 42 };
-const RED_ZONE = { x: 76, y: 2, w: 22, h: 42 };
+// Geometria padrão do teatro: o azul defende o canto SUPERIOR ESQUERDO (noroeste) e o
+// vermelho o INFERIOR DIREITO (sudeste) — a linha diagonal entre as bases é o eixo da
+// partida. Cada arena troca terreno, pontos de controle e obstáculos, mantendo a MESMA
+// estrutura espacial. As zonas de desdobramento ficam nos cantos das respectivas bases.
+const BLUE_ZONE = { x: 2, y: 2, w: 20, h: 20 };
+const RED_ZONE = { x: 78, y: 24, w: 20, h: 20 };
 
 export const arenas: Arena[] = [
   {
@@ -1443,9 +1441,9 @@ export const arenas: Arena[] = [
     description:
       "Ruas estreitas, prédios como cobertura e posições defensivas. Blindados sofrem, infantaria domina.",
     controlPoints: [
-      cp("cp-n", "Praça Norte", "norte", 28, 10, 1),
+      cp("cp-n", "Praça Norte", "norte", 64, 10, 1),
       cp("cp-c", "Estação Central", "central", 50, 23, 2),
-      cp("cp-s", "Terminal Sul", "sul", 72, 36, 1),
+      cp("cp-s", "Terminal Sul", "sul", 36, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1453,8 +1451,8 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "construcao",
-        x: 34,
-        y: 11,
+        x: 32,
+        y: 12,
         radius: 7,
         blocksGround: false,
         slow: 0.8,
@@ -1463,8 +1461,8 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "construcao",
-        x: 34,
-        y: 35,
+        x: 68,
+        y: 34,
         radius: 7,
         blocksGround: false,
         slow: 0.8,
@@ -1473,8 +1471,8 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "construcao",
-        x: 66,
-        y: 11,
+        x: 22,
+        y: 36,
         radius: 7,
         blocksGround: false,
         slow: 0.8,
@@ -1483,8 +1481,8 @@ export const arenas: Arena[] = [
       {
         id: "o4",
         kind: "construcao",
-        x: 66,
-        y: 35,
+        x: 78,
+        y: 10,
         radius: 7,
         blocksGround: false,
         slow: 0.8,
@@ -1502,9 +1500,9 @@ export const arenas: Arena[] = [
     description:
       "Vegetação densa, rios e mobilidade limitada. Reconhecimento vale mais que blindagem.",
     controlPoints: [
-      cp("cp-n", "Clareira Norte", "norte", 46, 10, 1),
+      cp("cp-n", "Clareira Norte", "norte", 62, 10, 1),
       cp("cp-c", "Porto Fluvial", "central", 50, 23, 2),
-      cp("cp-s", "Trilha Sul", "sul", 54, 36, 1),
+      cp("cp-s", "Trilha Sul", "sul", 38, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1512,9 +1510,9 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "rio",
-        x: 50,
-        y: 10,
-        radius: 12,
+        x: 66,
+        y: 30,
+        radius: 11,
         blocksGround: false,
         slow: 0.55,
         cover: 0,
@@ -1523,7 +1521,7 @@ export const arenas: Arena[] = [
         id: "o2",
         kind: "vegetacao",
         x: 30,
-        y: 23,
+        y: 12,
         radius: 8,
         blocksGround: false,
         slow: 0.7,
@@ -1533,7 +1531,7 @@ export const arenas: Arena[] = [
         id: "o3",
         kind: "vegetacao",
         x: 70,
-        y: 23,
+        y: 32,
         radius: 8,
         blocksGround: false,
         slow: 0.7,
@@ -1543,7 +1541,7 @@ export const arenas: Arena[] = [
         id: "o4",
         kind: "vegetacao",
         x: 50,
-        y: 36,
+        y: 40,
         radius: 7,
         blocksGround: false,
         slow: 0.75,
@@ -1561,9 +1559,9 @@ export const arenas: Arena[] = [
     description:
       "Longas distâncias, exposição total e logística decisiva. Artilharia e mobilidade mandam.",
     controlPoints: [
-      cp("cp-n", "Poço Norte", "norte", 28, 9, 1),
+      cp("cp-n", "Poço Norte", "norte", 66, 10, 1),
       cp("cp-c", "Oásis Central", "central", 50, 23, 2),
-      cp("cp-s", "Acampamento Sul", "sul", 72, 37, 1),
+      cp("cp-s", "Acampamento Sul", "sul", 34, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1571,8 +1569,8 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "elevacao",
-        x: 34,
-        y: 23,
+        x: 30,
+        y: 16,
         radius: 8,
         blocksGround: false,
         slow: 0.85,
@@ -1581,8 +1579,8 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "elevacao",
-        x: 66,
-        y: 23,
+        x: 70,
+        y: 30,
         radius: 8,
         blocksGround: false,
         slow: 0.85,
@@ -1600,9 +1598,9 @@ export const arenas: Arena[] = [
     description:
       "Passagens estreitas, elevações e rotas restritas. Quem domina o cume domina a batalha.",
     controlPoints: [
-      cp("cp-n", "Cume Norte", "norte", 28, 9, 2),
+      cp("cp-n", "Cume Norte", "norte", 66, 10, 2),
       cp("cp-c", "Desfiladeiro", "central", 50, 23, 2),
-      cp("cp-s", "Base Sul", "sul", 72, 37, 1),
+      cp("cp-s", "Base Sul", "sul", 34, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1610,8 +1608,8 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "elevacao",
-        x: 40,
-        y: 10,
+        x: 44,
+        y: 8,
         radius: 10,
         blocksGround: true,
         slow: 0.6,
@@ -1620,8 +1618,8 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "elevacao",
-        x: 40,
-        y: 36,
+        x: 56,
+        y: 38,
         radius: 10,
         blocksGround: true,
         slow: 0.6,
@@ -1630,20 +1628,20 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "elevacao",
-        x: 60,
-        y: 10,
-        radius: 10,
-        blocksGround: true,
+        x: 28,
+        y: 14,
+        radius: 8,
+        blocksGround: false,
         slow: 0.6,
         cover: 0.3,
       },
       {
         id: "o4",
         kind: "elevacao",
-        x: 60,
-        y: 36,
-        radius: 10,
-        blocksGround: true,
+        x: 72,
+        y: 32,
+        radius: 8,
+        blocksGround: false,
         slow: 0.6,
         cover: 0.3,
       },
@@ -1659,9 +1657,9 @@ export const arenas: Arena[] = [
     description:
       "O rio corta a arena ao meio. Pontes são gargalos: quem as segura controla o fluxo.",
     controlPoints: [
-      cp("cp-n", "Margem Norte", "norte", 28, 10, 1),
+      cp("cp-n", "Margem Norte", "norte", 64, 10, 1),
       cp("cp-c", "Ponte Central", "central", 50, 23, 2),
-      cp("cp-s", "Margem Sul", "sul", 72, 36, 1),
+      cp("cp-s", "Margem Sul", "sul", 36, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1670,8 +1668,8 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "vegetacao",
-        x: 30,
-        y: 8,
+        x: 24,
+        y: 34,
         radius: 7,
         blocksGround: false,
         slow: 0.8,
@@ -1680,8 +1678,8 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "vegetacao",
-        x: 70,
-        y: 38,
+        x: 76,
+        y: 12,
         radius: 7,
         blocksGround: false,
         slow: 0.8,
@@ -1698,9 +1696,9 @@ export const arenas: Arena[] = [
     terrain: "Região fortificada",
     description: "Casamatas e arame farpado. Engenharia abre caminho; artilharia castiga de longe.",
     controlPoints: [
-      cp("cp-n", "Reduto Norte", "norte", 28, 10, 1),
+      cp("cp-n", "Reduto Norte", "norte", 64, 10, 1),
       cp("cp-c", "Reduto Central", "central", 50, 23, 2),
-      cp("cp-s", "Reduto Sul", "sul", 72, 36, 1),
+      cp("cp-s", "Reduto Sul", "sul", 36, 36, 1),
     ],
     territories: standardTerritories(),
     structures: standardStructures(),
@@ -1708,8 +1706,8 @@ export const arenas: Arena[] = [
       {
         id: "o1",
         kind: "construcao",
-        x: 42,
-        y: 23,
+        x: 38,
+        y: 14,
         radius: 8,
         blocksGround: true,
         slow: 0.7,
@@ -1718,8 +1716,8 @@ export const arenas: Arena[] = [
       {
         id: "o2",
         kind: "construcao",
-        x: 58,
-        y: 23,
+        x: 62,
+        y: 32,
         radius: 8,
         blocksGround: true,
         slow: 0.7,
@@ -1728,12 +1726,22 @@ export const arenas: Arena[] = [
       {
         id: "o3",
         kind: "construcao",
-        x: 50,
-        y: 11,
+        x: 66,
+        y: 6,
         radius: 6,
         blocksGround: false,
         slow: 0.85,
-        cover: 0.25,
+        cover: 0.3,
+      },
+      {
+        id: "o4",
+        kind: "construcao",
+        x: 34,
+        y: 40,
+        radius: 6,
+        blocksGround: false,
+        slow: 0.85,
+        cover: 0.3,
       },
     ],
     routes: standardRoutes(),
@@ -1767,14 +1775,14 @@ function toWorldArena(a: Arena): Arena {
       blue: {
         x: sx(a.deployZone.blue.x),
         y: dy(a.deployZone.blue.y),
-        w: sx(a.deployZone.blue.w),
-        h: dy(a.deployZone.blue.h),
+        w: sx(a.deployZone.blue.x + a.deployZone.blue.w) - sx(a.deployZone.blue.x),
+        h: dy(a.deployZone.blue.y + a.deployZone.blue.h) - dy(a.deployZone.blue.y),
       },
       red: {
         x: sx(a.deployZone.red.x),
         y: dy(a.deployZone.red.y),
-        w: sx(a.deployZone.red.w),
-        h: dy(a.deployZone.red.h),
+        w: sx(a.deployZone.red.x + a.deployZone.red.w) - sx(a.deployZone.red.x),
+        h: dy(a.deployZone.red.y + a.deployZone.red.h) - dy(a.deployZone.red.y),
       },
     },
   };

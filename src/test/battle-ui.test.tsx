@@ -176,18 +176,21 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
 
     const svg = document.querySelector("svg[viewBox]")!;
-    // envia uma unidade (nasce na base azul, x≈spreadX(8)) — o clique no mapa já envia
+    // envia uma unidade (nasce na base azul, no canto noroeste) — o clique no mapa já envia
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(20, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", {
+        ...worldToClient(spreadX(50), deepenY(40)),
+        bubbles: true,
+      }),
     );
 
-    // toca a ~10px da unidade (tolerância do teatro pequeno): antes o alvo era o
+    // toca perto da unidade recém-enviada (tolerância do teatro pequeno): antes o alvo era o
     // próprio glifo e o toque errava; agora o alvo é a unidade mais próxima em pixels.
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(spreadX(8), WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", { ...worldToClient(spreadX(12), deepenY(9)), bubbles: true }),
     );
 
     // a faixa compacta da unidade selecionada aparece no dock (sem cobrir o teatro)
@@ -248,23 +251,29 @@ describe("interface da batalha", () => {
     fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
     const svg = document.querySelector("svg[viewBox]")!;
 
-    // envia a força aliada (nasce na base azul) — clique no mapa já envia
+    // envia a força aliada (nasce na base azul, no canto noroeste) — clique no mapa já envia
     fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(20, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", {
+        ...worldToClient(spreadX(50), deepenY(40)),
+        bubbles: true,
+      }),
     );
-    // seleciona a unidade recém-enviada (nasce na base azul, x≈spreadX(8))
+    // seleciona a unidade recém-enviada (nasce na base azul, canto noroeste)
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(spreadX(8), WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", { ...worldToClient(spreadX(12), deepenY(9)), bubbles: true }),
     );
     expect(screen.getByTestId("selected-unit")).toBeInTheDocument();
 
     // clique no teatro distante: o motor recebe a ordem de movimento/ataque
     fireEvent(
       svg,
-      new MouseEvent("pointerdown", { ...worldToClient(90, WORLD_H / 2), bubbles: true }),
+      new MouseEvent("pointerdown", {
+        ...worldToClient(spreadX(70), deepenY(40)),
+        bubbles: true,
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: /Relatório/ }));
     expect(screen.getByText(/reposiciona/i)).toBeInTheDocument();

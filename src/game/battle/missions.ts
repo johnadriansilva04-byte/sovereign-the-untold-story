@@ -1417,18 +1417,19 @@ function heroSetupFor(mission: MissionDef, arena: Arena): HeroSetup[] {
   };
   const blueBase = baseOf("blue");
   const redBase = baseOf("red");
-  const mid = { x: (blueBase.x + redBase.x) / 2, y: (blueBase.y + redBase.y) / 2 };
-  // O chanceler livre nasce no FUNDO da base (atrás da instalação), abrigado pela
-  // própria defesa — o posto de comando fica recuado, longe do front.
-  const rearPost = (base: { x: number; y: number; r: number }) => {
-    const f = base.x < mid.x ? -1 : 1; // afasta-se do centro do campo
-    return { x: base.x + f * base.r * 0.5, y: base.y };
+  // O chanceler livre nasce no FUNDO da base (atrás da instalação, na diagonal oposta ao
+  // adversário), abrigado pela própria defesa — o posto de comando fica recuado, longe do front.
+  const rearPost = (base: { x: number; y: number; r: number }, foe: { x: number; y: number }) => {
+    const dx = base.x - foe.x;
+    const dy = base.y - foe.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: base.x + (dx / len) * base.r * 0.5, y: base.y + (dy / len) * base.r * 0.5 };
   };
   if (mode === "capturar") {
-    const post = rearPost(redBase);
+    const post = rearPost(redBase, blueBase);
     return [{ side: "red", status: "livre", x: post.x, y: post.y }];
   }
-  const post = rearPost(blueBase);
+  const post = rearPost(blueBase, redBase);
   return [{ side: "blue", status: "livre", x: post.x, y: post.y }];
 }
 

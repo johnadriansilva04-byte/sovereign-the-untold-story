@@ -7,13 +7,18 @@
 
 export const WORLD_W = 210;
 /**
- * Profundidade do front (largura norte→sul). Subir este valor deixa o campo mais
- * FUNDO, com mais espaço de manobra entre as duas bases — não é só estética: o motor
- * usa o mesmo limite para movimento, alcance e captura. A razão WORLD_W:WORLD_H foi
- * escolhida para o palco LARGO (desktop e celular deitado); no celular em pé o campo é
- * o mesmo e sobram faixas em cima/embaixo, ocupadas pela barra do topo e pelo dock.
+ * Profundidade do front (norte→sul). Subir este valor deixa o campo mais FUNDO, com
+ * mais espaço de manobra entre as duas bases — não é só estética: o motor usa o mesmo
+ * limite para movimento, alcance e captura.
+ *
+ * Este número SUBIU de 130 para 190: o antigo retângulo 210×130 projetava uma faixa
+ * larga e baixa que deixava uma área vazia embaixo do palco. Como o encaixe é uniforme
+ * (nunca estica), a única forma de ocupar a altura disponível SEM aumentar o painel é
+ * aumentar o TERRITÓRIO representado — mais profundidade de manobra dentro do mesmo
+ * retângulo externo. As bases ficam na DIAGONAL (aliada no canto superior esquerdo,
+ * inimiga no canto inferior direito), o que aproveita a profundidade extra.
  */
-export const WORLD_H = 130;
+export const WORLD_H = 190;
 
 /**
  * BEIRADA do teatro: faixa de borda (em unidades de mundo) que fica FORA da área de
@@ -54,16 +59,22 @@ export const WORLD_X_MAX = WORLD_W - FIELD_MARGIN_X;
 export const WORLD_Y_MIN = FIELD_MARGIN_Y;
 export const WORLD_Y_MAX = WORLD_H - FIELD_MARGIN_Y;
 
-/** Ponto de partida padrão de cada lado quando não há base no mapa (azul: oeste). */
+/**
+ * Ponto de partida padrão de cada lado quando não há base no mapa. Fica na MESMA diagonal
+ * das bases principais: aliado no canto superior esquerdo (noroeste), inimigo no canto
+ * inferior direito (sudeste). É o "lar" de último recurso do motor (IA e motor usam quando
+ * uma arena não traz base), então precisa espelhar a disposição real do campo.
+ */
 export const HOME_POINT: Record<"blue" | "red", { x: number; y: number }> = {
-  blue: { x: spreadX(8), y: WORLD_H / 2 },
-  red: { x: spreadX(92), y: WORLD_H / 2 },
+  blue: { x: spreadX(12), y: deepenY(9) },
+  red: { x: spreadX(88), y: deepenY(37) },
 };
 
-/** Ângulo de mira inicial: o azul encara o leste (+x), o vermelho o oeste (−x). */
+/** Ângulo de mira inicial: cada lado encara o outro na diagonal (aliado a sudeste, inimigo
+ *  a noroeste). Calculado a partir dos dois pontos-base para não repetir a conta. */
 export const HOME_AIM: Record<"blue" | "red", number> = {
-  blue: 0,
-  red: Math.PI,
+  blue: Math.atan2(HOME_POINT.red.y - HOME_POINT.blue.y, HOME_POINT.red.x - HOME_POINT.blue.x),
+  red: Math.atan2(HOME_POINT.blue.y - HOME_POINT.red.y, HOME_POINT.blue.x - HOME_POINT.red.x),
 };
 
 export function clampX(v: number): number {
@@ -102,17 +113,21 @@ export function orientationFor(w: number, h: number): FieldOrientation {
 }
 
 /**
- * Inclinação do teatro: o campo é uma MESA vista de cima e de frente, com o eixo de
- * progressão (mundo X, azul→vermelho) descendo em leve diagonal e o front (mundo Y) entrando
- * na profundidade. A câmera gira o plano no sentido HORÁRIO (mundo +x vira ↘ na tela,
- * mundo +y vira ↗) e depois deita a mesa com uma rotação 3D em torno do eixo horizontal.
- * O ângulo é uma MATRIZ (o SVG não tem 3D): `cameraMatrix3d` o converte para `matrix3d`.
+ * Inclinação do teatro: o campo é uma MESA vista de cima e de frente. A câmera deita a
+ * mesa com uma rotação 3D em torno do eixo horizontal do palco (o front, mundo Y, entra
+ * na profundidade). O ângulo é uma MATRIZ (o SVG não tem 3D): `cameraMatrix3d` o converte
+ * para `matrix3d`.
  */
-export const TILT_DEG = 60;
+export const TILT_DEG = 56;
 
-/** Giro no plano da mesa (graus). No DESKTOP uma leve diagonal dá profundidade à mesa, com a
- * base aliada à ESQUERDA e a inimiga à DIREITA. */
-export const ROTATE_DEG = -41;
+/**
+ * Giro no plano da mesa (graus). Fica em ZERO: com o campo LARGO (WORLD_W ≫ WORLD_H), girar
+ * a mesa transformava o retângulo num DIAMANTE que só preenchia ~40% do palco, deixando as
+ * pontas vazias. Sem giro, o retângulo encaixa de frente e preenche ~84% da área — o
+ * território efetivamente representado cresce dentro do MESMO painel. A diagonal entre as
+ * bases (aliada a noroeste, inimiga a sudeste) vem da POSIÇÃO delas no mapa, não da câmera.
+ */
+export const ROTATE_DEG = 0;
 
 /** No CELULAR em pé o campo fica RETO, da esquerda para a direita (giro 0): a base aliada à
  * esquerda e a inimiga à direita, sem a diagonal — é o que o jogador espera num celular. A

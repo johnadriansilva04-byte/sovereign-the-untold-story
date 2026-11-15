@@ -539,16 +539,21 @@ export const difficulties: DifficultyDef[] = [
 // presets acima (exibição/treino) e a escalada da campanha usam exatamente estes números —
 // antes havia duas curvas divergentes e o "Soberano" do preset era mais cruel que o topo
 // real da campanha, o que produzia degraus artificiais e missões impossíveis.
-const AI_ANCHORS: { at: number; intervalMult: number; commandMult: number; reserveBonus: number }[] =
-  [
-    { at: 0.0, intervalMult: 1.45, commandMult: 0.94, reserveBonus: 2 },
-    { at: 0.3, intervalMult: 1.25, commandMult: 0.98, reserveBonus: 1 },
-    { at: 0.6, intervalMult: 1.0, commandMult: 1.0, reserveBonus: -1 },
-    // Vantagem FINAL suavizada: 0.7/1.08 fazia o adversário decidir 30% mais rápido e
-    // com 8% mais economia no fim da campanha — combinado ao deck de elite, era um muro.
-    // 0.9/1.02 mantém o adversário pressionando sem dobrar a dificuldade.
-    { at: 1.0, intervalMult: 0.9, commandMult: 1.02, reserveBonus: -2 },
-  ];
+const AI_ANCHORS: {
+  at: number;
+  intervalMult: number;
+  commandMult: number;
+  reserveBonus: number;
+}[] = [
+  { at: 0.0, intervalMult: 3.2, commandMult: 0.5, reserveBonus: 3 },
+  { at: 0.3, intervalMult: 2.9, commandMult: 0.52, reserveBonus: 2 },
+  { at: 0.6, intervalMult: 2.7, commandMult: 0.55, reserveBonus: 1 },
+  // Pressão CRESCENTE: o adversário reage mais devagar no início (intervalo maior) e mais
+  // rápido no fim, com o teto de comando subindo de 50% para 60% do seu. O equilíbrio vem
+  // da ECONOMIA e da COMPOSIÇÃO das cartas — a IA lança tudo o que o caixa permite (ver
+  // reinforceTuning), sem freio artificial de "paridade com o inimigo".
+  { at: 1.0, intervalMult: 2.5, commandMult: 0.6, reserveBonus: 0 },
+];
 
 export interface AiParams {
   intervalMult: number;

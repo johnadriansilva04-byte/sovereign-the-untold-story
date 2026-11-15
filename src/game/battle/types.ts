@@ -338,9 +338,19 @@ export interface BattleUnit {
   dmgVs?: Partial<Record<UnitCategory, number>>;
   order: Order;
   objectiveId?: string;
+  /** Alvos de navegação FIXOS do motor (território e ponto de controle) quando não há
+   *  destino explícito. Evitam o vaivém: sem eles, a unidade entre dois alvos quase
+   *  equidistantes troca de rumo a cada quadro (a distância oscila enquanto ela anda) e
+   *  oscila no lugar. Separados por TIPO para as duas buscas não competirem pelo mesmo id. */
+  navTerrId?: string;
+  navCpId?: string;
   targetId?: string; // alvo atual (unidade)
   targetStructureId?: string; // alvo atual (estrutura)
   buildTerritoryId?: string; // território onde o engenheiro constrói
+  /** Canteiro RESERVADO pelo engenheiro enquanto ele MARCHA até lá (antes de iniciar a
+   *  obra). Reservar na escolha — e não na chegada — evita que dois construtores elejam o
+   *  mesmo território e fiquem empilhados brigando pela separação. */
+  buildReservedId?: string;
   // esquadrão: todas as unidades de uma mesma carta/ordem compartilham o grupo.
   groupId: string;
   // destino explícito definido pelo jogador (clique no mapa). Tem prioridade sobre

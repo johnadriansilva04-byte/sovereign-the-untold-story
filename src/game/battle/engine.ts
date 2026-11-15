@@ -761,8 +761,15 @@ function heroEscapeGoal(
   hero: BattleUnit,
 ): { x: number; y: number } {
   const anchors: { x: number; y: number }[] = [];
+  // Só contam âncoras que REALMENTE tornam o chanceler seguro (`inFriendlyTerritory`):
+  // bases aliadas e territórios conquistados. As TORRES não contam lá — elegê-las aqui
+  // fazia o chanceler correr até uma torre e orbitá-la para sempre, sem nunca ficar seguro.
   for (const s of state.structures) {
-    if (s.alive && s.side === side && s.kind !== "prisao") anchors.push({ x: s.x, y: s.y });
+    if (!s.alive || s.side !== side || s.kind === "prisao") continue;
+    if (s.kind === "base-principal" || s.kind === "base-avancada") {
+      if (s.kind === "base-avancada" && s.underConstruction) continue;
+      anchors.push({ x: s.x, y: s.y });
+    }
   }
   for (const t of state.territories) {
     if (t.owner === side) anchors.push({ x: t.x, y: t.y });
@@ -903,20 +910,25 @@ function initPrize(state: BattleState): void {
     (s) => s.side === "red" && s.kind === "base-principal" && s.alive,
   );
   if (!home) return;
-  const x = home.x - 35;
-  const y = home.y;
+  // O comboio sai do fundo da base vermelha, no lado oposto ao campo (noroeste), e
+  // AVANÇA na direção do centro — é lá que o jogador o intercepta.
+  const mid = state.config.arena.controlPoints.find((p) => p.sector === "central");
+  const aim = mid ?? HOME_POINT.blue;
+  const dx = aim.x - home.x;
+  const dy = aim.y - home.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const x = home.x + (dx / len) * 35;
+  const y = home.y + (dy / len) * 35;
   const u = spawnUnit(state, "red", PRIZE_CARRIER_CARD, x, y, {
     name: "Comboio · Carta Nova",
     groupId: `prize-${state.nextId}`,
   });
   u.hero = false;
   u.captureTarget = true;
-  // O comboio AVANÇA com a ofensiva vermelha rumo ao centro — é lá que o jogador o
-  // intercepta. Fica parado só quando alcança o objetivo (não persegue para dentro da
-  // base azul), para dar tempo de armar a captura.
-  const mid = state.config.arena.controlPoints.find((p) => p.sector === "central");
-  u.goalX = mid ? mid.x : x - 30;
-  u.goalY = mid ? mid.y : y;
+  // Fica parado só quando alcança o objetivo (não persegue para dentro da base azul),
+  // para dar tempo de armar a captura.
+  u.goalX = aim.x;
+  u.goalY = aim.y;
   u.holdAtGoal = true;
   u.order = "avancar";
   state.red.units.push(u);
@@ -1592,11 +1604,16 @@ function escortGoal(state: BattleState, u: BattleUnit, hero: BattleUnit): { x: n
   const n = Math.max(1, mates.length);
   const R = hero.radius + 3.2; // folga: o cerco nunca cola no chanceler
   const threat = nearestEnemy(state, u.side, hero.x, hero.y);
+  // Sem inimigo em campo, o cerco se abre na direção da base adversária (a ameaça
+  // futura), seja qual for a geometria do mapa.
+  const foeBase = state.structures.find(
+    (s) => s.alive && s.side === other(u.side) && s.kind === "base-principal",
+  );
   const baseAngle = threat
     ? Math.atan2(threat.y - hero.y, threat.x - hero.x)
-    : u.side === "blue"
-      ? 0
-      : Math.PI;
+    : foeBase
+      ? Math.atan2(foeBase.y - hero.y, foeBase.x - hero.x)
+      : 0;
   // Distribui os escoltas num arco de ~210° voltado para a ameaça (não em círculo
   // completo: ninguém fica "atrás" exposto, todos barram a aproximação).
   const spread = (Math.PI * 2 * 0.58) / n;
@@ -1950,6 +1967,9 @@ export function issueOrder(
   if (targets.length === 0) return false;
   for (const u of targets) {
     u.order = order;
+    // Trocar de ordem (ou de objetivo) reabre a escolha de alvo de navegação.
+    delete u.navTerrId;
+    delete u.navCpId;
     if (objectiveId) u.objectiveId = objectiveId;
     else delete u.objectiveId;
     if (opts.preserveGoals) continue;
@@ -2429,10 +2449,13 @@ function objectiveFor(state: BattleState, u: BattleUnit): { x: number; y: number
     const s = state.structures.find((x) => x.id === u.attackStructureId);
     if (s && s.alive) return { x: s.x, y: s.y };
   }
-  if (u.attackTerritoryId) {
+  if (u.attackTerritoryId && !u.builder) {
     const t = state.territories.find((x) => x.id === u.attackTerritoryId);
     if (t) return { x: t.x, y: t.y };
   }
+  // O ENGENHEIRO se desloca SÓ por `updateBuilder` (marcha à obra / repara). Deixar o
+  // objetivo genérico puxá-lo para um território o empilhava com os demais construtores
+  // no mesmo canteiro — a separação os arremessava e eles vibravam no lugar.
   // O engenheiro não caça unidades (não atira): perseguir um alvo que não pode atacar
   // só o deixava parado em cima dele. Ele ignora alvos-unidade e segue para a obra.
   if (u.targetId && !u.builder) {
@@ -2448,6 +2471,10 @@ function objectiveFor(state: BattleState, u: BattleUnit): { x: number; y: number
     if (hero && hero.alive) return escortGoal(state, u, hero);
     delete u.escortId; // chanceler caiu: volta ao comportamento normal
   }
+  // Sem obra nem destino explícito, o ENGENHEIRO fica OCIOSO (só repara o que está ao
+  // lado). O objetivo genérico o arrastava para um território qualquer, onde ele se
+  // empilhava com outros construtores e vibrava.
+  if (u.builder) return null;
   return goalFor(state, u);
 }
 
@@ -2560,16 +2587,41 @@ function nearestDamagedAlly(state: BattleState, u: BattleUnit, search: number): 
 }
 
 function buildSite(state: BattleState, u: BattleUnit): Territory | null {
+  const cfg = u.side === "blue" ? state.blue : state.red;
+  // Territórios já reservados por OUTRO engenheiro aliado (marchando para lá ou já
+  // construindo): dois construtores no mesmo canteiro ficavam empilhados e a separação
+  // os jogava de um lado para o outro. Cada engenheiro busca um canteiro livre antes de
+  // dividir um já ocupado.
+  const claimed = new Set(
+    cfg.units
+      .filter((x) => x.alive && x.id !== u.id)
+      .map((x) => x.buildReservedId ?? x.buildTerritoryId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const free = (t: Territory) =>
+    t.owner === u.side && canBuildAt(state, u.side, t) && !claimed.has(t.id);
+  const claim = (t: Territory): Territory => {
+    u.buildReservedId = t.id;
+    return t;
+  };
   // Ordem explícita do jogador tem prioridade: construir/segurar aquele território.
   if (u.attackTerritoryId) {
     const forced = state.territories.find((t) => t.id === u.attackTerritoryId);
-    if (forced && forced.owner === u.side && canBuildAt(state, u.side, forced)) return forced;
+    if (forced && free(forced)) return claim(forced);
   }
-  const candidates = state.territories.filter(
-    (t) => t.owner === u.side && canBuildAt(state, u.side, t),
-  );
+  const candidates = state.territories.filter(free);
+  // Sem canteiro LIVRE, o engenheiro NÃO se junta a um canteiro ocupado: dois construtores
+  // no mesmo alvo ficavam empilhados e a separação os arremessava de um lado para o outro
+  // (o vaivém). Ele fica ocioso (repara, ou espera) até abrir um canteiro.
   if (candidates.length === 0) return null;
-  return candidates.sort((a, b) => dist(u.x, u.y, a.x, a.y) - dist(u.x, u.y, b.x, b.y))[0]!;
+  // ALVO FIXO: o engenheiro escolhe UM território e marcha até ele. Reavaliar o "mais
+  // próximo" a cada quadro o fazia trocar de alvo entre dois territórios quase
+  // equidistantes (a distância oscila enquanto ele anda) e inverter o sentido da marcha.
+  if (u.buildReservedId) {
+    const held = candidates.find((t) => t.id === u.buildReservedId);
+    if (held) return held;
+  }
+  return claim(candidates.sort((a, b) => dist(u.x, u.y, a.x, a.y) - dist(u.x, u.y, b.x, b.y))[0]!);
 }
 
 // Um território aceita obra se ainda não tem base concluída nem outra base aliada
@@ -3376,7 +3428,7 @@ function goalFor(state: BattleState, u: BattleUnit): { x: number; y: number } | 
       return null;
     case "defender": {
       const pt =
-        nearestPoint(state, u, (p) => p.owner === u.side) ?? nearestPoint(state, u, () => true);
+        stickyPoint(state, u, (p) => p.owner === u.side) ?? stickyPoint(state, u, () => true);
       return pt ? { x: pt.x, y: pt.y } : center;
     }
     case "avancar":
@@ -3385,9 +3437,9 @@ function goalFor(state: BattleState, u: BattleUnit): { x: number; y: number } | 
         ? state.config.arena.controlPoints.find((p) => p.id === u.objectiveId)
         : null;
       if (obj) return { x: obj.x, y: obj.y };
-      const terr = nearestTerritory(state, u);
+      const terr = stickyTerritory(state, u);
       const contest =
-        nearestPoint(state, u, (p) => p.owner !== u.side) ?? nearestPoint(state, u, () => true);
+        stickyPoint(state, u, (p) => p.owner !== u.side) ?? stickyPoint(state, u, () => true);
       if (terr && contest) {
         return dist(u.x, u.y, terr.x, terr.y) < dist(u.x, u.y, contest.x, contest.y)
           ? { x: terr.x, y: terr.y }
@@ -3401,21 +3453,36 @@ function goalFor(state: BattleState, u: BattleUnit): { x: number; y: number } | 
   }
 }
 
-function nearestTerritory(state: BattleState, u: BattleUnit): Territory | null {
+// O alvo de navegação fica FIXO enquanto for válido: sem isto, a unidade entre dois
+// alvos quase equidistantes troca de rumo a cada quadro (a distância oscila enquanto
+// ela anda) e "vibra" no lugar. A escolha só é revista quando o alvo deixa de valer.
+function stickyTerritory(state: BattleState, u: BattleUnit): Territory | null {
   const list = state.territories.filter((t) => t.owner !== u.side);
   if (list.length === 0) return null;
-  return list.map((t) => ({ t, d: dist(u.x, u.y, t.x, t.y) })).sort((a, b) => a.d - b.d)[0]!.t;
+  if (u.navTerrId) {
+    const held = list.find((t) => t.id === u.navTerrId);
+    if (held) return held;
+  }
+  const best = list.map((t) => ({ t, d: dist(u.x, u.y, t.x, t.y) })).sort((a, b) => a.d - b.d)[0]!
+    .t;
+  u.navTerrId = best.id;
+  return best;
 }
 
-function nearestPoint(
+function stickyPoint(
   state: BattleState,
   u: BattleUnit,
   pred: (p: ControlPoint) => boolean,
 ): ControlPoint | null {
   const pts = state.config.arena.controlPoints.filter(pred);
   if (pts.length === 0) return null;
-  const ranked = pts.map((p) => ({ p, d: dist(u.x, u.y, p.x, p.y) })).sort((a, b) => a.d - b.d);
-  return ranked[0]?.p ?? null;
+  if (u.navCpId) {
+    const held = pts.find((p) => p.id === u.navCpId);
+    if (held) return held;
+  }
+  const best = pts.map((p) => ({ p, d: dist(u.x, u.y, p.x, p.y) })).sort((a, b) => a.d - b.d)[0]!.p;
+  u.navCpId = best.id;
+  return best;
 }
 
 // Comando em tempo real do chanceler: converte o vetor (driveX, driveY) em deslocamento
