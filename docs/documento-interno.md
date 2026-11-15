@@ -209,6 +209,11 @@ leitura de mundo, embalada como obra de ficção.
       - **Cenários de refém** (prisão inicial, resgate/extração) continuam existindo no motor,
         mas **nenhuma missão da campanha os usa** hoje; os testes que os cobrem montam o
         `heroSetup` à mão.
+- [x] **Movimento das unidades sem contramarcha** (RESOLVIDO 13/11). Duas causas no motor:
+      `u.aim` desatualizado na marcha do engenheiro (a separação removia a componente errada
+      do empurrão) e o contorno de obstáculo que esquecia o lado escolhido (invertia o desvio
+      a cada progresso). Detalhamento na seção 5. Rede de regressão:
+      `src/test/movement-regression.test.ts`.
 
 ### P1 — narrativa e campanha
 - [ ] Revisar os 50 capítulos quanto a ritmo, tamanho de texto e ganchos entre atos.
@@ -285,14 +290,29 @@ leitura de mundo, embalada como obra de ficção.
   - **IA usa o teto de 33**: em todas as medições `picoAz`/`picoVm` chegam a **33/33** (o
     `reinforceTuning` com paridade enche o exército). A IA concentra fogo (lança em ondas, não
     espalha) e mantém a economia (Sov finito, 500).
-- **Movimento das unidades — investigação** (13/11): o usuário relatou "rodear sem rumo".
-  Medição por traço de posição (passo real 0,1 s) mostra **reversões de direção** concentradas
-  no **corpo-a-corpo** (troca de alvo a cada quadro em `selectTarget`; `updateUnit` apaga
-  `targetId` sempre que a unidade não está engajada), e **congelamentos curtos** de engenheiro
-  em obra (legítimos: `buildTerritoryId` desliga o detector de travamento). A marcha até o alvo
-  é reta (eficiência ~1,0). Correção de histerese de alvo foi testada e **descartada** (não
-  reduziu as reversões de forma mensurável e mexia no alvo da IA) — fica pendente um ajuste
-  focado no engajamento, sem alterar o balanceamento já calibrado.
+- **Movimento das unidades — CORRIGIDO** (13/11): o usuário relatou "rodear sem rumo". A
+  medição por traço de posição (passo REAL, 0,1 s) apontou **~497 reversões de sentido** numa
+  missão-tipo, **401 delas dos ENGENHEIROS** (tortuosidade 1,92: percorriam ~2× o necessário).
+  Rastreando um engenheiro quadro a quadro, duas causas reais foram encontradas e corrigidas no
+  motor (`engine.ts`):
+  1. **`u.aim` desatualizado na marcha do engenheiro.** As duas chamadas de `moveToward` do
+     construtor (ir até a obra, ir até o canteiro) não atualizavam `u.aim`, ao contrário de
+     todas as outras. Como a separação usa `u.aim` para **cancelar o empurrão anti-traseira**,
+     a unidade recebia o empurrão na componente errada e era arremessada para trás (passos de
+     **1–2 unidades/quadro**, contra 0,34 da velocidade própria). Correção: definir `u.aim`
+     antes de marchar. **Reduziu as reversões de 497 → 100**.
+  2. **Contorno de obstáculo esquecia o lado.** O `stallSign` era apagado a cada progresso, então
+     quem arranhava a borda de um obstáculo invertia o sentido do desvio a cada ciclo e ficava
+     **oscilando em torno da borda** (ex.: `m-5g`, 485 reversões). Correção: o lado persiste até
+     o próximo episódio de travamento (que o troca de propósito). **Reduziu de 100 → ~15**.
+  Soma das duas, nas 50 missões (seed 9001): **2979 → 1485 reversões**; o pior caso caiu de
+  **659 (m-5g) para 131**. As reversões restantes são ruído de combate distribuído (troca de
+  alvo no corpo-a-corpo), não contramarcha. Balanceamento **intacto**: canhão×canhão segue
+  177 s, 33/33, base inimiga em 34%; suíte de travamento passa em 5 sementes.
+  - **Rede de regressão**: `src/test/movement-regression.test.ts` mede as reversões de
+    engenheiro nas 50 missões e falha se voltarem ao patamar antigo (teto 180/missão).
+  - Os "congelamentos" curtos de engenheiro em obra são legítimos (`buildTerritoryId` desliga o
+    detector de travamento).
 
 ---
 

@@ -2319,7 +2319,10 @@ function updateStall(state: BattleState, u: BattleUnit, moved: number, dt: numbe
     u.stallAnchorX = u.x;
     u.stallAnchorY = u.y;
     u.stall = 0;
-    if (u.stallBypass === undefined || u.stallBypass <= 0) delete u.stallSign;
+    // NÃO apagar o stallSign aqui: quem arranha a borda de um obstáculo alterna entre
+    // "progredir um pouco" e "travar", e limpar o lado a cada progresso invertia o
+    // sentido do contorno — a unidade oscilava em torno da borda em vez de contorná-la.
+    // O lado persiste até o próximo episódio de travamento, que o troca de propósito.
     return;
   }
   u.stall = (u.stall ?? 0) + dt;
@@ -2506,6 +2509,7 @@ function updateBuilder(state: BattleState, u: BattleUnit, dt: number): boolean {
   );
   if (underConstruction) {
     if (dist(u.x, u.y, underConstruction.x, underConstruction.y) > BUILD_RANGE) {
+      u.aim = Math.atan2(underConstruction.y - u.y, underConstruction.x - u.x);
       moveToward(state, u, underConstruction.x, underConstruction.y, dt, 1);
     } else {
       underConstruction.buildProgress = Math.min(
@@ -2536,6 +2540,7 @@ function updateBuilder(state: BattleState, u: BattleUnit, dt: number): boolean {
   }
 
   if (dist(u.x, u.y, site.x, site.y) > site.radius) {
+    u.aim = Math.atan2(site.y - u.y, site.x - u.x);
     moveToward(state, u, site.x, site.y, dt, 1);
     return true;
   }
