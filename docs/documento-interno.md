@@ -257,6 +257,32 @@ leitura de mundo, embalada como obra de ficção.
   `campaign_progress`, `inventory`, `decks`, `battle_records`, `pvp_matches`), **RLS em todas**,
   triggers de `updated_at`, e todas as tabelas que o front usa existem no schema. Falta apenas o
   **bug de seed** descrito no P2 e expor as chaves públicas para ligar a sincronização.
+- **Banco de cartas (catálogo) conferido** (13/11): 19 cartas militares + 10 de apoio, **sem ids
+  duplicados**, com `cardById` resolvendo as 8 do baralho inicial e as 2 de apoio do perfil
+  (`sup-barricada`, `sup-recon-avancado`); 6 categorias militares cobertas. `CARD_MAX_LEVEL`=50,
+  `unitsPerDeploy` 1→2 no nível máximo.
+- **Bateria de guerra completa** (`war-sim.test.ts`, `SIM=1`, relatório em
+  `.agent_tmp/war-report.txt`), com **ambos os lados cheios em 33/33**:
+  - **Canhão de campanha × canhão de campanha**: vitória azul, 177 s, picos **33/33**, base
+    inimiga em 34%, territórios 10–3.
+  - **Cada carta contra ela mesma** (14 cartas militares, 33×33): todas enchem **33/33**; a
+    maioria dá vitória (artilharia/blindado decidem rápido: obus 165 s, tanque 120 s, VBTP 119 s,
+    lançador 94 s; reconhecimento de combate 56 s), com derrotas pontuais por assimetria do mapa
+    (antitanque, sniper, AA) — o motor alterna a iniciativa a cada tick.
+  - **Misturado** (composições variadas, 33×33): `blindado vs blindado` 32/24 picos, `fogo vs
+    fogo` empata no atrito, `blindado vs infantaria` 105 s — resultados alternam entre os lados,
+    sem "um sempre vence".
+  - **IA usa o teto de 33**: em todas as medições `picoAz`/`picoVm` chegam a **33/33** (o
+    `reinforceTuning` com paridade enche o exército). A IA concentra fogo (lança em ondas, não
+    espalha) e mantém a economia (Sov finito, 500).
+- **Movimento das unidades — investigação** (13/11): o usuário relatou "rodear sem rumo".
+  Medição por traço de posição (passo real 0,1 s) mostra **reversões de direção** concentradas
+  no **corpo-a-corpo** (troca de alvo a cada quadro em `selectTarget`; `updateUnit` apaga
+  `targetId` sempre que a unidade não está engajada), e **congelamentos curtos** de engenheiro
+  em obra (legítimos: `buildTerritoryId` desliga o detector de travamento). A marcha até o alvo
+  é reta (eficiência ~1,0). Correção de histerese de alvo foi testada e **descartada** (não
+  reduziu as reversões de forma mensurável e mexia no alvo da IA) — fica pendente um ajuste
+  focado no engajamento, sem alterar o balanceamento já calibrado.
 
 ---
 
