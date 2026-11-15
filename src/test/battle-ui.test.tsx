@@ -14,6 +14,8 @@ import {
   spreadX,
   deepenY,
   worldToScreen,
+  FIELD_BOTTOM_PAD,
+  HUD_TOP_INSET,
   WORLD_W,
   WORLD_H,
 } from "@/game/battle/world";
@@ -484,17 +486,52 @@ describe("interface da batalha", () => {
       const wpx = Math.max(...xs) - Math.min(...xs);
       const hpx = Math.max(...ys) - Math.min(...ys);
       // A vista é levemente DIAGONAL (giro no plano + inclinação), então NÃO se compara à
-      // razão do mundo. O que precisa valer é o encaixe: preenche a dimensão limitante
-      // (>= 92%) sem transbordar a outra.
+      // razão do mundo. O que precisa valer é o encaixe: preenche a dimensão limitante da
+      // ÁREA VISÍVEL (o palco menos a faixa do HUD no topo e o respiro do dock) sem
+      // transbordar a outra. Não se mede contra o palco CRU: o topo é reservado ao HUD.
+      const visTop = HUD_TOP_INSET;
+      const visBottom = Math.max(visTop + 1, h - FIELD_BOTTOM_PAD);
+      const visH = visBottom - visTop;
       expect(wpx / w).toBeLessThanOrEqual(1.001);
-      expect(hpx / h).toBeLessThanOrEqual(1.001);
-      expect(Math.max(wpx / w, hpx / h)).toBeGreaterThan(0.9);
+      expect(hpx / visH).toBeLessThanOrEqual(1.001);
+      expect(Math.max(wpx / w, hpx / visH)).toBeGreaterThan(0.9);
+      // O campo começa ABAIXO do HUD: o topo do teatro não fica escondido pela barra.
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(visTop - 0.5);
       expect(cam.orientation).toBe(orient);
       // A mesa é sempre inclinada (perspectiva), em qualquer tela.
       expect(cam.tiltDeg).toBeGreaterThan(0);
       // O campo é DEITADO (o eixo de progressão é mais longo que a profundidade do front),
       // então a mesa projeta mais larga que alta — em qualquer palco.
       expect(wpx).toBeGreaterThan(hpx);
+    }
+  });
+
+  // A janela TÍPICA de desktop (16:9/2:1) é preenchida de fora a fora — sem faixa vazia nas
+  // laterais. Regressão: com inclinação baixa demais a projeção ficava mais ESTREITA que a
+  // janela e sobrava uma tira de chão morto à esquerda e à direita do teatro.
+  it("o campo preenche a janela típica em largura E altura (sem faixa lateral)", () => {
+    const sizes = [
+      [1920, 953],
+      [1600, 800],
+      [1440, 699],
+      [1200, 600],
+    ] as const;
+    for (const [w, h] of sizes) {
+      const pts = (
+        [
+          [0, 0],
+          [WORLD_W, 0],
+          [0, WORLD_H],
+          [WORLD_W, WORLD_H],
+        ] as const
+      ).map(([x, y]) => worldToScreen(x, y, w, h));
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      const wpx = Math.max(...xs) - Math.min(...xs);
+      const hpx = Math.max(...ys) - Math.min(...ys);
+      const visH = Math.max(1, h - HUD_TOP_INSET - FIELD_BOTTOM_PAD);
+      expect(wpx / w, `largura em ${w}×${h}`).toBeGreaterThan(0.9);
+      expect(hpx / visH, `altura em ${w}×${h}`).toBeGreaterThan(0.9);
     }
   });
 

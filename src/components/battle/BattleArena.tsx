@@ -61,6 +61,9 @@ interface Props {
   onPickDestination: (x: number, y: number, target?: DeployTarget) => void;
 }
 
+// Cores de EQUIPE na cor CHEIA: usadas nas zonas do terreno, no anel de seleção e na
+// insígnia de lado — onde a leitura à distância importa. O CORPO das peças usa a versão
+// dessaturada (`unitBodyColor`), que não brilha como neon no meio do teatro.
 const ALLY = "var(--ally)";
 const ENEMY = "var(--enemy)";
 
@@ -69,6 +72,14 @@ const ENEMY = "var(--enemy)";
 const GROUND_PAD = 60;
 
 const sideColor = (s: Side): string => (s === "blue" ? ALLY : ENEMY);
+
+// Cor de UNIFORME das peças (corpo, casco, torre). Mesmo matiz do time, mas
+// dessaturada: em unidades pequenas a cor de time cheia brilhava como neon sobre o
+// terreno. A insígnia/anel de seleção seguem usando `sideColor` (cor cheia), então o
+// lado continua óbvio de longe.
+const UNIT_ALLY = "var(--ally-unit)";
+const UNIT_ENEMY = "var(--enemy-unit)";
+const unitBodyColor = (s: Side): string => (s === "blue" ? UNIT_ALLY : UNIT_ENEMY);
 
 // Cor da insígnia de patente por nível: prata → ouro → laranja → vermelho de elite.
 // Dá leitura instantânea de "esta tropa é veterana" no meio do combate.
@@ -1730,7 +1741,6 @@ function UnitGlyph({
   allySide?: Side;
   cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
 }) {
-  const color = sideColor(unit.side);
   const airborne = unit.domain === "aereo";
   const y = airborne ? unit.y - 2.4 : unit.y;
   // Escala visual por modelo: os soldados e veículos apareciam minúsculos no teatro.
@@ -1832,7 +1842,7 @@ function UnitGlyph({
         />
       )}
       <g transform={`translate(${unit.x} ${y}) rotate(${bodyDeg}) scale(${scale})`}>
-        {unitModel(unit.model, color, selected, turretDeg)}
+        {unitModel(unit.model, unitBodyColor(unit.side), selected, turretDeg)}
       </g>
       {unit.smoke > 0 && (
         <circle

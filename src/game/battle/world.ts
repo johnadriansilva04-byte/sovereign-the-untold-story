@@ -9,14 +9,14 @@ export const WORLD_W = 210;
 /**
  * Profundidade do front (norte→sul). Subir este valor deixa o campo mais FUNDO, com
  * mais espaço de manobra entre as duas bases — não é só estética: o motor usa o mesmo
- * limite para movimento, alcance e captura.
+ * limite para movimento, alcance e captura (a simulação lê este número diretamente).
  *
- * Este número SUBIU de 130 para 190: o antigo retângulo 210×130 projetava uma faixa
- * larga e baixa que deixava uma área vazia embaixo do palco. Como o encaixe é uniforme
- * (nunca estica), a única forma de ocupar a altura disponível SEM aumentar o painel é
- * aumentar o TERRITÓRIO representado — mais profundidade de manobra dentro do mesmo
- * retângulo externo. As bases ficam na DIAGONAL (aliada no canto superior esquerdo,
- * inimiga no canto inferior direito), o que aproveita a profundidade extra.
+ * Este valor SUBIU de 130 para 190: o antigo retângulo 210×130 projetava uma faixa larga
+ * e baixa, deixando uma área vazia embaixo do palco. Como o encaixe é uniforme (nunca
+ * estica), a única forma de ocupar a altura disponível SEM aumentar o painel é aumentar
+ * o TERRITÓRIO representado — mais profundidade de manobra dentro do mesmo retângulo
+ * externo. As bases ficam na DIAGONAL (aliada a noroeste, inimiga a sudeste), o que
+ * aproveita a profundidade extra.
  */
 export const WORLD_H = 190;
 
@@ -117,8 +117,12 @@ export function orientationFor(w: number, h: number): FieldOrientation {
  * mesa com uma rotação 3D em torno do eixo horizontal do palco (o front, mundo Y, entra
  * na profundidade). O ângulo é uma MATRIZ (o SVG não tem 3D): `cameraMatrix3d` o converte
  * para `matrix3d`.
+ *
+ * O valor casa a RAZÃO DE TELA com a do palco largo típico: com 56° a projeção ficava mais
+ * ESTREITA que a janela e sobrava faixa nas laterais; 62° deita a mesa o bastante para a
+ * largura também encher (a área vazia nas laterais quase some). Continua com perspectiva.
  */
-export const TILT_DEG = 56;
+export const TILT_DEG = 62;
 
 /**
  * Giro no plano da mesa (graus). Fica em ZERO: com o campo LARGO (WORLD_W ≫ WORLD_H), girar
@@ -139,6 +143,18 @@ export const TILT_DEG_PORTRAIT = 20;
 export function cameraScale(cam: Camera): number {
   return Math.hypot(cam.a, cam.b);
 }
+
+/**
+ * Faixa (px de palco) reservada no TOPO para o HUD sobreposto (relógio/bases + linha de
+ * comando). O campo é posicionado ABAIXO dela: sem isto o topo do teatro — onde ficam os
+ * territórios do norte e a base aliada a noroeste — ficava sob a barra. O valor cobre as
+ * DUAS linhas do HUD (a opaca, medida em ~99 px, e a de comando, translúcida). A base leva
+ * um respiro equivalente (`FIELD_BOTTOM_PAD`), então a área visível do palco é o palco
+ * menos essas duas faixas — é nela que a câmera encaixa o campo.
+ */
+export const HUD_TOP_INSET = 116;
+/** Respiro (px de palco) na base, para o campo não colar no dock de cartas. */
+export const FIELD_BOTTOM_PAD = 8;
 
 /** Matriz afim no formato do SVG: `matrix(a b c d e f)` → x' = a·x + c·y + e, y' = b·x + d·y + f. */
 export interface Camera {
@@ -169,7 +185,9 @@ export function cameraMatrix3d(cam: Camera, w: number, h: number): string {
   const t = (cam.tiltDeg * Math.PI) / 180;
   const ct = Math.cos(t);
   const st = Math.sin(t);
-  const cy = h / 2;
+  // O pivô da inclinação é o MESMO de `projectPoint` (`cam.originY`, o centro da área
+  // visível do palco) — não o centro cru da tela, que ficaria sob o HUD.
+  const cy = cam.originY;
   // Aplicado com `transform-origin: 0 0`: a matriz é a transformação COMPLETA
   // `translate(cx cy) · Rx(−tilt) · translate(−cx −cy) · A`, com a afim `A` em `a`..`f`.
   const ty = ct * cam.f + cy * (1 - ct);
@@ -217,9 +235,14 @@ export function cameraFor(w: number, h: number): Camera {
   const rad = (rotateDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const ct = Math.cos((tiltDeg * Math.PI) / 180);
+  // Área VISÍVEL do palco: o topo é reservado ao HUD sobreposto e a base tem um respiro
+  // para o dock. O campo é encaixado e centralizado AQUI, não no palco cru — assim ele não
+  // fica escondido sob a barra nem colado no dock.
+  const visTop = HUD_TOP_INSET;
+  const visBottom = Math.max(visTop + 1, h - FIELD_BOTTOM_PAD);
+  const visH = visBottom - visTop;
   const cx = w / 2;
-  const cy = h / 2;
+  const cy = visTop + visH / 2;
   // Escala-base unitária: a matriz afim mapeia o campo centrado na origem do palco.
   // `s` é resolvido depois, medindo a projeção REAL (inclinação inclusa).
   const affine = (s: number) => ({
@@ -241,7 +264,7 @@ export function cameraFor(w: number, h: number): Camera {
       originY: cy,
     };
   };
-  // Mede a projeção dos 4 cantos com escala 1 e resolve `s` para a mesa ocupar o palco.
+  // Mede a projeção dos 4 cantos com escala 1 e resolve `s` para a mesa ocupar a área visível.
   const unit = build(1);
   const corners: Array<[number, number]> = [
     [0, 0],
@@ -252,8 +275,9 @@ export function cameraFor(w: number, h: number): Camera {
   const proj = corners.map(([x, y]) => projectPoint(unit, x, y));
   const bw = Math.max(...proj.map((p) => p.x)) - Math.min(...proj.map((p) => p.x));
   const bh = Math.max(...proj.map((p) => p.y)) - Math.min(...proj.map((p) => p.y));
-  // Encaixe com pequena folga: a mesa cobre o palco de fora a fora sem cortar os cantos.
-  const s = Math.min(w / bw, h / bh) * 0.94;
+  // Encaixe com folga MÍNIMA: a mesa cobre a área visível de fora a fora, sem cortar os
+  // cantos. A folga é pequena de propósito — é o que elimina as faixas laterais.
+  const s = Math.min(w / bw, visH / bh) * 0.995;
   return build(s);
 }
 
