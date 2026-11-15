@@ -353,6 +353,9 @@ export interface BattleUnit {
   buildReservedId?: string;
   // esquadrão: todas as unidades de uma mesma carta/ordem compartilham o grupo.
   groupId: string;
+  // Rótulo do PELOTÃO (tropa) a que a unidade pertence — "Tropa A", "Tropa B", … dado no
+  // lançamento. Permite ao jogador ver e comandar o esquadrão inteiro como uma só peça.
+  groupLabel?: string;
   // destino explícito definido pelo jogador (clique no mapa). Tem prioridade sobre
   // o objetivo automático enquanto a força não chega nem encontra combate.
   goalX?: number;
@@ -699,6 +702,9 @@ export interface BattleState {
   prize?: PrizeCard | undefined;
   // Carros-prisão em trânsito (cativo a caminho da base de quem capturou).
   prisonCars?: PrisonCarState[] | undefined;
+  // Contador de PELOTÕES por lado: cada lançamento novo recebe o próximo rótulo
+  // ("Tropa A", "Tropa B", …). É o nome que o jogador vê e usa para comandar o esquadrão.
+  platoons?: Record<Side, number> | undefined;
 }
 
 export interface HeroStatus {

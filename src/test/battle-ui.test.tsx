@@ -201,6 +201,35 @@ describe("interface da batalha", () => {
     expect(document.querySelector("svg[viewBox]")).toBeInTheDocument();
   });
 
+  it("identifica o pelotão: selecionar uma tropa mostra o rótulo 'Tropa A' e o efetivo", () => {
+    stubStageRect();
+    render(
+      <ProfileProvider>
+        <BattleScreen />
+      </ProfileProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Iniciar operação/ }));
+
+    const svg = document.querySelector("svg[viewBox]")!;
+    // Fuzileiros é um PELOTÃO (vários soldados no mesmo grupo): o lançamento vira "Tropa A".
+    fireEvent.click(screen.getByRole("button", { name: /Fuzileiros/ }));
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", {
+        ...worldToClient(spreadX(50), deepenY(40)),
+        bubbles: true,
+      }),
+    );
+    fireEvent(
+      svg,
+      new MouseEvent("pointerdown", { ...worldToClient(spreadX(12), deepenY(9)), bubbles: true }),
+    );
+
+    // A tropa é identificada pelo nome do pelotão (não só pela unidade avulsa): o jogador
+    // vê que a ordem vale para o esquadrão inteiro.
+    expect(screen.getAllByText(/Tropa A/).length).toBeGreaterThan(0);
+  });
+
   it("não seleciona nada quando o toque fica longe de qualquer unidade", () => {
     stubStageRect();
     render(
@@ -515,6 +544,10 @@ describe("interface da batalha", () => {
       [1600, 800],
       [1440, 699],
       [1200, 600],
+      // telas LARGAS (razão ≥ 2.6): a inclinação adaptativa precisa continuar enchendo a
+      // largura — antes sobrava faixa nas duas pontas.
+      [1600, 520],
+      [1366, 600],
     ] as const;
     for (const [w, h] of sizes) {
       const pts = (
@@ -532,6 +565,9 @@ describe("interface da batalha", () => {
       const visH = Math.max(1, h - HUD_TOP_INSET - FIELD_BOTTOM_PAD);
       expect(wpx / w, `largura em ${w}×${h}`).toBeGreaterThan(0.9);
       expect(hpx / visH, `altura em ${w}×${h}`).toBeGreaterThan(0.9);
+      // Sem faixa morta nas pontas: as sobras laterais são mínimas (bem abaixo de 5% cada).
+      expect(Math.min(...xs), `sobra esquerda em ${w}×${h}`).toBeLessThan(w * 0.05);
+      expect(w - Math.max(...xs), `sobra direita em ${w}×${h}`).toBeLessThan(w * 0.05);
     }
   });
 

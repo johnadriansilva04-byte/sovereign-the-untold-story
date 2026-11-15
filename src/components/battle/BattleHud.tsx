@@ -199,43 +199,74 @@ export function HandBar({
 export function OrderBar({
   onOrder,
   hasSelection,
+  selectionLabel,
+  activeOrder,
   captureTarget,
   onCapture,
 }: {
   onOrder: (o: Order) => void;
   hasSelection: boolean;
+  /** Rótulo da seleção atual (ex.: "Tropa A · 3" ou o nome da unidade). */
+  selectionLabel?: string | null;
+  /** Ordem atual da seleção — destacada para o jogador ver o que a tropa obedece. */
+  activeOrder?: Order | null;
   /** Alvo de captura disponível em campo (chanceler adversário ou a unidade da carta
    *  nova). Quando existe, o botão CAPTURAR aparece e manda a tropa selecionada prender. */
   captureTarget?: { id: string; name: string } | null;
   onCapture?: (targetUnitId: string) => void;
 }) {
-  const orders: { o: Order; label: string }[] = [
-    { o: "avancar", label: "Avançar" },
-    { o: "defender", label: "Defender" },
-    { o: "manter", label: "Manter" },
-    { o: "recuar", label: "Recuar" },
+  const orders: { o: Order; label: string; icon: string; hint: string }[] = [
+    { o: "avancar", label: "Avançar", icon: "▲", hint: "Marcha para o objetivo e ataca" },
+    { o: "defender", label: "Defender", icon: "◆", hint: "Guarda o ponto de controle" },
+    { o: "manter", label: "Manter", icon: "■", hint: "Firma posição onde está" },
+    { o: "recuar", label: "Recuar", icon: "▼", hint: "Volta para a base" },
   ];
   return (
-    <div className="flex items-center gap-2">
-      <span className="label-mono">{hasSelection ? "Ordens da unidade" : "Ordens gerais"}</span>
-      {orders.map((x) => (
-        <button
-          key={x.o}
-          onClick={() => onOrder(x.o)}
-          className="border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition hover:border-primary hover:text-primary"
-        >
-          {x.label}
-        </button>
-      ))}
-      {captureTarget && onCapture && (
-        <button
-          data-testid="order-capture"
-          onClick={() => onCapture(captureTarget.id)}
-          className="animate-pulse border border-destructive px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-destructive transition hover:bg-destructive/15"
-        >
-          Capturar {captureTarget.name}
-        </button>
-      )}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="label-mono shrink-0">
+        {hasSelection ? (selectionLabel ?? "Ordens da tropa") : "Ordens gerais"}
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {orders.map((x) => {
+          const active = hasSelection && activeOrder === x.o;
+          return (
+            <button
+              key={x.o}
+              type="button"
+              onClick={() => onOrder(x.o)}
+              title={x.hint}
+              aria-pressed={active}
+              className={cn(
+                "flex min-h-9 items-center gap-1.5 border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition active:scale-95",
+                active
+                  ? "border-primary bg-primary text-primary-foreground shadow-brass"
+                  : "border-border text-muted-foreground hover:border-primary hover:text-primary",
+              )}
+            >
+              <span aria-hidden className="text-[10px] leading-none">
+                {x.icon}
+              </span>
+              {x.label}
+            </button>
+          );
+        })}
+        {captureTarget && onCapture && (
+          <button
+            type="button"
+            data-testid="order-capture"
+            onClick={() => onCapture(captureTarget.id)}
+            className={cn(
+              "flex min-h-9 items-center gap-1.5 border border-destructive px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-destructive transition hover:bg-destructive/15 active:scale-95",
+              hasSelection && "animate-pulse",
+            )}
+          >
+            <span aria-hidden className="text-[10px] leading-none">
+              ⛓
+            </span>
+            Capturar {captureTarget.name}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -354,14 +385,36 @@ export function UnitInspector({ unit }: { unit: BattleUnit | null }) {
 
 // Faixa compacta da unidade selecionada: cabe no dock (uma linha, sem rolagem) e
 // NÃO cobre o teatro de operações. Substitui o antigo painel sobreposto à esquerda.
-export function SelectedUnitStrip({ unit }: { unit: BattleUnit | null }) {
+export function SelectedUnitStrip({
+  unit,
+  groupLabel,
+  troopSize = 1,
+  onDeselect,
+}: {
+  unit: BattleUnit | null;
+  /** Rótulo do pelotão (ex.: "Tropa A") quando a seleção é uma tropa. */
+  groupLabel?: string | null;
+  /** Quantos sobreviventes tem a tropa selecionada. */
+  troopSize?: number;
+  /** Solta a seleção (deselect) — o jogador volta a clicar no campo para escolher outra. */
+  onDeselect?: () => void;
+}) {
   if (!unit) return null;
   const hpPct = Math.max(0, Math.min(100, (unit.hp / unit.maxHp) * 100));
+  // O rótulo identifica a TROPA a que a unidade pertence (mesmo grupo de lançamento). Vale
+  // até para uma unidade só: o jogador vê de qual pelotão ela é e comanda o bloco inteiro.
+  const troop = Boolean(groupLabel);
   return (
     <div
       data-testid="selected-unit"
       className="flex items-center gap-2 border border-primary/50 bg-card/70 px-2 py-1 font-mono text-[10px] text-muted-foreground"
     >
+      {troop && (
+        <span className="border border-primary bg-primary/15 px-1.5 py-0.5 font-bold uppercase tracking-wider text-primary">
+          {groupLabel}
+          {troopSize > 1 && <span className="ml-1 text-foreground/70">· {troopSize}</span>}
+        </span>
+      )}
       <span className="font-display text-xs font-bold uppercase text-foreground">{unit.name}</span>
       <span className="flex items-center gap-1">
         <span className="h-1.5 w-16 border border-border bg-muted">
@@ -381,6 +434,16 @@ export function SelectedUnitStrip({ unit }: { unit: BattleUnit | null }) {
       <span className="hidden sm:inline">alc {unit.range}</span>
       <span className="uppercase">{unit.order}</span>
       {unit.engaged && <span className="text-enemy">em combate</span>}
+      {onDeselect && (
+        <button
+          type="button"
+          onClick={onDeselect}
+          title="Soltar a tropa (Esc)"
+          className="ml-1 border border-border px-1.5 py-0.5 uppercase tracking-wider text-muted-foreground transition hover:border-destructive hover:text-destructive"
+        >
+          Soltar ✕
+        </button>
+      )}
     </div>
   );
 }

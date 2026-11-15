@@ -113,18 +113,6 @@ export function orientationFor(w: number, h: number): FieldOrientation {
 }
 
 /**
- * Inclinação do teatro: o campo é uma MESA vista de cima e de frente. A câmera deita a
- * mesa com uma rotação 3D em torno do eixo horizontal do palco (o front, mundo Y, entra
- * na profundidade). O ângulo é uma MATRIZ (o SVG não tem 3D): `cameraMatrix3d` o converte
- * para `matrix3d`.
- *
- * O valor casa a RAZÃO DE TELA com a do palco largo típico: com 56° a projeção ficava mais
- * ESTREITA que a janela e sobrava faixa nas laterais; 62° deita a mesa o bastante para a
- * largura também encher (a área vazia nas laterais quase some). Continua com perspectiva.
- */
-export const TILT_DEG = 62;
-
-/**
  * Giro no plano da mesa (graus). Fica em ZERO: com o campo LARGO (WORLD_W ≫ WORLD_H), girar
  * a mesa transformava o retângulo num DIAMANTE que só preenchia ~40% do palco, deixando as
  * pontas vazias. Sem giro, o retângulo encaixa de frente e preenche ~84% da área — o
@@ -138,6 +126,34 @@ export const ROTATE_DEG = 0;
  * inclinação fica pequena (20°) só para dar um pouco de profundidade, sem espremer o campo. */
 export const ROTATE_DEG_PORTRAIT = 0;
 export const TILT_DEG_PORTRAIT = 20;
+
+/** Faixa de inclinação aceitável da mesa (graus). Dentro dela o encaixe é calculado para a
+ *  projeção casar com a RAZÃO do palco; fora dela o campo é o mais largo (ou mais alto) que
+ *  o limite permite, sem nunca deformar. */
+export const TILT_MIN_DEG = 40;
+export const TILT_MAX_DEG = 75;
+
+/**
+ * Inclinação da mesa que faz a PROJEÇÃO do campo casar com a razão do palco visível. O
+ * campo é largo (razão `WORLD_W/WORLD_H`); inclinar a mesa comprime o eixo Y da projeção por
+ * `cos(tilt)`, então a razão projetada é `mundo / cos(tilt)`. Resolvendo para casar com o
+ * palco, o campo preenche LARGURA e ALTURA de fora a fora em qualquer tela — sem sobrar faixa
+ * lateral (palco largo) nem faixa superior/inferior (palco alto). O ângulo é limitado à faixa
+ * [40°, 75°] para a mesa nunca virar um risco nem perder a perspectiva de tabuleiro. Em
+ * RETRATO a inclinação é fixa e pequena (o campo fica reto, base aliada à esquerda).
+ */
+export function tiltForStage(w: number, h: number, orient: FieldOrientation): number {
+  if (orient === "portrait") return TILT_DEG_PORTRAIT;
+  const visTop = HUD_TOP_INSET;
+  const visBottom = Math.max(visTop + 1, h - FIELD_BOTTOM_PAD);
+  const visH = visBottom - visTop;
+  const stageAspect = w / visH;
+  const worldAspect = WORLD_W / WORLD_H;
+  const cosMax = Math.cos((TILT_MIN_DEG * Math.PI) / 180); // mesa mais "em pé"
+  const cosMin = Math.cos((TILT_MAX_DEG * Math.PI) / 180); // mesa mais deitada
+  const cosTilt = Math.max(cosMin, Math.min(cosMax, worldAspect / stageAspect));
+  return (Math.acos(cosTilt) * 180) / Math.PI;
+}
 
 /** Escala (px de palco por unidade de mundo) da câmera plana, antes da inclinação. */
 export function cameraScale(cam: Camera): number {
@@ -231,7 +247,10 @@ export function cameraFor(w: number, h: number): Camera {
   // Giro no plano: uma leve diagonal (mundo X desce para a direita) dá profundidade à mesa,
   // com a base aliada na ponta ESQUERDA e a inimiga na DIREITA. Mesmo valor em qualquer tela.
   const rotateDeg = orient === "portrait" ? ROTATE_DEG_PORTRAIT : ROTATE_DEG;
-  const tiltDeg = orient === "portrait" ? TILT_DEG_PORTRAIT : TILT_DEG;
+  // A inclinação NÃO é fixa: é resolvida para a projeção do campo casar com a razão do
+  // palco, o que elimina as faixas laterais em telas largas (e as faixas de topo/base em
+  // telas altas) SEM aumentar o zoom — o território representado é o mesmo.
+  const tiltDeg = tiltForStage(w, h, orient);
   const rad = (rotateDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);

@@ -53,6 +53,8 @@ export interface UseLivePvp {
     target?: DeployTarget,
   ) => DeployBatchResult;
   issueOrder: (order: Order, unitId?: string, objectiveId?: string) => void;
+  /** Ordem para o PELOTÃO inteiro (grupo) no PvP — publicada no lockstep. */
+  issueGroupOrder: (order: Order, groupId: string, objectiveId?: string) => void;
   moveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => boolean;
   moveGroup: (groupId: string, x: number, y: number, target?: DeployTarget) => boolean;
   capture: (sel: { groupId?: string; unitId?: string }, targetUnitId: string) => boolean;
@@ -175,6 +177,20 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
     [localSide],
   );
 
+  const issueGroupOrder = useCallback(
+    (order: Order, groupId: string, objectiveId?: string) => {
+      const m = matchRef.current;
+      if (!m) return;
+      const action = { type: "ordem", side: localSide, order, groupId } as BattleAction & {
+        groupId?: string;
+        objectiveId?: string;
+      };
+      if (objectiveId) action.objectiveId = objectiveId;
+      m.dispatch(action);
+    },
+    [localSide],
+  );
+
   const moveSelected = useCallback(
     (unitId: string, x: number, y: number, target?: DeployTarget) => {
       const m = matchRef.current;
@@ -275,6 +291,7 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
     },
     sendBatch,
     issueOrder,
+    issueGroupOrder,
     moveSelected,
     moveGroup,
     capture,
@@ -295,6 +312,7 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
     dispatch,
     sendBatch,
     issueOrder,
+    issueGroupOrder,
     moveSelected,
     moveGroup,
     capture,

@@ -54,7 +54,7 @@ export const reinforceTuning = {
   enabled: true,
   /** Fração da reserva que ainda conta como "excedente" gastável (folga sobre a reserva). */
   overflowFactor: 1.0,
-  afterSeconds: 30,
+  afterSeconds: 20,
   /** Teto de cartas extras lançadas por ciclo — alto o bastante para comprometer o arsenal. */
   maxExtra: 4,
 };

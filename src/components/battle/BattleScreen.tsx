@@ -488,11 +488,33 @@ export function BattleView({
     [handleSend],
   );
 
+  // A ordem vai para o PELOTÃO: se a unidade selecionada pertence a uma tropa com 2+
+  // sobreviventes, TODOS recebem a ordem (Avançar/Defender/Manter/Recuar) e seguem o
+  // comando como bloco, até o fim da vida da tropa. Só cai para a unidade avulsa quando
+  // a seleção é de um combatente isolado.
+  const selectedGroupId = useMemo(() => {
+    if (!selectedUnitId) return null;
+    return state[me].units.find((u) => u.id === selectedUnitId)?.groupId ?? null;
+  }, [selectedUnitId, state, me]);
+
+  const selectedTroopSize = useMemo(
+    () =>
+      selectedGroupId
+        ? state[me].units.filter((u) => u.alive && u.groupId === selectedGroupId).length
+        : 0,
+    [selectedGroupId, state, me],
+  );
+
   const handleOrder = useCallback(
     (order: Order) => {
-      battle.issueOrder(order, selectedUnitId ?? undefined);
+      if (!selectedUnitId) {
+        battle.issueOrder(order);
+        return;
+      }
+      if (selectedGroupId && selectedTroopSize > 1) battle.issueGroupOrder(order, selectedGroupId);
+      else battle.issueOrder(order, selectedUnitId);
     },
-    [battle, selectedUnitId],
+    [battle, selectedUnitId, selectedGroupId, selectedTroopSize],
   );
 
   // Alvo de captura visível em campo: o chanceler adversário (ou a unidade que porta a
@@ -501,11 +523,15 @@ export function BattleView({
 
   const handleCapture = useCallback(
     (targetUnitId: string) => {
-      const sel = selectedUnitId ? { unitId: selectedUnitId } : {};
+      const sel: { groupId?: string; unitId?: string } = selectedUnitId
+        ? selectedGroupId && selectedTroopSize > 1
+          ? { groupId: selectedGroupId }
+          : { unitId: selectedUnitId }
+        : {};
       const ok = battle.capture(sel, targetUnitId);
       if (!ok) toast.error("Selecione uma tropa capaz de prender (assalto ou fuzileiros).");
     },
-    [battle, selectedUnitId],
+    [battle, selectedUnitId, selectedGroupId, selectedTroopSize],
   );
 
   const selectedUnit = state[me].units.find((u) => u.id === selectedUnitId) ?? null;
@@ -712,13 +738,26 @@ export function BattleView({
             <OrderBar
               onOrder={handleOrder}
               hasSelection={Boolean(selectedUnitId)}
+              selectionLabel={
+                selectedUnit
+                  ? selectedGroupId && selectedTroopSize > 1
+                    ? `${selectedUnit.groupLabel ?? "Tropa"} · ${selectedTroopSize}`
+                    : selectedUnit.name
+                  : null
+              }
+              activeOrder={selectedUnit?.order ?? null}
               captureTarget={
                 captureTargetUnit ? { id: captureTargetUnit.id, name: "chanceler" } : null
               }
               onCapture={handleCapture}
             />
             {selectedUnit ? (
-              <SelectedUnitStrip unit={selectedUnit} />
+              <SelectedUnitStrip
+                unit={selectedUnit}
+                groupLabel={selectedUnit.groupLabel ?? null}
+                troopSize={selectedTroopSize}
+                onDeselect={() => setSelectedUnitId(null)}
+              />
             ) : (
               hovered && (
                 <span className="hidden font-mono text-[10px] text-muted-foreground sm:block">

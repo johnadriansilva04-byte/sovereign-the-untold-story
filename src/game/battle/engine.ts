@@ -1056,6 +1056,8 @@ export interface DeployOrder {
   skipRecharge?: boolean | undefined;
   /** Grupo compartilhado por todas as unidades do lote (permite reposicioná-las juntas). */
   groupId?: string | undefined;
+  /** Rótulo do PELOTÃO ("Tropa A", …) que o jogador vê; dado uma vez por lançamento. */
+  groupLabel?: string | undefined;
   /** ESCOLTA: id do chanceler aliado que a força deve acompanhar (cerco de proteção). */
   escortId?: string | undefined;
   /** Deslocamento de FORMAÇÃO aplicado ao nascimento e ao destino (coluna de marcha). */
@@ -1232,6 +1234,9 @@ export function deployBatch(
     return { ok: false, deployed: 0, spent: 0, error: "Teto de exército atingido." };
 
   const groupId = `g${state.nextId}`;
+  // O lote INTEIRO é um pelotão: todas as cartas do envio formam uma só "Tropa X" que o
+  // jogador nomeia e comanda como bloco.
+  const groupLabel = nextPlatoonLabel(state, side);
   // Formação em coluna só faz sentido com uma força COMPOSTA (2+ cartas): aí os
   // blindados vão à frente e a artilharia/apoio atrás. Uma carta sozinha vai reta ao
   // destino, sem deslocamento — nada de "o soldado nasce torto".
@@ -1265,6 +1270,7 @@ export function deployBatch(
     const made = deployRepeat(state, side, r.cardId, order.x, order.y, n, {
       ...order,
       groupId,
+      groupLabel,
       offsetX: offset.x,
       offsetY: offset.y,
     });
@@ -1353,6 +1359,19 @@ export function originFor(
   return basePoint;
 }
 
+// Próximo rótulo de PELOTÃO do lado ("Tropa A", "Tropa B", …). Cada lançamento novo
+// recebe o próximo nome, então o jogador identifica e comanda o esquadrão pelo nome.
+const PLATOON_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function nextPlatoonLabel(state: BattleState, side: Side): string {
+  state.platoons = state.platoons ?? { blue: 0, red: 0 };
+  const n = state.platoons[side];
+  state.platoons[side] = n + 1;
+  const letter = PLATOON_LETTERS[n % PLATOON_LETTERS.length]!;
+  const cycle = Math.floor(n / PLATOON_LETTERS.length);
+  return cycle === 0 ? `Tropa ${letter}` : `Tropa ${letter}${cycle + 1}`;
+}
+
 // Gera a força da carta em formação, na origem, com a ordem de destino. Devolve o
 // número de unidades efetivamente criadas (0 = carta sem efeito).
 function deployForce(state: BattleState, side: Side, cardId: string, order: DeployOrder): number {
@@ -1373,11 +1392,15 @@ function deployForce(state: BattleState, side: Side, cardId: string, order: Depl
   const gx = clamp(order.x + (order.offsetX ?? 0), WORLD_X_MIN, WORLD_X_MAX);
   const gy = clamp(order.y + (order.offsetY ?? 0), WORLD_Y_MIN, WORLD_Y_MAX);
   const groupId = order.groupId ?? `g${state.nextId}`;
+  // Rótulo do pelotão: quando o lançamento já traz um (lote do jogador), todas as
+  // unidades do lote compartilham o MESMO nome; senão, gera o próximo do lado.
+  const groupLabel = order.groupLabel ?? nextPlatoonLabel(state, side);
   for (let i = 0; i < count; i++) {
     // Leve espaçamento perpendicular para as unidades do par não nascerem sobrepostas.
     const off = count > 1 ? (i - (count - 1) / 2) * 2.2 : 0;
     const u = spawnUnit(state, side, cardId, clamp(ox + off, WORLD_X_MIN, WORLD_X_MAX), oy, {
       groupId,
+      groupLabel,
     });
     u.goalX = clamp(gx + off, WORLD_X_MIN, WORLD_X_MAX);
     u.goalY = gy;
@@ -1455,7 +1478,7 @@ function spawnUnit(
   cardId: string,
   x: number,
   y: number,
-  opts: { name?: string; groupId?: string } = {},
+  opts: { name?: string; groupId?: string; groupLabel?: string } = {},
 ): BattleUnit {
   const card = militaryById(cardId);
   const cfg = side === "blue" ? state.blue : state.red;
@@ -1516,6 +1539,7 @@ function spawnUnit(
     ...(card.dmgVs ? { dmgVs: card.dmgVs } : {}),
     order: "avancar",
     groupId: opts.groupId ?? `g${state.nextId}`,
+    ...(opts.groupLabel ? { groupLabel: opts.groupLabel } : {}),
     aim: HOME_AIM[side],
     recoil: 0,
     alive: true,
@@ -1740,6 +1764,7 @@ function applySupport(
     case "reforcos": {
       const count = card.magnitude ?? 2;
       const groupId = `g${state.nextId++}`;
+      const groupLabel = nextPlatoonLabel(state, side);
       for (let i = 0; i < count; i++) {
         const off = i * 4 - (count - 1) * 2;
         cfg.units.push(
@@ -1752,6 +1777,7 @@ function applySupport(
             {
               name: "Pelotão de Reforço",
               groupId,
+              groupLabel,
             },
           ),
         );
@@ -1869,6 +1895,7 @@ function applySupport(
       const r = card.radius ?? 5;
       addEffect(state, "build", x, y, r, { side });
       const groupId = `g${state.nextId++}`;
+      const groupLabel = nextPlatoonLabel(state, side);
       for (let i = 0; i < count; i++) {
         const off = i * 4 - (count - 1) * 2;
         const px = clamp(x + off, WORLD_X_MIN, WORLD_X_MAX);
@@ -1876,6 +1903,7 @@ function applySupport(
         const u = spawnUnit(state, side, "inf-fuzileiros", px, py, {
           name: "Pelotão Paraquedista",
           groupId,
+          groupLabel,
         });
         u.model = "paraquedista";
         cfg.units.push(u);
@@ -1947,6 +1975,20 @@ function addEffect(
 // ---------------------------------------------------------------------------
 // Ordens
 // ---------------------------------------------------------------------------
+
+// Rótulo do pelotão de um grupo, para a interface (HUD, faixa de seleção). Lê o rótulo
+// gravado na unidade do grupo; devolve null quando o grupo não existe mais.
+export function troopLabel(state: BattleState, side: Side, groupId: string): string | null {
+  const cfg = side === "blue" ? state.blue : state.red;
+  const u = cfg.units.find((x) => x.groupId === groupId && x.alive);
+  return u?.groupLabel ?? null;
+}
+
+// Unidades vivas de um pelotão (grupo) de um lado.
+export function troopUnits(state: BattleState, side: Side, groupId: string): BattleUnit[] {
+  const cfg = side === "blue" ? state.blue : state.red;
+  return cfg.units.filter((u) => u.alive && u.groupId === groupId);
+}
 
 export function issueOrder(
   state: BattleState,
@@ -3858,7 +3900,14 @@ export function applyAction(state: BattleState, action: BattleAction): ActionRes
       ? { ok: true }
       : { ok: false, error: "Alvo de captura inválido ou sem tropa designada." };
   }
-  const ok = issueOrder(state, action.side, action.order, action.unitId, action.objectiveId);
+  const ok = issueOrder(
+    state,
+    action.side,
+    action.order,
+    action.unitId,
+    action.objectiveId,
+    action.groupId ? { groupId: action.groupId } : {},
+  );
   return ok ? { ok: true } : { ok: false, error: "Nenhuma unidade para receber a ordem." };
 }
 

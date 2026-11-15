@@ -56,6 +56,8 @@ export interface UseBattle {
     target?: DeployTarget,
   ) => DeployBatchResult;
   issueOrder: (order: Order, unitId?: string, objectiveId?: string) => void;
+  /** Ordem para o PELOTÃO inteiro (grupo): todos os sobreviventes da tropa obedecem. */
+  issueGroupOrder: (order: Order, groupId: string, objectiveId?: string) => void;
   /** Manda a unidade selecionada para um ponto do mapa, ou para cima de um alvo. */
   moveSelected: (unitId: string, x: number, y: number, target?: DeployTarget) => boolean;
   /** Manda a TROPA inteira (grupo/esquadrão) para um ponto do mapa. */
@@ -291,8 +293,26 @@ export function useBattle(
         order: Order;
         unitId?: string;
         objectiveId?: string;
+        groupId?: string;
       };
       if (unitId) action.unitId = unitId;
+      if (objectiveId) action.objectiveId = objectiveId;
+      applyAction(stateRef.current, action);
+      forceRender();
+    },
+    [local],
+  );
+
+  /** Ordem para o PELOTÃO (grupo) inteiro — todos os sobreviventes daquela tropa obedecem. */
+  const issueGroupOrder = useCallback(
+    (order: Order, groupId: string, objectiveId?: string) => {
+      const action = { type: "ordem", side: local, order, groupId } as {
+        type: "ordem";
+        side: Side;
+        order: Order;
+        groupId: string;
+        objectiveId?: string;
+      };
       if (objectiveId) action.objectiveId = objectiveId;
       applyAction(stateRef.current, action);
       forceRender();
@@ -347,6 +367,7 @@ export function useBattle(
     playCard,
     sendBatch,
     issueOrder,
+    issueGroupOrder,
     moveSelected,
     moveGroup,
     capture,
