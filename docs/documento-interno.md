@@ -78,18 +78,17 @@ leitura de mundo, embalada como obra de ficção.
 - `/perfil`, `/configuracoes`, `/creditos` — conta, ajustes e créditos
 
 ### 3.2 Batalha tática (o núcleo)
-- **Campo em diagonal (paisagem)**: a mesa de guerra é vista de cima e inclinada — a linha
-  azul→vermelha desce na diagonal e o front entra em profundidade. Implementado como **matriz
-  `matrix3d` única** aplicada ao próprio `<svg>` (`cameraMatrix3d`), invertida analiticamente para
-  o toque (`stageToWorld`). Sem `perspective()`/`rotateX` do CSS (esse caminho era frágil).
-- **Campo vertical (celular em pé)**: em palco retrato o tabuleiro é girado **−90° e fica plano**
-  (`ROTATE_DEG_PORTRAIT=-90`, `TILT_DEG_PORTRAIT=0`) — a base aliada embaixo, a inimiga em cima,
-  ambas centradas na horizontal. O campo preenche a altura da tela como uma mesa de guerra de pé,
-  sem a faixa morta lateral que a vista diagonal deixava.
+- **Campo deitado (esquerda→direita) em qualquer tela**: o eixo de progressão (azul→vermelho)
+  corre da ESQUERDA para a DIREITA — base aliada à esquerda, inimiga à direita — no desktop e no
+  celular. No desktop a mesa tem uma leve diagonal + inclinação 60° (leitura isométrica); no
+  celular em pé o campo fica **RETO** (giro 0) com inclinação 20°, então o campo não "torta" nem
+  sobra faixa morta. Implementado como **matriz `matrix3d` única** aplicada ao próprio `<svg>`
+  (`cameraMatrix3d`), invertida analiticamente para o toque (`stageToWorld`). Sem
+  `perspective()`/`rotateX` do CSS (esse caminho era frágil).
 - **Tela cheia com HUD sobreposto**: o teatro ocupa a tela inteira; relógio, energia e recursos
   flutuam por cima em painéis translúcidos; o dock traz só as cartas e as ordens.
-- **Bases principais nas pontas**: base aliada na ponta **inferior** e inimiga na **superior**
-  (em paisagem, à esquerda e à direita), cada uma no seu canto do losango projetado.
+- **Bases principais nas pontas**: base aliada à **esquerda** e inimiga à **direita**
+  (em todas as telas), cada uma na sua ponta do campo.
 - **Motor determinístico** (`src/game/battle/engine.ts`): bases, torres, territórios de Voronoi,
   bases avançadas, armas com projéteis reais, captura, suprimento, heróis, prêmios.
 - **1 chanceler por batalha, em dois modos** (`chancellorModeFor`): cada confronto tem **um
@@ -227,8 +226,9 @@ leitura de mundo, embalada como obra de ficção.
 - [x] **Teste do lobby e da sala** (`src/test/pvp-room.test.ts`, CONCLUÍDO 13/11): pareamento
       (`pairUp`/`roleForMe`/`pairingCode`), barramento em memória e ida-e-volta do código de sala.
 - [ ] **Corrigir o seed de novos usuários no Supabase** (feito via Lovable, não à mão): a função
-      `handle_new_user` semeia 5 ids de carta que **não existem** no catálogo. Os ids corretos do
-      baralho inicial são: `inf-fuzileiros`, `inf-assalto`, `inf-antitanque`, `inf-engenheiro`,
+      `handle_new_user` semeia 8 ids, mas **5 não existem** no catálogo (`inf-mecanizada`,
+      `bld-leve`, `def-engenharia`, `rec-patrulha`, `sup-fumaca`). Trocar pelo `startingDeck`
+      válido do catálogo: `inf-fuzileiros`, `inf-assalto`, `inf-antitanque`, `inf-engenheiro`,
       `art-canhao`, `bld-vbld`, `rec-drone`, `sup-gas`.
 - [ ] Expor a chave pública do Supabase (`VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`)
       para ligar a sincronização e o Realtime do PvP — sem ela o jogo roda 100% offline.
@@ -242,18 +242,17 @@ leitura de mundo, embalada como obra de ficção.
 
 ## 5. Estado atual verificado (13/11/2026)
 
-- Suíte de testes: **276 passando / 7 pulados** (`npx vitest run`).
+- Suíte de testes: **277 passando / 7 pulados** (`npx vitest run`).
 - `tsc --noEmit`: limpo. `eslint`: sem erros (só avisos de dependências de hooks já existentes).
 - **Geometria do campo conferida por cálculo** (`cameraFor`/`worldToStage`):
-  - **Paisagem (diagonal)**: em paisagem o campo vai de (3%,57%) a (97%,43%) — a faixa azul→vermelha
-    cruza a tela na diagonal e ocupa a tela inteira.
-  - **Retrato (celular em pé) — CORRIGIDO 13/11**: o campo agora fica **vertical**. O giro era
-    −68° com inclinação 20° (saía na diagonal, "torto", com faixa morta nas laterais); passou a
-    **−90° com inclinação 0** (`ROTATE_DEG_PORTRAIT`/`TILT_DEG_PORTRAIT`). Resultado (palco 390×613):
-    retângulo de (17,18) a (373,595); base aliada **embaixo-centro** (195,532) e inimiga
-    **em cima-centro** (195,81) — o eixo de progressão é vertical.
-  - **Bases nos cantos (paisagem)**: base aliada projeta em **26%,68%** e a inimiga em **74%,32%**
-    (cantos inferior-esquerdo e superior-direito do losango).
+  - **Desktop (diagonal)**: o campo vai de (3%,57%) a (97%,43%) — a faixa azul→vermelha cruza a
+    tela na diagonal e ocupa a tela inteira. Base aliada projeta em **26%,68%** e a inimiga em
+    **74%,32%** (cantos inferior-esquerdo e superior-direito do losango).
+  - **Celular em pé (RETO, esquerda→direita) — CORRIGIDO 13/11**: o campo agora fica **reto e
+    horizontal**. Antes o retrato usava giro −68°/inclinação 20° (saía torto, na diagonal) e depois
+    −90° com as bases empilhadas (vertical). A versão final é **giro 0 + inclinação 20°**
+    (`ROTATE_DEG_PORTRAIT=0`, `TILT_DEG_PORTRAIT=20`). Resultado (palco 390×613): campo de 367×213
+    px, base aliada **à esquerda** (52,307) e inimiga **à direita** (338,307), no MESMO nível.
 - **Guerra medida** (`war-sim.test.ts`, `SIM=1`): duelos 33×33 por carta, espelhados e misturados.
   Canhão de campanha × canhão de campanha: **vitória azul, 177 s, picos 33/33, base inimiga 34%**.
   No variado (8 cartas, limite por carta) os dois lados enchem os **33** e o resultado alterna.
@@ -263,16 +262,19 @@ leitura de mundo, embalada como obra de ficção.
   A batalha LOCAL (campanha) foi reaberta após a extração da `BattleView` e continua funcionando.
 - **Banco Supabase**: esquema íntegro — 7 tabelas (`profiles`, `nation_state`,
   `campaign_progress`, `inventory`, `decks`, `battle_records`, `pvp_matches`), **RLS em todas**,
-  triggers de `updated_at`, e todas as tabelas que o front usa existem no schema. Falta apenas o
-  **bug de seed** descrito no P2 e expor as chaves públicas para ligar a sincronização.
-- **Banco de cartas (catálogo) conferido** (13/11): 19 cartas militares + 10 de apoio, **sem ids
-  duplicados**, com `cardById` resolvendo as 8 do baralho inicial e as 2 de apoio do perfil
-  (`sup-barricada`, `sup-recon-avancado`); 6 categorias militares cobertas. `CARD_MAX_LEVEL`=50,
-  `unitsPerDeploy` 1→2 no nível máximo.
+  triggers de `updated_at`, e todas as tabelas que o front usa existem no schema. **O seed NÃO
+  está atualizado**: conferido em 13/11 contra o catálogo, `handle_new_user` semeia 8 ids e só
+  **3 existem** (`inf-fuzileiros`, `art-morteiro`, `def-aa`); faltam `inf-mecanizada`, `bld-leve`,
+  `def-engenharia`, `rec-patrulha`, `sup-fumaca`. O baralho inicial correto é o `startingDeck` do
+  catálogo: `inf-fuzileiros`, `inf-assalto`, `inf-antitanque`, `inf-engenheiro`, `art-canhao`,
+  `bld-vbld`, `rec-drone`, `sup-gas` (esse sim 100% válido). Correção vai pela Lovable (não à mão).
+- **Banco de cartas (catálogo) conferido** (13/11): **28 cartas** em `allCards` (18 militares sem
+  herói + 10 de apoio), **sem ids duplicados**, com `cardById` resolvendo todas as 8 do
+  `startingDeck`. `CARD_MAX_LEVEL`=50, `unitsPerDeploy` 1→2 no nível máximo.
 - **Bateria de guerra completa** (`war-sim.test.ts`, `SIM=1`, relatório em
   `.agent_tmp/war-report.txt`), com **ambos os lados cheios em 33/33**:
-  - **Canhão de campanha × canhão de campanha**: vitória azul, 177 s, picos **33/33**, base
-    inimiga em 34%, territórios 10–3.
+  - **Canhão de campanha × canhão de campanha** (o duelo pedido): vitória azul, 177 s, picos
+    **33/33**, base inimiga em 34%, territórios 10–3.
   - **Cada carta contra ela mesma** (14 cartas militares, 33×33): todas enchem **33/33**; a
     maioria dá vitória (artilharia/blindado decidem rápido: obus 165 s, tanque 120 s, VBTP 119 s,
     lançador 94 s; reconhecimento de combate 56 s), com derrotas pontuais por assimetria do mapa

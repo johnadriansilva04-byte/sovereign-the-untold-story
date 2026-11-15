@@ -10,9 +10,8 @@ export const WORLD_W = 210;
  * Profundidade do front (largura norte→sul). Subir este valor deixa o campo mais
  * FUNDO, com mais espaço de manobra entre as duas bases — não é só estética: o motor
  * usa o mesmo limite para movimento, alcance e captura. A razão WORLD_W:WORLD_H foi
- * escolhida como MEIO-TERMO entre a tela do celular (em retrato o campo é girado, e
- * quanto mais alto ele for, menos faixa morta sobra nas laterais) e o desktop (onde o
- * palco é largo e raso): nenhuma das duas orientações fica com o campo pequeno.
+ * escolhida para o palco LARGO (desktop e celular deitado); no celular em pé o campo é
+ * o mesmo e sobram faixas em cima/embaixo, ocupadas pela barra do topo e pelo dock.
  */
 export const WORLD_H = 130;
 
@@ -92,32 +91,34 @@ export function clampY(v: number): number {
 
 export type FieldOrientation = "landscape" | "portrait";
 
-/** O campo fica "de pé" quando o palco é mais alto que largo (celular em pé). */
+/**
+ * O campo é LARGO (o eixo de progressão, azul→vermelho, corre da ESQUERDA para a DIREITA),
+ * então o encaixe é sempre DEITADO, em qualquer aparelho — inclusive no celular em pé. O que
+ * muda entre os dois é só a INCLINAÇÃO da mesa: no palco alto uma inclinação grande espremeria
+ * o campo numa faixa estreita, então o retrato usa menos inclinação. Não há giro de 90°.
+ */
 export function orientationFor(w: number, h: number): FieldOrientation {
   return h > w ? "portrait" : "landscape";
 }
 
 /**
  * Inclinação do teatro: o campo é uma MESA vista de cima e de frente, com o eixo de
- * progressão (mundo X, azul→vermelho) descendo na diagonal e o front (mundo Y) entrando
+ * progressão (mundo X, azul→vermelho) descendo em leve diagonal e o front (mundo Y) entrando
  * na profundidade. A câmera gira o plano no sentido HORÁRIO (mundo +x vira ↘ na tela,
  * mundo +y vira ↗) e depois deita a mesa com uma rotação 3D em torno do eixo horizontal.
  * O ângulo é uma MATRIZ (o SVG não tem 3D): `cameraMatrix3d` o converte para `matrix3d`.
  */
 export const TILT_DEG = 60;
-/**
- * Em retrato o campo é posto DE PÉ (girado −90°), então a mesa fica PLANA — sem
- * inclinação. Inclinar aqui só achataria o eixo vertical e a mesa deixaria de ser
- * vertical. `tilt = 0` mantém o tabuleiro em pé, ocupando a altura do celular.
- */
-export const TILT_DEG_PORTRAIT = 0;
 
-/** Giro no plano da mesa (graus). Em paisagem a linha azul→vermelha desce em diagonal
- * (base azul na ponta inferior esquerda, vermelha na superior direita); em retrato o campo
- * gira −90° para ficar DE PÉ — azul embaixo, vermelho em cima —, vertical como numa mesa de
- * guerra, preenchendo a altura do celular sem sobrar faixa morta nas laterais. */
-export const ROTATE_DEG_LANDSCAPE = -41;
-export const ROTATE_DEG_PORTRAIT = -90;
+/** Giro no plano da mesa (graus). No DESKTOP uma leve diagonal dá profundidade à mesa, com a
+ * base aliada à ESQUERDA e a inimiga à DIREITA. */
+export const ROTATE_DEG = -41;
+
+/** No CELULAR em pé o campo fica RETO, da esquerda para a direita (giro 0): a base aliada à
+ * esquerda e a inimiga à direita, sem a diagonal — é o que o jogador espera num celular. A
+ * inclinação fica pequena (20°) só para dar um pouco de profundidade, sem espremer o campo. */
+export const ROTATE_DEG_PORTRAIT = 0;
+export const TILT_DEG_PORTRAIT = 20;
 
 /** Escala (px de palco por unidade de mundo) da câmera plana, antes da inclinação. */
 export function cameraScale(cam: Camera): number {
@@ -188,16 +189,15 @@ export function cameraMatrix3d(cam: Camera, w: number, h: number): string {
 
 /**
  * Câmera que encaixa o campo num palco `w`×`h`, CENTRADO e com escala uniforme (sem
- * esticar). Em retrato o campo é girado −90° (azul embaixo, vermelho em cima); a
- * rotação é própria (determinante positivo), então nada fica espelhado.
+ * esticar). O campo é sempre DEITADO (a base aliada à esquerda, a inimiga à direita): em
+ * palco largo ele preenche a largura; em palco alto (celular em pé) sobra faixa em cima e
+ * embaixo. A rotação é própria (determinante positivo), então nada fica espelhado.
  */
 export function cameraFor(w: number, h: number): Camera {
   const orient = orientationFor(w, h);
-  // Giro no plano: em paisagem a progressão (mundo X) desce na diagonal para a direita,
-  // pondo a base aliada na ponta INFERIOR esquerda e a inimiga na ponta SUPERIOR direita;
-  // em retrato (celular em pé) o campo é girado quase de pé para preencher a tela alta,
-  // mantendo a leitura em diagonal.
-  const rotateDeg = orient === "portrait" ? ROTATE_DEG_PORTRAIT : ROTATE_DEG_LANDSCAPE;
+  // Giro no plano: uma leve diagonal (mundo X desce para a direita) dá profundidade à mesa,
+  // com a base aliada na ponta ESQUERDA e a inimiga na DIREITA. Mesmo valor em qualquer tela.
+  const rotateDeg = orient === "portrait" ? ROTATE_DEG_PORTRAIT : ROTATE_DEG;
   const tiltDeg = orient === "portrait" ? TILT_DEG_PORTRAIT : TILT_DEG;
   const rad = (rotateDeg * Math.PI) / 180;
   const cos = Math.cos(rad);

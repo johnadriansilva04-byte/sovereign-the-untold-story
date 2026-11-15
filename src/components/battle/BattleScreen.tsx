@@ -29,7 +29,6 @@ import {
   type MissionDef,
 } from "@/game/battle/missions";
 import { useBattle, type UseBattle } from "@/game/battle/useBattle";
-import { orientationFor } from "@/game/battle/world";
 import { useBattleAudio } from "@/game/battle/useBattleAudio";
 import { isAudioMuted, primeAudio, setAudioMuted } from "@/game/battle/audio";
 import type {
@@ -360,19 +359,16 @@ export function BattleView({
   // CHANCELER em campo (aliado): habilita o CONTROLE DIRETO (setas no PC, analógico no
   // celular). Sem ele em campo, não há volante para dirigir.
   const localHero = state[me].units.find((u) => u.hero && u.alive) ?? null;
-  // O vetor chega no espaço da TELA (o dedo empurra "para cima" na tela). Em retrato o
-  // campo está girado +90°, então o vetor é convertido para o mundo antes de virar
-  // comando: empurrar para cima move o chanceler para a base inimiga (mundo +x).
+  // O vetor chega no espaço da TELA (o dedo empurra "para cima" na tela) e o campo NÃO é
+  // girado 90° em nenhuma tela — a progressão (mundo +x) aponta para a direita em qualquer
+  // aparelho. Então o vetor entra direto, sem conversão de orientação.
   const stageRef = useRef<HTMLDivElement | null>(null);
   const drive = useCallback(
     (dx: number, dy: number) => {
       if (!localHero) return;
-      const el = stageRef.current;
-      const portrait = el ? orientationFor(el.clientWidth, el.clientHeight) === "portrait" : false;
-      if (portrait) battle.driveUnit(localHero.id, -dy, dx);
-      else battle.driveUnit(localHero.id, dx, dy);
+      battle.driveUnit(localHero.id, dx, dy);
     },
-    [battle, localHero, localSide],
+    [battle, localHero],
   );
 
   // Teclas direcionais seguradas viram um VETOR (permite diagonal). Ao soltar todas, o

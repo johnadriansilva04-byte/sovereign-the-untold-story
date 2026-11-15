@@ -444,10 +444,9 @@ describe("interface da batalha", () => {
     }
   });
 
-  // O campo encaixa no palco com escala UNIFORME (nada esticado) na vista DIAGONAL
-  // (mesa girada no plano + inclinada) e, em palco retrato (celular em pé), gira mais
-  // para ficar "de pé" — sem cortar bordas em nenhum caso.
-  it("a câmera encaixa o campo em diagonal, sem deformar e sem transbordar", () => {
+  // O campo encaixa no palco com escala UNIFORME (nada esticado), sempre DEITADO — em
+  // qualquer aparelho, inclusive no celular em pé — sem cortar bordas em nenhum caso.
+  it("a câmera encaixa o campo deitado, sem deformar e sem transbordar", () => {
     const sizes = [
       [1440, 699, "landscape"],
       [1280, 519, "landscape"],
@@ -475,38 +474,42 @@ describe("interface da batalha", () => {
       expect(Math.max(...ys)).toBeLessThanOrEqual(h + 0.5);
       const wpx = Math.max(...xs) - Math.min(...xs);
       const hpx = Math.max(...ys) - Math.min(...ys);
-      // A vista é DIAGONAL: o retângulo do campo é girado no plano e depois achatado pela
-      // inclinação, então NÃO se compara à razão do mundo. O que precisa valer é o
-      // encaixe: preenche a dimensão limitante (>= 92%) sem transbordar a outra.
+      // A vista é levemente DIAGONAL (giro no plano + inclinação), então NÃO se compara à
+      // razão do mundo. O que precisa valer é o encaixe: preenche a dimensão limitante
+      // (>= 92%) sem transbordar a outra.
       expect(wpx / w).toBeLessThanOrEqual(1.001);
       expect(hpx / h).toBeLessThanOrEqual(1.001);
       expect(Math.max(wpx / w, hpx / h)).toBeGreaterThan(0.9);
       expect(cam.orientation).toBe(orient);
-      // Em PAISAGEM a mesa é inclinada (perspectiva). Em RETRATO ela fica DE PÉ e PLANA
-      // (tilt 0): vertical como uma mesa de guerra, sem achatar o eixo alto.
-      if (orient === "landscape") expect(cam.tiltDeg).toBeGreaterThan(0);
-      else expect(cam.tiltDeg).toBe(0);
-      // Em PAISAGEM a inclinação achata o eixo vertical: a mesa fica mais larga que alta.
-      // (Em retrato o campo é girado quase de pé, então é mais alto que largo.)
-      if (orient === "landscape") expect(wpx).toBeGreaterThan(hpx);
-      else expect(hpx).toBeGreaterThan(wpx);
+      // A mesa é sempre inclinada (perspectiva), em qualquer tela.
+      expect(cam.tiltDeg).toBeGreaterThan(0);
+      // O campo é DEITADO (o eixo de progressão é mais longo que a profundidade do front),
+      // então a mesa projeta mais larga que alta — em qualquer palco.
+      expect(wpx).toBeGreaterThan(hpx);
     }
   });
 
-  // No CELULAR em pé o campo tem que ficar DE PÉ (vertical): a base aliada (oeste) embaixo
-  // e a inimiga (leste) em cima, ambas centradas na horizontal. Era o que faltava — o campo
-  // saía na diagonal e "torto".
-  it("em retrato o campo fica vertical, com as bases embaixo e em cima, centradas", () => {
+  // No CELULAR em pé o campo fica RETO (horizontal), lendo da ESQUERDA para a DIREITA: base
+  // aliada à esquerda, inimiga à direita, no MESMO nível — sem a diagonal do desktop.
+  it("em retrato o campo fica reto, com as bases à esquerda e à direita", () => {
     const w = 390;
     const h = 844;
     const azul = worldToScreen(spreadX(8), WORLD_H / 2, w, h);
     const verm = worldToScreen(spreadX(92), WORLD_H / 2, w, h);
-    // Aliada ABAIXO da inimiga (a progressão sobe na tela).
-    expect(azul.y).toBeGreaterThan(verm.y);
-    // Ambas perto do centro horizontal (coluna vertical, não diagonal).
-    expect(Math.abs(azul.x - w / 2)).toBeLessThan(w * 0.05);
-    expect(Math.abs(verm.x - w / 2)).toBeLessThan(w * 0.05);
-    // O eixo de progressão é praticamente vertical (a base azul fica sobre a vermelha).
-    expect(Math.abs(azul.x - verm.x)).toBeLessThan(w * 0.05);
+    // Aliada à ESQUERDA da inimiga (a progressão anda para a direita).
+    expect(azul.x).toBeLessThan(verm.x);
+    // RETO: as duas bases ficam no mesmo nível vertical (sem diagonal).
+    expect(Math.abs(azul.y - verm.y)).toBeLessThan(h * 0.02);
+    // O campo é DEITADO: a largura projetada supera a altura projetada.
+    const corners = [
+      [0, 0],
+      [WORLD_W, 0],
+      [0, WORLD_H],
+      [WORLD_W, WORLD_H],
+    ] as const;
+    const pts = corners.map(([wx, wy]) => worldToScreen(wx, wy, w, h));
+    const wpx = Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x));
+    const hpx = Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y));
+    expect(wpx).toBeGreaterThan(hpx);
   });
 });

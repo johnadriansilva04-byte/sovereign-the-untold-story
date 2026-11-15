@@ -280,7 +280,6 @@ export function BattleArena({
   const stageW = stageSize?.w ?? 960;
   const stageH = stageSize?.h ?? 540;
   const cam: Camera = cameraFor(stageW, stageH);
-  // Em retrato a cena está girada; os rótulos de texto recebem +90° para ficarem em pé.
   const arena = state.config.arena;
   const ground = GROUND_BY_TERRAIN[arena.terrain] ?? DEFAULT_GROUND;
   // REGIÕES TERRITORIAIS: cada ponto de expansão vira uma ÁREA COMPLETA (polígono de
@@ -300,7 +299,7 @@ export function BattleArena({
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
 
   // O teatro é desenhado em coordenadas do mundo e a câmera é aplicada como uma
-  // MATRIZ do SVG (escala uniforme, sem deformar; giro de 90° quando o palco é retrato).
+  // MATRIZ do SVG (escala uniforme, sem deformar; leve diagonal + inclinação em qualquer tela).
   // O toque→mundo desfaz exatamente essa matriz — sem `getScreenCTM`, que erra sob 3D.
   const stageRect = () => stageRef.current?.getBoundingClientRect() ?? null;
 
@@ -1967,8 +1966,8 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
 // ORIENTAÇÃO DIAGONAL: toda unidade entra em campo já inclinada e assim permanece —
 // na marcha, no combate, no recuo. É a apresentação padrão do teatro (leitura
 // isométrica), não um efeito de seleção: nada de a unidade "virar" quando é tocada.
-// O ângulo é definido no ESPAÇO DE TELA; o giro local desfaz a rotação da câmera
-// (que gira o campo 90° em retrato) para a diagonal sair igual em qualquer aparelho.
+// O ângulo é definido no ESPAÇO DE TELA; o giro local desfaz a rotação da câmera para a
+// diagonal sair igual em qualquer aparelho.
 const UNIT_DIAGONAL_SCREEN_DEG = -45;
 
 // Modelos com TORRE/cano orientável: o casco fica na diagonal fixa e só a peça superior
