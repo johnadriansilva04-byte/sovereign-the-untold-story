@@ -78,10 +78,14 @@ leitura de mundo, embalada como obra de ficção.
 - `/perfil`, `/configuracoes`, `/creditos` — conta, ajustes e créditos
 
 ### 3.2 Batalha tática (o núcleo)
-- **Campo em diagonal**: a mesa de guerra é vista de cima e inclinada — a linha azul→vermelha
-  desce na diagonal e o front entra em profundidade. Implementado como **matriz `matrix3d`
-  única** aplicada ao próprio `<svg>` (`cameraMatrix3d`), invertida analiticamente para o toque
-  (`stageToWorld`). Sem `perspective()`/`rotateX` do CSS (esse caminho era frágil).
+- **Campo em diagonal (paisagem)**: a mesa de guerra é vista de cima e inclinada — a linha
+  azul→vermelha desce na diagonal e o front entra em profundidade. Implementado como **matriz
+  `matrix3d` única** aplicada ao próprio `<svg>` (`cameraMatrix3d`), invertida analiticamente para
+  o toque (`stageToWorld`). Sem `perspective()`/`rotateX` do CSS (esse caminho era frágil).
+- **Campo vertical (celular em pé)**: em palco retrato o tabuleiro é girado **−90° e fica plano**
+  (`ROTATE_DEG_PORTRAIT=-90`, `TILT_DEG_PORTRAIT=0`) — a base aliada embaixo, a inimiga em cima,
+  ambas centradas na horizontal. O campo preenche a altura da tela como uma mesa de guerra de pé,
+  sem a faixa morta lateral que a vista diagonal deixava.
 - **Tela cheia com HUD sobreposto**: o teatro ocupa a tela inteira; relógio, energia e recursos
   flutuam por cima em painéis translúcidos; o dock traz só as cartas e as ordens.
 - **Bases principais nas pontas**: base aliada na ponta **inferior** e inimiga na **superior**
@@ -241,11 +245,15 @@ leitura de mundo, embalada como obra de ficção.
 - Suíte de testes: **276 passando / 7 pulados** (`npx vitest run`).
 - `tsc --noEmit`: limpo. `eslint`: sem erros (só avisos de dependências de hooks já existentes).
 - **Geometria do campo conferida por cálculo** (`cameraFor`/`worldToStage`):
-  - **Diagonal**: em paisagem o campo vai de (3%,57%) a (97%,43%) — a faixa azul→vermelha
-    cruza a tela na diagonal e ocupa a tela inteira. Em retrato gira para preencher a altura.
-  - **Bases nos cantos**: em paisagem a base aliada projeta em **26%,68%** e a inimiga em
-    **74%,32%** (cantos inferior-esquerdo e superior-direito do losango). Em retrato: 36%,69% e
-    64%,31%.
+  - **Paisagem (diagonal)**: em paisagem o campo vai de (3%,57%) a (97%,43%) — a faixa azul→vermelha
+    cruza a tela na diagonal e ocupa a tela inteira.
+  - **Retrato (celular em pé) — CORRIGIDO 13/11**: o campo agora fica **vertical**. O giro era
+    −68° com inclinação 20° (saía na diagonal, "torto", com faixa morta nas laterais); passou a
+    **−90° com inclinação 0** (`ROTATE_DEG_PORTRAIT`/`TILT_DEG_PORTRAIT`). Resultado (palco 390×613):
+    retângulo de (17,18) a (373,595); base aliada **embaixo-centro** (195,532) e inimiga
+    **em cima-centro** (195,81) — o eixo de progressão é vertical.
+  - **Bases nos cantos (paisagem)**: base aliada projeta em **26%,68%** e a inimiga em **74%,32%**
+    (cantos inferior-esquerdo e superior-direito do losango).
 - **Guerra medida** (`war-sim.test.ts`, `SIM=1`): duelos 33×33 por carta, espelhados e misturados.
   Canhão de campanha × canhão de campanha: **vitória azul, 177 s, picos 33/33, base inimiga 34%**.
   No variado (8 cartas, limite por carta) os dois lados enchem os **33** e o resultado alterna.

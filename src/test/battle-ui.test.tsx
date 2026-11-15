@@ -482,11 +482,31 @@ describe("interface da batalha", () => {
       expect(hpx / h).toBeLessThanOrEqual(1.001);
       expect(Math.max(wpx / w, hpx / h)).toBeGreaterThan(0.9);
       expect(cam.orientation).toBe(orient);
-      expect(cam.tiltDeg).toBeGreaterThan(0);
+      // Em PAISAGEM a mesa é inclinada (perspectiva). Em RETRATO ela fica DE PÉ e PLANA
+      // (tilt 0): vertical como uma mesa de guerra, sem achatar o eixo alto.
+      if (orient === "landscape") expect(cam.tiltDeg).toBeGreaterThan(0);
+      else expect(cam.tiltDeg).toBe(0);
       // Em PAISAGEM a inclinação achata o eixo vertical: a mesa fica mais larga que alta.
       // (Em retrato o campo é girado quase de pé, então é mais alto que largo.)
       if (orient === "landscape") expect(wpx).toBeGreaterThan(hpx);
       else expect(hpx).toBeGreaterThan(wpx);
     }
+  });
+
+  // No CELULAR em pé o campo tem que ficar DE PÉ (vertical): a base aliada (oeste) embaixo
+  // e a inimiga (leste) em cima, ambas centradas na horizontal. Era o que faltava — o campo
+  // saía na diagonal e "torto".
+  it("em retrato o campo fica vertical, com as bases embaixo e em cima, centradas", () => {
+    const w = 390;
+    const h = 844;
+    const azul = worldToScreen(spreadX(8), WORLD_H / 2, w, h);
+    const verm = worldToScreen(spreadX(92), WORLD_H / 2, w, h);
+    // Aliada ABAIXO da inimiga (a progressão sobe na tela).
+    expect(azul.y).toBeGreaterThan(verm.y);
+    // Ambas perto do centro horizontal (coluna vertical, não diagonal).
+    expect(Math.abs(azul.x - w / 2)).toBeLessThan(w * 0.05);
+    expect(Math.abs(verm.x - w / 2)).toBeLessThan(w * 0.05);
+    // O eixo de progressão é praticamente vertical (a base azul fica sobre a vermelha).
+    expect(Math.abs(azul.x - verm.x)).toBeLessThan(w * 0.05);
   });
 });

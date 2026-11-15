@@ -105,14 +105,19 @@ export function orientationFor(w: number, h: number): FieldOrientation {
  * O ângulo é uma MATRIZ (o SVG não tem 3D): `cameraMatrix3d` o converte para `matrix3d`.
  */
 export const TILT_DEG = 60;
-/** Em retrato a mesa já está girada quase de pé; inclinar menos evita "pisar" o campo. */
-export const TILT_DEG_PORTRAIT = 20;
+/**
+ * Em retrato o campo é posto DE PÉ (girado −90°), então a mesa fica PLANA — sem
+ * inclinação. Inclinar aqui só achataria o eixo vertical e a mesa deixaria de ser
+ * vertical. `tilt = 0` mantém o tabuleiro em pé, ocupando a altura do celular.
+ */
+export const TILT_DEG_PORTRAIT = 0;
 
 /** Giro no plano da mesa (graus). Em paisagem a linha azul→vermelha desce em diagonal
  * (base azul na ponta inferior esquerda, vermelha na superior direita); em retrato o campo
- * gira mais para "de pé", mantendo a diagonal sem sobrar faixa morta nas laterais. */
+ * gira −90° para ficar DE PÉ — azul embaixo, vermelho em cima —, vertical como numa mesa de
+ * guerra, preenchendo a altura do celular sem sobrar faixa morta nas laterais. */
 export const ROTATE_DEG_LANDSCAPE = -41;
-export const ROTATE_DEG_PORTRAIT = -68;
+export const ROTATE_DEG_PORTRAIT = -90;
 
 /** Escala (px de palco por unidade de mundo) da câmera plana, antes da inclinação. */
 export function cameraScale(cam: Camera): number {
