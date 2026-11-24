@@ -729,7 +729,10 @@ export function BattleArena({
   // cada quadro com interpolação exponencial (independente da taxa de quadros), então a
   // marcha sai contínua. É só apresentação: o motor, o alcance e a colisão seguem na
   // posição verdadeira — o desenho é que corre atrás dela.
-  const smoothRef = useRef<{ t: number; pos: Map<string, { x: number; y: number }> }>({
+  const smoothRef = useRef<{
+    t: number;
+    pos: Map<string, { x: number; y: number; spd: number }>;
+  }>({
     t: 0,
     pos: new Map(),
   });
@@ -738,15 +741,14 @@ export function BattleArena({
     const prevT = smoothRef.current.t || now;
     const dt = Math.min(0.12, Math.max(0.001, (now - prevT) / 1000));
     const k = 1 - Math.exp(-dt * 18);
-    const out = new Map<string, { x: number; y: number }>();
+    const out = new Map<string, { x: number; y: number; spd: number }>();
     for (const u of units) {
       const prev = smoothRef.current.pos.get(u.id);
-      out.set(
-        u.id,
-        prev
-          ? { x: prev.x + (u.x - prev.x) * k, y: prev.y + (u.y - prev.y) * k }
-          : { x: u.x, y: u.y },
-      );
+      const x = prev ? prev.x + (u.x - prev.x) * k : u.x;
+      const y = prev ? prev.y + (u.y - prev.y) * k : u.y;
+      // Distância que o desenho ainda precisa percorrer até o ponto real do motor:
+      // é a leitura de "está andando" usada pelo passo da tropa e pela poeira.
+      out.set(u.id, { x, y, spd: prev ? Math.hypot(u.x - x, u.y - y) / dt : 0 });
     }
     smoothRef.current = { t: now, pos: out };
     return out;
@@ -808,6 +810,7 @@ export function BattleArena({
         {/* Manchas de solo: variam a superfície sem virar grade artificial */}
         <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />
         <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
+        <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundGrain)" />
         <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
         {arena.terrain === "Cidade" && <CityStreets ground={ground} />}
 
@@ -1041,9 +1044,9 @@ export function BattleArena({
             {/* LUZ DA MESA: brilho quente de noroeste e sombra para sudeste — o campo
                 passa a ter uma fonte de luz coerente com o relevo e as peças. */}
             <linearGradient id="fieldLight" x1="0" y1="0" x2="0.85" y2="1">
-              <stop offset="0%" stopColor="oklch(0.98 0.04 95)" stopOpacity="0.12" />
-              <stop offset="38%" stopColor="oklch(1 0 0)" stopOpacity="0" />
-              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.3" />
+              <stop offset="0%" stopColor="oklch(0.98 0.04 95)" stopOpacity="0.17" />
+              <stop offset="40%" stopColor="oklch(1 0 0)" stopOpacity="0" />
+              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.34" />
             </linearGradient>
             {/* Vinheta do teatro: escurece as beiradas e concentra o olho no centro. */}
             <radialGradient
@@ -1057,17 +1060,24 @@ export function BattleArena({
               <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.38" />
             </radialGradient>
             <linearGradient id="groundDepth" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.2" />
+              <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.14" />
               <stop offset="45%" stopColor="oklch(0 0 0)" stopOpacity="0" />
-              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.14" />
             </linearGradient>
             {/* Textura de solo: tufos de grama e grãos de terra, sem brilho. */}
             <pattern id="groundTex" width="4" height="4" patternUnits="userSpaceOnUse">
               <rect width="4" height="4" fill="none" />
-              <circle cx="0.9" cy="1" r="0.16" fill="oklch(1 0 0 / 0.05)" />
-              <circle cx="2.6" cy="2.4" r="0.14" fill="oklch(0 0 0 / 0.1)" />
-              <circle cx="3.4" cy="0.7" r="0.12" fill="oklch(1 0 0 / 0.035)" />
-              <circle cx="1.6" cy="3.3" r="0.13" fill="oklch(0 0 0 / 0.08)" />
+              <circle cx="0.9" cy="1" r="0.16" fill="oklch(1 0 0 / 0.075)" />
+              <circle cx="2.6" cy="2.4" r="0.14" fill="oklch(0 0 0 / 0.14)" />
+              <circle cx="3.4" cy="0.7" r="0.12" fill="oklch(1 0 0 / 0.05)" />
+              <circle cx="1.6" cy="3.3" r="0.13" fill="oklch(0 0 0 / 0.11)" />
+              <rect x="0.2" y="2.7" width="0.7" height="0.14" fill="oklch(1 0 0 / 0.045)" />
+              <rect x="2.1" y="0.4" width="0.9" height="0.14" fill="oklch(0 0 0 / 0.07)" />
+            </pattern>
+            {/* Grão fino: tira o ar de "cor chapada" e deixa o piso nítido de perto. */}
+            <pattern id="groundGrain" width="1.6" height="1.6" patternUnits="userSpaceOnUse">
+              <circle cx="0.4" cy="0.5" r="0.11" fill="oklch(1 0 0 / 0.06)" />
+              <circle cx="1.1" cy="1.15" r="0.1" fill="oklch(0 0 0 / 0.09)" />
             </pattern>
             {/* Manchas irregulares de terreno: variam o chão sem "grade" artificial. */}
             <pattern id="groundPatches" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -1139,6 +1149,8 @@ export function BattleArena({
                   dim={dim}
                   allySide={ally}
                   cam={cam}
+                  motion={p?.spd ?? 0}
+                  clock={state.t}
                 />
               );
             })}
@@ -2406,12 +2418,18 @@ function UnitGlyph({
   dim = false,
   allySide = "blue",
   cam,
+  motion = 0,
+  clock = 0,
 }: {
   unit: BattleUnit;
   selected: boolean;
   dim?: boolean;
   allySide?: Side;
   cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
+  /** Deslocamento pendente do desenho (unidades de mundo por segundo). */
+  motion?: number;
+  /** Relógio da batalha, em segundos — fase das animações. */
+  clock?: number;
 }) {
   const airborne = unit.domain === "aereo";
   const y = airborne ? unit.y - 2.4 : unit.y;
@@ -2439,6 +2457,13 @@ function UnitGlyph({
   // sangram no solo. Tudo é decal determinístico (deriva do id da unidade), então não
   // treme a cada quadro e não polui a leitura do campo.
   const tracked = TRACKED_MODELS.has(unit.model);
+  // ANDAMENTO: o quanto o desenho ainda tem de deslocamento pendente. Vira passo de
+  // marcha (infantaria) ou tremor de esteira (blindado) e poeira levantada atrás —
+  // sem isso a tropa "deslizava" pelo mapa como peça de tabuleiro.
+  const walking = Math.min(1, motion / 4.5);
+  const phase = ((unit.id.charCodeAt(0) || 65) % 11) + unit.id.length * 3;
+  const step = walking > 0.03 ? Math.sin(clock * 9 + phase) : 0;
+  const lift = walking > 0.03 ? -Math.abs(step) * (tracked ? 0.04 : 0.1) * walking : 0;
   const wounded = unit.hp < unit.maxHp * 0.7;
   const bleed = unit.hp < unit.maxHp * 0.5 || unit.hitFlash > 0;
   return (
@@ -2531,7 +2556,30 @@ function UnitGlyph({
           opacity={0.85}
         />
       )}
-      <g transform={`translate(${unit.x} ${y}) ${standMatrix(cam, headingDeg)} scale(${scale})`}>
+      {/* POEIRA: levantada atrás da peça enquanto ela anda (esteira ou bota). */}
+      {walking > 0.06 && !airborne && (
+        <g
+          transform={`translate(${unit.x} ${y}) ${standMatrix(cam, headingDeg)}`}
+          opacity={Math.min(0.4, 0.1 + walking * 0.3)}
+        >
+          {[0, 1, 2].map((i) => {
+            const ph = (clock * 1.5 + i / 3 + phase / 10) % 1;
+            return (
+              <ellipse
+                key={i}
+                cx={-r * (0.85 + ph * 1.9)}
+                cy={Math.sin(i * 2.1 + phase) * r * 0.22}
+                rx={r * (0.28 + ph * 0.34)}
+                ry={r * (0.16 + ph * 0.2)}
+                fill="oklch(0.84 0.02 85 / 0.32)"
+              />
+            );
+          })}
+        </g>
+      )}
+      <g
+        transform={`translate(${unit.x} ${y + lift}) ${standMatrix(cam, headingDeg)} scale(${scale})`}
+      >
         {unitModel(unit.model, unitBodyColor(unit.side), selected, turretDeg)}
       </g>
       {unit.smoke > 0 && (
@@ -2763,49 +2811,122 @@ function unitModel(
   // Esteira: tom próprio (nem preto do contorno, nem cor de equipe) para o blindado
   // manter leitura de "veículo" mesmo a distância.
   const track = "oklch(0.24 0.01 90)";
-  // Corpo humano visto de cima (nariz para +x): pernas, torso, braços e capacete.
-  // A arma entra como parâmetro para cada especialidade manter silhueta própria.
-  const soldier = (weapon: ReactNode, opts: { bulky?: boolean; helmet?: string } = {}) =>
-    body(
+  // Corpo humano visto de cima (nariz para +x). A ordem de pintura é a de um boneco
+  // articulado de verdade: pernas e mochila atrás, torso por cima, braços indo até a
+  // arma, mãos fechadas no fuzil e o capacete por último (a cabeça cobre os ombros).
+  // O contorno escuro separa a figura do chão e o realce a noroeste dá o volume.
+  const skin = "oklch(0.64 0.075 62)";
+  const strap = "oklch(0.2 0.012 80)";
+  const soldier = (weapon: ReactNode, opts: { bulky?: boolean; helmet?: string } = {}) => {
+    const torsoHalf = opts.bulky ? 0.56 : 0.46; // meia-largura dos ombros
+    const waistHalf = opts.bulky ? 0.4 : 0.32;
+    const helmet = opts.helmet ?? color;
+    return body(
       <>
-        <rect x="-0.62" y="-0.44" width="0.8" height="0.3" rx="0.12" fill={color} />
-        <rect x="-0.62" y="0.14" width="0.8" height="0.3" rx="0.12" fill={color} />
+        {/* PERNAS: coxas e canelas em duas cápsulas, com bota escura na ponta. */}
+        <g fill={color} stroke="none">
+          <rect x="-0.72" y={-torsoHalf + 0.02} width="0.78" height="0.3" rx="0.15" />
+          <rect x="-0.72" y={torsoHalf - 0.32} width="0.78" height="0.3" rx="0.15" />
+        </g>
+        <g fill={dark} stroke="none">
+          <rect x="-0.4" y={-torsoHalf + 0.04} width="0.24" height="0.26" rx="0.08" />
+          <rect x="-0.4" y={torsoHalf - 0.3} width="0.24" height="0.26" rx="0.08" />
+        </g>
+        {/* MOCHILA: volume atrás do tronco, tom próprio para não virar "sombra". */}
         <rect
-          x={opts.bulky ? -0.24 : -0.12}
-          y={opts.bulky ? -0.62 : -0.5}
-          width={opts.bulky ? 1.12 : 0.98}
-          height={opts.bulky ? 1.24 : 1.02}
-          rx="0.24"
+          x="-0.86"
+          y={-torsoHalf + 0.12}
+          width="0.42"
+          height={torsoHalf * 2 - 0.24}
+          rx="0.14"
+          fill={strap}
+        />
+        {/* TORSO: ombros largos afinando para a cintura (não é uma caixa). */}
+        <path
+          d={`M -0.34 ${-torsoHalf} L 0.2 ${-torsoHalf - 0.04} Q 0.44 ${-waistHalf} 0.42 0 Q 0.44 ${waistHalf} 0.2 ${torsoHalf + 0.04} L -0.34 ${torsoHalf} Q -0.44 0 -0.34 ${-torsoHalf} Z`}
           fill={color}
         />
-        <rect x="0.34" y="-0.52" width="0.58" height="0.24" rx="0.1" fill={color} />
-        <rect x="0.34" y="0.28" width="0.58" height="0.24" rx="0.1" fill={color} />
-        <circle
-          cx="0.04"
-          cy="0"
-          r={opts.bulky ? 0.6 : 0.5}
-          fill={opts.helmet ?? color}
-          stroke={dark}
-          strokeWidth="0.14"
+        {/* CINTO e talabarte: duas linhas escuras que dão leitura de equipamento. */}
+        <line
+          x1="-0.06"
+          y1={-torsoHalf + 0.04}
+          x2="-0.06"
+          y2={torsoHalf - 0.04}
+          stroke={strap}
+          strokeWidth="0.1"
+          strokeLinecap="round"
         />
-        {/* Luz no capacete (noroeste) e sombra na nuca (sudeste): dá volume ao soldado
-            sem trocar a cor de uniforme. */}
+        <line
+          x1="-0.3"
+          y1="-0.02"
+          x2="0.34"
+          y2="-0.3"
+          stroke={strap}
+          strokeWidth="0.07"
+          strokeLinecap="round"
+        />
+        {/* OMBREIRAS: cápsulas nos cantos do tronco. */}
+        <circle cx="0.16" cy={-torsoHalf + 0.02} r={opts.bulky ? 0.2 : 0.17} fill={color} />
+        <circle cx="0.16" cy={torsoHalf - 0.02} r={opts.bulky ? 0.2 : 0.17} fill={color} />
+        {/* BRAÇOS: do ombro até o ponto de empunhadura. */}
+        <g stroke={color} strokeWidth={opts.bulky ? 0.26 : 0.22} strokeLinecap="round" fill="none">
+          <line x1="0.18" y1={-torsoHalf + 0.04} x2="0.6" y2="-0.1" />
+          <line x1="0.18" y1={torsoHalf - 0.04} x2="0.46" y2="0.14" />
+        </g>
+        {weapon}
+        {/* MÃOS: punho na arma — é o detalhe que faz a figura "segurar" alguma coisa. */}
+        <g fill={skin} stroke={dark} strokeWidth="0.06">
+          <circle cx="0.62" cy="-0.09" r="0.11" />
+          <circle cx="0.48" cy="0.13" r="0.1" />
+        </g>
+        {/* CAPACETE: cabeça de ~1/3 do ombro (cabeça grande lia como boneco), com aro,
+            coroa mais escura que o uniforme e pala na frente. */}
         <circle
-          cx="-0.02"
-          cy="-0.14"
-          r={opts.bulky ? 0.2 : 0.17}
-          fill="oklch(1 0 0 / 0.18)"
+          cx="0.1"
+          cy="0"
+          r={opts.bulky ? 0.38 : 0.32}
+          fill={helmet}
+          stroke={dark}
+          strokeWidth="0.09"
+        />
+        <circle
+          cx="0.1"
+          cy="0"
+          r={opts.bulky ? 0.38 : 0.32}
+          fill="oklch(0 0 0 / 0.22)"
+          stroke="none"
+        />
+        <circle
+          cx="0.1"
+          cy="0"
+          r={opts.bulky ? 0.28 : 0.23}
+          fill="none"
+          stroke="oklch(0 0 0 / 0.3)"
+          strokeWidth="0.07"
+        />
+        <path
+          d={`M ${0.1 + (opts.bulky ? 0.38 : 0.32)} -0.14 A ${opts.bulky ? 0.38 : 0.32} ${opts.bulky ? 0.38 : 0.32} 0 0 1 ${0.1 + (opts.bulky ? 0.38 : 0.32)} 0.14`}
+          fill={dark}
+          stroke="none"
+          opacity={0.9}
+        />
+        {/* LUZ noroeste no casco e sombra na nuca: volume sem trocar a cor da tropa. */}
+        <circle
+          cx="0.03"
+          cy="-0.1"
+          r={opts.bulky ? 0.13 : 0.11}
+          fill="oklch(1 0 0 / 0.22)"
           stroke="none"
         />
         <path
-          d={`M 0.04 ${opts.bulky ? -0.6 : -0.5} A ${opts.bulky ? 0.6 : 0.5} ${opts.bulky ? 0.6 : 0.5} 0 0 1 ${0.04 + (opts.bulky ? 0.6 : 0.5)} 0`}
+          d={`M 0.1 ${opts.bulky ? 0.38 : 0.32} A ${opts.bulky ? 0.38 : 0.32} ${opts.bulky ? 0.38 : 0.32} 0 0 1 ${0.1 + (opts.bulky ? 0.38 : 0.32)} 0`}
           fill="none"
-          stroke="oklch(0 0 0 / 0.4)"
-          strokeWidth="0.12"
+          stroke="oklch(0 0 0 / 0.34)"
+          strokeWidth="0.09"
         />
-        {weapon}
       </>,
     );
+  };
   switch (model) {
     case "soldado-fuzil":
       return soldier(

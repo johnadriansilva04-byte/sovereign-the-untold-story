@@ -267,6 +267,16 @@ leitura de mundo, embalada como obra de ficção.
   `id` era repetido em cada instância do componente.
 - **Verificação**: `tsc --noEmit` e `eslint` limpos; suíte completa **338 passaram / 7
   ignorados**.
+- **Passo a passo e peso do campo** (`BattleArena.tsx`):
+  - Soldado redesenhado em ordem de pintura anatômica: pernas com bota, mochila, torso
+    afunilado (ombros largos → cintura), cinto e talabarte, braços até a empunhadura, mãos na
+    arma e capacete por último. A cabeça caiu para ~1/3 da largura dos ombros — antes ela tinha
+    o tamanho do tronco e a figura lia como "boneco".
+  - `motion` (deslocamento pendente do desenho) alimenta o passo: balanço vertical na
+    infantaria, tremor curto na esteira e poeira atrás da peça. Sem isso a tropa deslizava
+    como peça de tabuleiro.
+  - Terreno: grão fino (`groundGrain`), textura com mais contraste, luz noroeste mais forte e
+    vinheta de profundidade mais leve — o piso lê como material em vez de cor chapada.
 - **Dica de mobilização** (`BattleScreen.tsx`, `DeployCoach`): o combate já corre e o dock de
   cartas fica no rodapé, então a primeira tropa custava a sair. Chip de dois passos
   (`1 Escolha uma carta` → `2 Toque no mapa`) no rodapé do teatro, some na primeira unidade
