@@ -8,6 +8,8 @@ import { BattleArena } from "./BattleArena";
 import { AiCommanderPanel, BattleLogPanel } from "./BattlePanels";
 import { BattlePrep } from "./BattlePrep";
 import { BattleJoystick } from "./BattleJoystick";
+import { HeroCard } from "./HeroCard";
+import { NationFlag } from "./NationFlag";
 import { BattleResultScreen } from "./BattleResult";
 import { BattleTopBar, ObjectiveStrip } from "./BattleTopBar";
 import {
@@ -294,6 +296,7 @@ export function BattleView({
     )
     .map((s) => s.id)
     .join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `state` é mutável; `baseKey` cobre o que muda.
   const bases = useMemo(() => launchBases(state, me), [baseKey]);
   const baseLabels = useMemo(() => {
     const labels: Record<string, number> = {};
@@ -612,7 +615,7 @@ export function BattleView({
           </div>
           <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-gradient-to-b from-background/70 to-transparent px-2 py-1">
             <CommandBar side={state[me]} compact />
-            <FrontLineScore state={state} />
+            <FrontLineScore state={state} localSide={me} />
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setShowReport(true)}
@@ -676,6 +679,12 @@ export function BattleView({
           </div>
         )}
 
+        {/* CARTÃO DO PERSONAGEM: retrato, nome, estado e vida do chanceler. Fica no
+            canto oposto ao analógico para não competir com o controle direto. */}
+        <div className="pointer-events-none absolute bottom-3 right-3 z-10 hidden sm:block">
+          <HeroCard state={state} localSide={me} />
+        </div>
+
         {/* Aviso de comandante LLM, sobreposto no topo do campo */}
         {battle.llmActive && (
           <p className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 border border-ai/40 bg-background/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-ai">
@@ -686,7 +695,7 @@ export function BattleView({
         {/* ALERTA CRÍTICO: o chanceler é a peça decisiva. Morto ou capturado, a guerra
             acaba — para os dois lados. A faixa fica vermelha e pulsando sobre o campo
             para o jogador não perder o momento que decide a partida. */}
-        <HeroAlert state={state} />
+        <HeroAlert state={state} localSide={me} />
 
         {/* Inspeção da unidade selecionada: agora é uma faixa no dock, abaixo do
             teatro — não sobrepõe o campo nem abre painel de texto sobre ele. */}
@@ -774,11 +783,13 @@ export function BattleView({
 
 // Estado do objetivo central: onde está cada chanceler. Traduz o `heroes` do motor em
 // uma leitura direta — PRESO / EM CAMPO / MORTO — com a vida do nosso quando exposto.
-function HeroObjective({ state }: { state: BattleState }) {
+function HeroObjective({ state, localSide }: { state: BattleState; localSide: Side }) {
   // Cada batalha tem UM único chanceler: o nosso (modo "defender") ou o adversário
-  // (modo "capturar"). O HUD mostra apenas esse, com o seu estado.
+  // (modo "capturar"). O HUD mostra apenas esse, com o seu estado. O lado "nosso"
+  // segue o lado local — no PvP o convidado joga de vermelho.
   const mode = state.config.chancellorMode ?? "defender";
-  const side: Side = mode === "defender" ? "blue" : "red";
+  const foe: Side = localSide === "blue" ? "red" : "blue";
+  const side: Side = mode === "defender" ? localSide : foe;
   const h = state.heroes[side];
   const unit = (side === "blue" ? state.blue : state.red).units.find(
     (u) => u.id === h.unitId && u.alive,
@@ -797,7 +808,10 @@ function HeroObjective({ state }: { state: BattleState }) {
   };
   return (
     <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-      <span aria-hidden>👤</span>
+      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 shrink-0" aria-hidden>
+        <circle cx="6" cy="3.4" r="2.2" fill="currentColor" />
+        <path d="M1.6 11.4 Q2 6.9 6 6.9 Q10 6.9 10.4 11.4 Z" fill="currentColor" />
+      </svg>
       {mode === "defender" ? "Seu chanceler" : "Chanceler inimigo"}
       <span className={cn("tabular-nums", tone())}>{label()}</span>
     </span>
@@ -805,15 +819,17 @@ function HeroObjective({ state }: { state: BattleState }) {
 }
 
 // Placar de frente: leitura instantânea de quem domina o campo, sem abrir o relatório.
-function FrontLineScore({ state }: { state: BattleState }) {
-  const terrBlue = state.territories.filter((t) => t.owner === "blue").length;
-  const terrRed = state.territories.filter((t) => t.owner === "red").length;
-  const advBlue = state.structures.filter(
-    (s) => s.side === "blue" && s.kind === "base-avancada" && !s.underConstruction,
+function FrontLineScore({ state, localSide }: { state: BattleState; localSide: Side }) {
+  const foe: Side = localSide === "blue" ? "red" : "blue";
+  const terrMine = state.territories.filter((t) => t.owner === localSide).length;
+  const terrFoe = state.territories.filter((t) => t.owner === foe).length;
+  const advMine = state.structures.filter(
+    (s) => s.side === localSide && s.kind === "base-avancada" && !s.underConstruction,
   ).length;
-  const advRed = state.structures.filter(
-    (s) => s.side === "red" && s.kind === "base-avancada" && !s.underConstruction,
+  const advFoe = state.structures.filter(
+    (s) => s.side === foe && s.kind === "base-avancada" && !s.underConstruction,
   ).length;
+  const foeState = state[foe];
   // Bases neutras do centro: quantas ainda faltam conquistar e o total da partida.
   const neutralBases = state.territories.filter((t) => t.base);
   const neutralLeft = neutralBases.filter((t) => t.owner === "neutro").length;
@@ -835,16 +851,16 @@ function FrontLineScore({ state }: { state: BattleState }) {
     <div className="hidden items-center gap-3 border border-border bg-card/50 px-2 py-1 sm:flex">
       <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         Território
-        {cell(terrBlue, terrRed, "ally")}
+        {cell(terrMine, terrFoe, "ally")}
         <span className="text-border">×</span>
-        {cell(terrRed, terrBlue, "enemy")}
+        {cell(terrFoe, terrMine, "enemy")}
       </span>
       <span className="h-3 w-px bg-border" />
       <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         Bases
-        {cell(advBlue, advRed, "ally")}
+        {cell(advMine, advFoe, "ally")}
         <span className="text-border">×</span>
-        {cell(advRed, advBlue, "enemy")}
+        {cell(advFoe, advMine, "enemy")}
       </span>
       {neutralBases.length > 0 && (
         <>
@@ -863,22 +879,22 @@ function FrontLineScore({ state }: { state: BattleState }) {
       {hasHeroes && (
         <>
           <span className="h-3 w-px bg-border" />
-          <HeroObjective state={state} />
+          <HeroObjective state={state} localSide={localSide} />
         </>
       )}
       <span className="h-3 w-px bg-border" />
       {/* Sov do adversário: a guerra de atrito é pública — o jogador precisa ver
           quanto recurso o inimigo ainda tem para decidir entre atacar e segurar. */}
       <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-        <span className="text-enemy">{state.red.flag}</span>
-        Sov
+        <NationFlag flag={foeState.flag} />
+        Sov inimigo
         <span
           className={cn(
             "tabular-nums",
-            state.red.command <= state.red.commandMax * 0.2 ? "text-enemy" : "text-foreground",
+            foeState.command <= foeState.commandMax * 0.2 ? "text-enemy" : "text-foreground",
           )}
         >
-          {Math.floor(state.red.command)}
+          {Math.floor(foeState.command)}
         </span>
       </span>
     </div>
@@ -888,9 +904,9 @@ function FrontLineScore({ state }: { state: BattleState }) {
 // ALERTA CRÍTICO do campo: anuncia a sorte do ÚNICO chanceler da batalha. No modo
 // "defender" o risco é perder o nosso; no "capturar", é deixar escapar o adversário.
 // A faixa é interativa (toque para recolher) e fica no topo do teatro, em vermelho.
-function HeroAlert({ state }: { state: BattleState }) {
+function HeroAlert({ state, localSide }: { state: BattleState; localSide: Side }) {
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const alert = heroAlertFor(state);
+  const alert = heroAlertFor(state, localSide);
   if (!alert || dismissed === alert.key) return null;
   return (
     <div className="pointer-events-none absolute inset-x-0 top-1.5 z-20 flex justify-center px-2">
@@ -912,9 +928,13 @@ function HeroAlert({ state }: { state: BattleState }) {
   );
 }
 
-function heroAlertFor(state: BattleState): { key: string; text: string } | null {
+function heroAlertFor(
+  state: BattleState,
+  localSide: Side = "blue",
+): { key: string; text: string } | null {
   const mode = state.config.chancellorMode ?? "defender";
-  const side: Side = mode === "defender" ? "blue" : "red";
+  const foe: Side = localSide === "blue" ? "red" : "blue";
+  const side: Side = mode === "defender" ? localSide : foe;
   const h = state.heroes[side];
   const carFor = (captiveSide: "blue" | "red") =>
     (state.prisonCars ?? []).find(

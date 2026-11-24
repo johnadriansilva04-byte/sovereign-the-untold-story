@@ -3,11 +3,7 @@ import { describe, expect, it } from "vitest";
 import { aiTick, aiTickSide, configureAi, trainedAiWeights } from "@/game/battle/ai";
 import { commanders } from "@/game/battle/catalog";
 import { computeResult, createBattle, stepBattle } from "@/game/battle/engine";
-import {
-  buildBattleConfig,
-  enemyScalingForChapter,
-  missionById,
-} from "@/game/battle/missions";
+import { buildBattleConfig, enemyScalingForChapter, missionById } from "@/game/battle/missions";
 import type { BattleOutcome } from "@/game/battle/types";
 import { chapterMeta, chapterMetaById } from "@/game/progress/campaign";
 import {

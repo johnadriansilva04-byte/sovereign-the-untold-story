@@ -247,6 +247,35 @@ leitura de mundo, embalada como obra de ficção.
 
 ## 5. Estado atual verificado (13/11/2026)
 
+### Atualização 24/11/2026 — campo de batalha, personagem e entrada da campanha
+
+- **Arena legível**: preenchimento/traço das regiões reduzidos (0,11/0,07 e 0,45/0,28),
+  nomes de território sobre a área de manobra com halo escuro e recorte dentro do campo,
+  posto de controle com nome ao lado do marcador e setor repetido só quando não há base
+  neutra no mesmo ponto.
+- **Obstáculos desenhados** (`ObstacleGlyph`) em vez de círculos chapados: construção com
+  telhado/cumeeira, vegetação com copas, elevação e barricada — todos com sombra deslocada;
+  o rio mantém margem e água.
+- **Unidades com contraste**: `--ally-unit`/`--enemy-unit` clareados (0,60/0,55) sem perder
+  o matiz; as manchas de sangue ficaram mais discretas (croma 0,12, alfa 0,5).
+- **Preparação e campanha com atmosfera**: `BattlePrep` e a visão geral da campanha usam a
+  arte `hero-sovereign.jpg` sob vinheta; a visão geral ganhou o **dossiê da operação**
+  (terreno, janela, adversário, doutrina, objetivo, citação e frente de operações por ato)
+  e o briefing do baralho ganhou **objetivo**, **composição da força** e o cartão
+  "como funciona" na primeira operação.
+- **Correção de hidratação** no `AuthGate` (`src/routes/__root.tsx`): o portão decide só
+  depois do primeiro efeito, então SSR e cliente concordam antes de usar a sessão local.
+- **Entrada sem atrito**: a tela `/entrar` ganhou o botão **"Jogar agora, sem conta"**
+  (`startGuestSession` em `src/lib/auth.ts` + `playAsGuest` no `PlayerProfile`); o convidado
+  tem progresso local no dispositivo e pode criar conta depois sem perder o que jogou. A tela
+  de entrada também recebeu a arte de fundo (`hero-sovereign.jpg` + vinheta + scanlines).
+- **Título da aba**: `DocumentTitle` no `__root` segue a rota resolvida — na navegação do
+  cliente o título ficava preso na primeira página aberta. Lê o `meta` já resolvido e, quando
+  não existe, chama o `head()` da própria rota (mesma fonte do SSR, sem duplicar títulos).
+- **Verificação**: `tsc --noEmit` limpo, `eslint` sem erros/avisos nos arquivos tocados,
+  suíte **329 passando / 7 pulados** e `npm run build` concluído.
+
+
 - Suíte de testes: **277 passando / 7 pulados** (`npx vitest run`).
 - `tsc --noEmit`: limpo. `eslint`: sem erros (só avisos de dependências de hooks já existentes).
 - **Geometria do campo conferida por cálculo** (`cameraFor`/`worldToStage`):

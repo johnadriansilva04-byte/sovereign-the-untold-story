@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { GameShell } from "@/components/game/shell";
+import heroSovereign from "@/assets/hero-sovereign.jpg";
 import { StoryBook, type StoryPage } from "@/components/campaign/StoryBook";
 import { CardFace } from "@/components/campaign/CardFace";
 import { DecisionCard } from "@/components/campaign/DecisionCard";
@@ -167,6 +168,7 @@ export function CampaignScreen() {
           durationMin={Math.round((mission?.duration ?? 0) / 60)}
           difficulty={difficultyById(meta.difficulty).name}
           intro={meta.intro}
+          objective={mission?.objectiveText ?? ""}
           owned={ownedCardIds(profile)}
           deck={pendingDeck}
           onChangeDeck={setPendingDeck}
@@ -594,85 +596,181 @@ function CampaignOverview({
     ? decisionOption(currentMeta.id, profile.decisions[currentMeta.id] ?? "")
     : undefined;
 
+  const acts = Array.from(new Set(chapters.map((c) => c.act))).map((act) => {
+    const all = chapters.filter((c) => c.act === act);
+    const done = all.filter((c) => profile.chapters[c.id]?.status === "concluido").length;
+    return { act, done, total: all.length };
+  });
+
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-5 px-4 py-4 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1">
-      {/* Progresso da guerra */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <div className="flex items-baseline gap-3">
-          <span className="font-display text-4xl font-black leading-none [@media(max-height:560px)]:text-2xl">
-            {completed}
-            <span className="text-muted-foreground">/{totalChapters}</span>
-          </span>
-          <div className="h-3 w-52 overflow-hidden border border-border bg-muted [@media(max-height:560px)]:w-40">
-            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-muted-foreground">
-          <span>
-            SOVEREIGNS <b className="text-foreground">{profile.sovereigns}</b>
-          </span>
-          <span>
-            PESQUISA <b className="text-foreground">{profile.research}</b>
-          </span>
-          <button
-            onClick={onOpenCollection}
-            className="border border-border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary"
-          >
-            Coleção & baralho ›
-          </button>
-        </div>
+    <>
+      {/* ATMOSFERA: a arte da campanha ao fundo, apagada sob vinheta — o teatro da
+          guerra preenche a tela em vez de um preto chapado. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
+        <img src={heroSovereign} alt="" className="h-full w-full object-cover opacity-30" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,oklch(0.16_0.012_120/0.12)_0%,oklch(0.16_0.012_120/0.9)_74%)]" />
+        <div className="scanlines absolute inset-0 opacity-30" />
       </div>
 
-      {won || !currentMeta || !currentChapter ? (
-        <div className="hud-panel hud-corners p-8 text-center">
-          <p className="label-mono text-primary">Campanha concluída</p>
-          <p className="mt-2 font-display text-4xl font-black uppercase">A guerra foi vencida</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Todas as operações foram cumpridas. O teatro segue disponível no Multiplayer.
-          </p>
-        </div>
-      ) : (
-        <button
-          onClick={onLaunch}
-          className="hud-panel hud-corners group flex flex-col items-start gap-3 border-primary/60 p-6 text-left transition hover:border-primary [@media(max-height:560px)]:gap-1 [@media(max-height:560px)]:p-2.5"
-        >
-          <div className="flex w-full items-center justify-between">
-            <span className="label-mono text-primary">
-              {currentChapter.act} · Capítulo {currentMeta.number}
+      <div className="relative z-10 mx-auto flex h-full w-full max-w-6xl flex-col justify-center gap-4 px-4 py-4 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1">
+        {/* Progresso da guerra */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex items-baseline gap-3">
+            <span className="font-display text-4xl font-black leading-none [@media(max-height:560px)]:text-2xl">
+              {completed}
+              <span className="text-muted-foreground">/{totalChapters}</span>
             </span>
-            <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              {difficultyById(currentMeta.difficulty).name}
+            <div className="h-3 w-52 overflow-hidden border border-border bg-muted [@media(max-height:560px)]:w-40">
+              <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              operações cumpridas
             </span>
           </div>
-          <span className="font-display text-4xl font-black uppercase leading-none sm:text-5xl [@media(max-height:560px)]:text-2xl">
-            {currentChapter.title}
-          </span>
-          <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-            {mission?.terrain} · {Math.round((mission?.duration ?? 0) / 60)} min
-          </span>
-          <span className="line-clamp-2 max-w-2xl shrink-0 font-serif text-sm italic text-foreground/85">
-            {currentMeta.intro}
-          </span>
-          {decision && (
-            <span className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 font-mono text-[10px] uppercase tracking-wider">
-              <span className="text-muted-foreground">Decisão de comando:</span>
-              {chosen ? (
-                <span className="text-primary">{chosen.label}</span>
-              ) : (
-                <span className="text-destructive">pendente — escolha antes de partir</span>
-              )}
+          <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[11px] text-muted-foreground">
+            <span>
+              SOVEREIGNS <b className="text-foreground">{profile.sovereigns}</b>
             </span>
-          )}
-          <span className="mt-1 bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition group-hover:brightness-110">
-            {decision && !chosen ? "Tomar a decisão" : "Iniciar operação"}
-          </span>
-        </button>
-      )}
+            <span>
+              PESQUISA <b className="text-foreground">{profile.research}</b>
+            </span>
+            <button
+              onClick={onOpenCollection}
+              className="border border-border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary"
+            >
+              Coleção & baralho ›
+            </button>
+          </div>
+        </div>
 
-      <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground [@media(max-height:420px)]:hidden">
-        Missão a missão — cada vitória libera a próxima operação.
-      </p>
-    </div>
+        {won || !currentMeta || !currentChapter ? (
+          <div className="hud-panel hud-corners p-8 text-center">
+            <p className="label-mono text-primary">Campanha concluída</p>
+            <p className="mt-2 font-display text-4xl font-black uppercase">A guerra foi vencida</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Todas as operações foram cumpridas. O teatro segue disponível no Multiplayer.
+            </p>
+          </div>
+        ) : (
+          <div className="grid items-stretch gap-3 lg:grid-cols-[1.45fr_1fr]">
+            <button
+              onClick={onLaunch}
+              className="hud-panel hud-corners group flex flex-col items-start gap-3 border-primary/60 p-6 text-left transition hover:border-primary [@media(max-height:560px)]:gap-1 [@media(max-height:560px)]:p-2.5"
+            >
+              <div className="flex w-full items-center justify-between">
+                <span className="label-mono text-primary">
+                  {currentChapter.act} · Capítulo {currentMeta.number}
+                </span>
+                <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {difficultyById(currentMeta.difficulty).name}
+                </span>
+              </div>
+              <span className="font-display text-5xl font-black uppercase leading-[0.9] sm:text-6xl [@media(max-height:560px)]:text-2xl">
+                {currentChapter.title}
+              </span>
+              <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                {mission?.terrain} · {Math.round((mission?.duration ?? 0) / 60)} min
+              </span>
+              <span className="line-clamp-3 max-w-2xl shrink-0 font-serif text-sm italic leading-relaxed text-foreground/85">
+                {currentMeta.intro}
+              </span>
+              <span className="w-full border-t border-border/60 pt-3">
+                <span className="label-mono">Briefing</span>
+                <span className="mt-1 block max-w-2xl text-sm leading-relaxed text-foreground/80">
+                  {mission?.brief ?? "Cumpra a operação para abrir o próximo capítulo."}
+                </span>
+              </span>
+              {decision && (
+                <span className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 font-mono text-[10px] uppercase tracking-wider">
+                  <span className="text-muted-foreground">Decisão de comando:</span>
+                  {chosen ? (
+                    <span className="text-primary">{chosen.label}</span>
+                  ) : (
+                    <span className="text-destructive">pendente — escolha antes de partir</span>
+                  )}
+                </span>
+              )}
+              <span className="mt-auto bg-primary px-8 py-3 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass transition group-hover:brightness-110">
+                {decision && !chosen ? "Tomar a decisão" : "Iniciar operação"}
+              </span>
+            </button>
+
+            {/* DOSSIÊ: o que esperar da operação, sem abrir outra tela. */}
+            <aside className="hud-panel hud-corners flex flex-col gap-3 p-5 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:p-2.5">
+              <div className="flex items-center justify-between">
+                <p className="label-mono text-primary">Dossiê da operação</p>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  #{String(currentMeta.number).padStart(2, "0")}
+                </span>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-border/60 py-3 font-mono text-[10px] uppercase tracking-wider">
+                <div>
+                  <dt className="text-muted-foreground">Terreno</dt>
+                  <dd className="mt-0.5 text-foreground">{mission?.terrain ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Janela</dt>
+                  <dd className="mt-0.5 text-foreground">
+                    {Math.round((mission?.duration ?? 0) / 60)} min
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Adversário</dt>
+                  <dd className="mt-0.5 text-foreground">{mission?.enemyCountry.name ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Doutrina</dt>
+                  <dd className="mt-0.5 text-foreground">
+                    {mission?.enemyCountry.doctrine ?? "—"}
+                  </dd>
+                </div>
+              </dl>
+              <div>
+                <p className="label-mono">Objetivo tático</p>
+                <p className="mt-1 text-sm leading-snug text-foreground/85">
+                  {mission?.objectiveText ?? "Cumpra a missão."}
+                </p>
+              </div>
+              {mission?.missionNote && (
+                <p className="border-l-2 border-primary/70 pl-3 font-serif text-[13px] italic leading-snug text-muted-foreground">
+                  “{mission.missionNote}”
+                </p>
+              )}
+              <div className="mt-auto border-t border-border/60 pt-3">
+                <p className="label-mono">Frente de operações</p>
+                <ul className="mt-2 space-y-1.5">
+                  {acts.map((a) => (
+                    <li
+                      key={a.act}
+                      className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider"
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 shrink-0",
+                          a.done === a.total
+                            ? "bg-primary"
+                            : a.done > 0
+                              ? "bg-primary/50"
+                              : "bg-border",
+                        )}
+                      />
+                      <span className="flex-1 truncate text-muted-foreground">{a.act}</span>
+                      <span className="tabular-nums text-foreground/80">
+                        {a.done}/{a.total}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        <p className="text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground [@media(max-height:420px)]:hidden">
+          Missão a missão — cada vitória libera a próxima operação.
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -689,6 +787,7 @@ function CampaignBriefing({
   durationMin,
   difficulty,
   intro,
+  objective,
   owned,
   deck,
   onChangeDeck,
@@ -705,6 +804,7 @@ function CampaignBriefing({
   durationMin: number;
   difficulty: string;
   intro: string;
+  objective: string;
   owned: string[];
   deck: string[];
   onChangeDeck: (cards: string[]) => void;
@@ -720,6 +820,12 @@ function CampaignBriefing({
     else if (deck.length < 8) onChangeDeck([...deck, id]);
   };
   const dirty = deck.length !== savedDeck.length || deck.some((c, i) => savedDeck[i] !== c);
+  const deckCost = deck.reduce((sum, id) => sum + cardById(id).cost, 0);
+  const composition = deck.reduce<Record<string, number>>((acc, id) => {
+    const cat = cardById(id).category;
+    acc[cat] = (acc[cat] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-2 overflow-hidden px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
@@ -743,6 +849,11 @@ function CampaignBriefing({
       <p className="line-clamp-2 max-w-3xl shrink-0 font-serif text-sm italic leading-snug text-foreground/85 [@media(max-height:560px)]:text-xs">
         {intro}
       </p>
+      {objective && (
+        <p className="shrink-0 border-l-2 border-fact/70 pl-2 font-mono text-[10px] uppercase tracking-wider text-fact">
+          Objetivo · {objective}
+        </p>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3 [@media(max-height:560px)]:gap-1.5">
         <section className="hud-panel hud-corners flex min-h-0 flex-1 flex-col p-3 [@media(max-height:560px)]:p-2">
@@ -782,6 +893,33 @@ function CampaignBriefing({
                 </button>
               );
             })}
+          </div>
+          {/* Leitura rápida da força montada: composição e custo total de lançamento. */}
+          <div className="mt-auto shrink-0 border-t border-border/60 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="label-mono">Composição da força</p>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                Custo de lançamento <b className="text-foreground">{deckCost}</b>
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {Object.entries(composition).map(([cat, n]) => (
+                <span
+                  key={cat}
+                  className={cn(
+                    "border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+                    CATEGORY_TONE[cat] ?? "border-border text-muted-foreground",
+                  )}
+                >
+                  {n}× {cat}
+                </span>
+              ))}
+              {deck.length === 0 && (
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  Toque nas cartas para montar a força.
+                </span>
+              )}
+            </div>
           </div>
         </section>
 
@@ -828,6 +966,26 @@ function CampaignBriefing({
               Salvar baralho
             </button>
           </div>
+
+          {number === 1 && (
+            <div className="border border-dashed border-border/70 p-2.5">
+              <p className="label-mono text-primary">Como funciona</p>
+              <ol className="mt-1.5 space-y-1 text-[10px] leading-snug text-muted-foreground">
+                <li>
+                  <b className="text-foreground">1.</b> Até 8 cartas por operação — a ordem vira a
+                  sequência de lançamento.
+                </li>
+                <li>
+                  <b className="text-foreground">2.</b> No mapa, escolha a base, monte a força e
+                  envie ao destino.
+                </li>
+                <li>
+                  <b className="text-foreground">3.</b> Cumpra o objetivo no prazo para liberar o
+                  próximo capítulo.
+                </li>
+              </ol>
+            </div>
+          )}
 
           <div className="mt-auto flex shrink-0 flex-col gap-1.5 lg:gap-2">
             <button

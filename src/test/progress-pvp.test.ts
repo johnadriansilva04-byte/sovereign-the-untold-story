@@ -7,11 +7,7 @@ import {
   chapterOutro,
 } from "@/game/progress/campaign";
 import { computeResult, runToCompletion } from "@/game/battle/engine";
-import {
-  consequencesOf,
-  enemyScalingForChapter,
-  missionById,
-} from "@/game/battle/missions";
+import { consequencesOf, enemyScalingForChapter, missionById } from "@/game/battle/missions";
 import {
   addCard,
   difficulties,

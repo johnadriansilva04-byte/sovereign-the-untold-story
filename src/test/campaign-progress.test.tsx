@@ -104,7 +104,13 @@ describe("livro de história com escrita ao vivo", () => {
 
   it("mostra o título e a procedência do capítulo", () => {
     render(
-      <StoryBook chapterLabel="Ato I · Capítulo 1" title="Ruído" place="Cidade" era="Hoje" pages={pages} />,
+      <StoryBook
+        chapterLabel="Ato I · Capítulo 1"
+        title="Ruído"
+        place="Cidade"
+        era="Hoje"
+        pages={pages}
+      />,
     );
     expect(screen.getByRole("heading", { name: "Ruído" })).toBeInTheDocument();
     expect(screen.getByText(/Cidade · Hoje/)).toBeInTheDocument();

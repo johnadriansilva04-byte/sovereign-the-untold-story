@@ -9,7 +9,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { originFor } from "@/game/battle/engine";
-import { polygonCentroid, polygonPath, voronoiRegions, type Polygon } from "@/game/battle/regions";
+import { polygonPath, voronoiRegions, type Polygon } from "@/game/battle/regions";
 
 import {
   cameraFor,
@@ -21,6 +21,7 @@ import {
   FIELD_MARGIN_X,
   FIELD_MARGIN_Y,
   FIELD_W,
+  HOME_POINT,
   WORLD_H,
   WORLD_W,
   type Camera,
@@ -31,6 +32,7 @@ import type {
   ControlPoint,
   DeployTarget,
   EffectZone,
+  Obstacle,
   Projectile,
   Side,
   Structure,
@@ -194,6 +196,73 @@ function terrainDetails(terrain: string): TerrainDetail[] {
     }
   }
   return out;
+}
+// RELEVO: manchas de sombra/realce no solo que fingem elevação (luz vinda de noroeste).
+// São determinísticas e vivem ANTES das unidades: o chão ganha volume sem competir com
+// a leitura tática. Em cidade o terreno é plano, então não há relevo.
+type Relief = { x: number; y: number; rx: number; ry: number; rot: number; strength: number };
+
+function terrainRelief(terrain: string): Relief[] {
+  if (terrain === "Cidade") return [];
+  const strength = terrain === "Montanha" ? 1 : terrain === "Floresta" ? 0.7 : 0.45;
+  const cols = terrain === "Montanha" ? 5 : 4;
+  const rows = terrain === "Montanha" ? 4 : 3;
+  const jitter = (n: number) => {
+    const h = Math.sin(n * 127.1) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const out: Relief[] = [];
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const n = gy * cols + gx;
+      out.push({
+        x:
+          FIELD_MARGIN_X +
+          (FIELD_W / cols) * (gx + 0.5) +
+          (jitter(n) - 0.5) * (FIELD_W / cols) * 0.5,
+        y:
+          FIELD_MARGIN_Y +
+          (FIELD_H / rows) * (gy + 0.5) +
+          (jitter(n + 40) - 0.5) * (FIELD_H / rows) * 0.5,
+        rx: 10 + jitter(n + 9) * 14,
+        ry: 5 + jitter(n + 13) * 7,
+        rot: jitter(n + 21) * 40 - 20,
+        strength: strength * (0.6 + jitter(n + 33) * 0.5),
+      });
+    }
+  }
+  return out;
+}
+
+// Rio: só nas travessias. Uma faixa sinuosa com margens de areia e veios claros dá a
+// leitura de água corrente sem virar um bloco azul chapado.
+function RiverGlyph({ terrain }: { terrain: string }) {
+  if (terrain !== "Travessia de rio") return null;
+  const y0 = WORLD_H * 0.68;
+  const y1 = WORLD_H * 0.9;
+  const y2 = WORLD_H * 0.58;
+  const d = `M ${-FIELD_MARGIN_X} ${y0} C ${WORLD_W * 0.3} ${y0 - 14}, ${WORLD_W * 0.55} ${y2 + 12}, ${WORLD_W} ${y2}`;
+  return (
+    <g pointerEvents="none" fill="none" strokeLinecap="round">
+      <path d={d} stroke="oklch(0.62 0.05 88)" strokeWidth="13" opacity="0.5" />
+      <path d={d} stroke="oklch(0.34 0.06 228)" strokeWidth="10" />
+      <path d={d} stroke="oklch(0.46 0.08 220)" strokeWidth="7.5" />
+      <path
+        d={d}
+        stroke="oklch(0.68 0.09 205)"
+        strokeWidth="0.7"
+        strokeDasharray="4 5"
+        opacity="0.55"
+      />
+      <path
+        d={`M ${-FIELD_MARGIN_X} ${y1} C ${WORLD_W * 0.4} ${y1 + 8}, ${WORLD_W * 0.7} ${y1 - 10}, ${WORLD_W} ${y1 - 4}`}
+        stroke="oklch(0.42 0.05 90)"
+        strokeWidth="0.5"
+        strokeDasharray="2 3"
+        opacity="0.45"
+      />
+    </g>
+  );
 }
 
 function TerrainDetailGlyph({
@@ -457,7 +526,10 @@ export function BattleArena({
 
   const clearGhost = () => setGhost(null);
 
-  const units = [...state.blue.units, ...state.red.units];
+  const units = useMemo(
+    () => [...state.blue.units, ...state.red.units],
+    [state.blue.units, state.red.units],
+  );
   const selected = units.find((u) => u.id === selectedUnitId) ?? null;
 
   // MOVIMENTO SUAVE: o motor anda em passos de 100 ms (10 Hz), o que fazia a tropa
@@ -532,14 +604,49 @@ export function BattleArena({
           onPointerLeave={clearGhost}
         >
           <defs>
-            <linearGradient id="allyZone" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor={ALLY} stopOpacity="0.16" />
-              <stop offset="100%" stopColor={ALLY} stopOpacity="0.02" />
+            {/* Metades de influência: um TINTO radial nos cantos das bases (aliada a
+                noroeste, inimiga a sudeste) em vez de uma faixa chapada que dividia o
+                mapa ao meio. O centro do teatro fica neutro — como terreno disputado. */}
+            <radialGradient
+              id="allyZone"
+              gradientUnits="userSpaceOnUse"
+              cx={HOME_POINT.blue.x}
+              cy={HOME_POINT.blue.y}
+              r={WORLD_W * 0.62}
+            >
+              <stop offset="0%" stopColor={ALLY} stopOpacity="0.26" />
+              <stop offset="55%" stopColor={ALLY} stopOpacity="0.08" />
+              <stop offset="100%" stopColor={ALLY} stopOpacity="0" />
+            </radialGradient>
+            <radialGradient
+              id="enemyZone"
+              gradientUnits="userSpaceOnUse"
+              cx={HOME_POINT.red.x}
+              cy={HOME_POINT.red.y}
+              r={WORLD_W * 0.62}
+            >
+              <stop offset="0%" stopColor={ENEMY} stopOpacity="0.26" />
+              <stop offset="55%" stopColor={ENEMY} stopOpacity="0.08" />
+              <stop offset="100%" stopColor={ENEMY} stopOpacity="0" />
+            </radialGradient>
+            {/* LUZ DA MESA: brilho quente de noroeste e sombra para sudeste — o campo
+                passa a ter uma fonte de luz coerente com o relevo e as peças. */}
+            <linearGradient id="fieldLight" x1="0" y1="0" x2="0.85" y2="1">
+              <stop offset="0%" stopColor="oklch(0.98 0.04 95)" stopOpacity="0.12" />
+              <stop offset="38%" stopColor="oklch(1 0 0)" stopOpacity="0" />
+              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.3" />
             </linearGradient>
-            <linearGradient id="enemyZone" x1="1" y1="0" x2="0" y2="0">
-              <stop offset="0%" stopColor={ENEMY} stopOpacity="0.16" />
-              <stop offset="100%" stopColor={ENEMY} stopOpacity="0.02" />
-            </linearGradient>
+            {/* Vinheta do teatro: escurece as beiradas e concentra o olho no centro. */}
+            <radialGradient
+              id="fieldVignette"
+              gradientUnits="userSpaceOnUse"
+              cx={WORLD_W / 2}
+              cy={WORLD_H / 2}
+              r={WORLD_W * 0.6}
+            >
+              <stop offset="58%" stopColor="oklch(0 0 0)" stopOpacity="0" />
+              <stop offset="100%" stopColor="oklch(0 0 0)" stopOpacity="0.38" />
+            </radialGradient>
             <linearGradient id="groundDepth" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="oklch(0 0 0)" stopOpacity="0.2" />
               <stop offset="45%" stopColor="oklch(0 0 0)" stopOpacity="0" />
@@ -566,6 +673,16 @@ export function BattleArena({
             mundo. A cena toda — terreno, territórios, estruturas, unidades, projéteis e
             efeitos — vive aqui. */}
           <g>
+            {/* ESPESSURA DA MESA: uma laje escura deslocada para baixo dá ao campo o
+                volume de uma mesa de guerra física, em vez de um retângulo flutuando. */}
+            <rect
+              x={-GROUND_PAD + 3}
+              y={-GROUND_PAD + 10}
+              width={WORLD_W + GROUND_PAD * 2}
+              height={WORLD_H + GROUND_PAD * 2}
+              fill="oklch(0.06 0.008 80)"
+              opacity="0.9"
+            />
             {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria.
                 Estende ALÉM do campo para cobrir as folgas que a inclinação expõe: a mesa
                 vai de fora a fora da tela, sem "buracos" no fundo. */}
@@ -575,6 +692,15 @@ export function BattleArena({
               width={WORLD_W + GROUND_PAD * 2}
               height={WORLD_H + GROUND_PAD * 2}
               fill={ground.base}
+            />
+            {/* Iluminação da mesa: quente a noroeste, sombra a sudeste. */}
+            <rect
+              x={-GROUND_PAD}
+              y={-GROUND_PAD}
+              width={WORLD_W + GROUND_PAD * 2}
+              height={WORLD_H + GROUND_PAD * 2}
+              fill="url(#fieldLight)"
+              pointerEvents="none"
             />
             {/* BEIRADA: faixa de borda fora da área de manobra (bases nunca encostam na parede) */}
             <rect
@@ -598,6 +724,41 @@ export function BattleArena({
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
             <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
+
+            {/* RELEVO do terreno (montanha/floresta/campo): sombra + realce deslocados
+                na direção da luz, com curvas de nível nas elevações. */}
+            <g pointerEvents="none">
+              {terrainRelief(arena.terrain).map((r, i) => (
+                <g key={`relief${i}`} transform={`translate(${r.x} ${r.y}) rotate(${r.rot})`}>
+                  <ellipse
+                    rx={r.rx}
+                    ry={r.ry}
+                    fill="oklch(0 0 0 / 0.14)"
+                    transform="translate(1.8 2.6)"
+                    opacity={r.strength * 0.55}
+                  />
+                  <ellipse
+                    rx={r.rx}
+                    ry={r.ry}
+                    fill="oklch(1 0 0 / 0.045)"
+                    transform="translate(-1.2 -1.6)"
+                    opacity={r.strength}
+                  />
+                  {arena.terrain === "Montanha" && (
+                    <ellipse
+                      rx={r.rx * 0.6}
+                      ry={r.ry * 0.6}
+                      fill="none"
+                      stroke="oklch(0 0 0 / 0.16)"
+                      strokeWidth="0.28"
+                    />
+                  )}
+                </g>
+              ))}
+            </g>
+
+            {/* Rio (travessia): atravessa o teatro por baixo das rotas e territórios. */}
+            <RiverGlyph terrain={arena.terrain} />
 
             {/* Detalhes de solo: tufos, pedras e arbustos — identidade de território */}
             <g>
@@ -632,13 +793,18 @@ export function BattleArena({
               ))}
             </g>
 
-            {/* Metades na DIAGONAL: noroeste = aliado (azul), sudeste = inimigo (vermelho).
-                O corte acompanha a disposição real das bases (canto superior esquerdo ↔
-                canto inferior direito), não mais a divisão oeste/leste do campo antigo. */}
-            <polygon points={`0,0 ${WORLD_W},0 0,${WORLD_H}`} fill="url(#allyZone)" />
-            <polygon
-              points={`${WORLD_W},0 ${WORLD_W},${WORLD_H} 0,${WORLD_H}`}
-              fill="url(#enemyZone)"
+            {/* TINTO DE INFLUÊNCIA: radial nos cantos (noroeste aliado, sudeste inimigo).
+                O centro do teatro fica neutro, então o campo lê como território disputado
+                e não como duas metades pintadas. */}
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#allyZone)" />
+            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#enemyZone)" />
+            <rect
+              x="0"
+              y="0"
+              width={WORLD_W}
+              height={WORLD_H}
+              fill="url(#fieldVignette)"
+              pointerEvents="none"
             />
 
             {/* Moldura do tabuleiro: a "linha de fora a fora" que fecha o mapa (como o
@@ -706,16 +872,7 @@ export function BattleArena({
 
             {/* Obstáculos */}
             {arena.obstacles.map((o) => (
-              <circle
-                key={o.id}
-                cx={o.x}
-                cy={o.y}
-                r={o.radius}
-                fill={obstacleFill(o.kind)}
-                opacity={o.kind === "barricada" ? 0.6 : 0.7}
-                stroke={o.kind === "barricada" ? sideColor(o.side ?? "blue") : "oklch(1 0 0 / 0.1)"}
-                strokeWidth="0.3"
-              />
+              <ObstacleGlyph key={o.id} o={o} />
             ))}
 
             {/* REGIÕES TERRITORIAIS: o campo inteiro particionado em áreas completas
@@ -724,9 +881,18 @@ export function BattleArena({
               <TerritoryGlyph key={t.id} territory={t} region={regionPolys[i] ?? []} cam={cam} />
             ))}
 
-            {/* Pontos de controle */}
+            {/* Pontos de controle. Quando o ponto nasce junto de uma BASE NEUTRA (norte
+                e sul), o nome do setor some: a base já nomeia a área e os dois rótulos
+                se sobrepunham. */}
             {arena.controlPoints.map((p) => (
-              <ControlPointGlyph key={p.id} point={p} cam={cam} />
+              <ControlPointGlyph
+                key={p.id}
+                point={p}
+                cam={cam}
+                hideLabel={state.territories.some(
+                  (t) => t.base && Math.hypot(t.x - p.x, t.y - p.y) < 10,
+                )}
+              />
             ))}
 
             {/* Estruturas */}
@@ -1487,6 +1653,199 @@ function NeutralBaseArt({
   );
 }
 
+// OBSTÁCULOS com arte própria. Antes eram círculos chapados que pareciam buracos no
+// terreno; agora leem como construção, mata, elevação ou barricada — e a sombra
+// deslocada os assenta no chão, na mesma direção de luz das unidades.
+function ObstacleGlyph({ o }: { o: Obstacle }) {
+  const r = o.radius;
+  if (o.kind === "construcao") {
+    const w = r * 1.55;
+    const h = r * 1.35;
+    return (
+      <g>
+        <rect
+          x={o.x - w / 2 + 0.9}
+          y={o.y - h / 2 + 1.4}
+          width={w}
+          height={h}
+          rx="0.3"
+          fill="oklch(0 0 0 / 0.4)"
+        />
+        <rect
+          x={o.x - w / 2}
+          y={o.y - h / 2}
+          width={w}
+          height={h}
+          rx="0.3"
+          fill="oklch(0.33 0.012 95)"
+          stroke="oklch(0 0 0 / 0.55)"
+          strokeWidth="0.22"
+        />
+        {/* telhado com uma água iluminada e outra em sombra */}
+        <path
+          d={`M ${o.x - w / 2 + 0.4} ${o.y - h / 2 + 0.4} H ${o.x + w / 2 - 0.4} V ${o.y} H ${o.x - w / 2 + 0.4} Z`}
+          fill="oklch(0.45 0.018 92)"
+        />
+        <path
+          d={`M ${o.x - w / 2 + 0.4} ${o.y} H ${o.x + w / 2 - 0.4} V ${o.y + h / 2 - 0.4} H ${o.x - w / 2 + 0.4} Z`}
+          fill="oklch(0.38 0.014 92)"
+        />
+        {/* claraboia / caixa d'água e antena */}
+        <rect
+          x={o.x - w * 0.18}
+          y={o.y - h * 0.3}
+          width={w * 0.36}
+          height={h * 0.26}
+          fill="oklch(0.28 0.01 90)"
+          opacity="0.85"
+        />
+        <circle
+          cx={o.x + w * 0.26}
+          cy={o.y + h * 0.22}
+          r={Math.max(0.28, r * 0.09)}
+          fill="oklch(0.58 0.02 90)"
+        />
+        {/* entulho junto à parede */}
+        <ellipse
+          cx={o.x - w * 0.36}
+          cy={o.y + h * 0.46}
+          rx={r * 0.16}
+          ry={r * 0.1}
+          fill="oklch(0.5 0.02 88)"
+        />
+        <ellipse
+          cx={o.x + w * 0.4}
+          cy={o.y + h * 0.4}
+          rx={r * 0.12}
+          ry={r * 0.08}
+          fill="oklch(0.45 0.02 88)"
+        />
+      </g>
+    );
+  }
+  if (o.kind === "vegetacao") {
+    const trees = Array.from({ length: 7 }).map((_, i) => {
+      const a = (i / 7) * Math.PI * 2 + 0.5;
+      const d = i === 0 ? 0 : r * 0.46;
+      return {
+        x: o.x + Math.cos(a) * d,
+        y: o.y + Math.sin(a) * d * 0.8,
+        s: 0.28 + ((i * 7) % 5) * 0.045,
+      };
+    });
+    return (
+      <g>
+        <ellipse
+          cx={o.x}
+          cy={o.y + r * 0.2}
+          rx={r * 0.92}
+          ry={r * 0.72}
+          fill="oklch(0 0 0 / 0.22)"
+        />
+        {trees.map((t, i) => (
+          <g key={`tree${i}`}>
+            <circle cx={t.x + 0.2} cy={t.y + 0.25} r={r * t.s} fill="oklch(0 0 0 / 0.3)" />
+            <circle
+              cx={t.x}
+              cy={t.y}
+              r={r * t.s}
+              fill="oklch(0.33 0.055 145)"
+              stroke="oklch(0 0 0 / 0.35)"
+              strokeWidth="0.08"
+            />
+            <circle
+              cx={t.x - r * t.s * 0.28}
+              cy={t.y - r * t.s * 0.3}
+              r={r * t.s * 0.45}
+              fill="oklch(0.44 0.07 142)"
+              opacity="0.8"
+            />
+          </g>
+        ))}
+      </g>
+    );
+  }
+  if (o.kind === "elevacao") {
+    return (
+      <g>
+        <ellipse cx={o.x + 0.8} cy={o.y + 1.1} rx={r} ry={r * 0.76} fill="oklch(0 0 0 / 0.28)" />
+        <ellipse cx={o.x} cy={o.y} rx={r} ry={r * 0.76} fill="oklch(0.4 0.03 100)" />
+        <ellipse
+          cx={o.x - r * 0.14}
+          cy={o.y - r * 0.14}
+          rx={r * 0.68}
+          ry={r * 0.48}
+          fill="oklch(0.47 0.035 100)"
+        />
+        <ellipse
+          cx={o.x}
+          cy={o.y}
+          rx={r * 0.42}
+          ry={r * 0.28}
+          fill="none"
+          stroke="oklch(0 0 0 / 0.2)"
+          strokeWidth="0.22"
+        />
+      </g>
+    );
+  }
+  if (o.kind === "barricada") {
+    const color = sideColor(o.side ?? "blue");
+    return (
+      <g>
+        {Array.from({ length: 5 }).map((_, i) => {
+          const dx = (i - 2) * r * 0.4;
+          const dy = (i % 2 === 0 ? 1 : -1) * r * 0.1;
+          return (
+            <g key={`bag${i}`}>
+              <ellipse
+                cx={o.x + dx + 0.15}
+                cy={o.y + dy + 0.3}
+                rx={r * 0.24}
+                ry={r * 0.15}
+                fill="oklch(0 0 0 / 0.35)"
+              />
+              <ellipse
+                cx={o.x + dx}
+                cy={o.y + dy}
+                rx={r * 0.24}
+                ry={r * 0.15}
+                fill="oklch(0.52 0.032 85)"
+                stroke="oklch(0 0 0 / 0.4)"
+                strokeWidth="0.07"
+              />
+            </g>
+          );
+        })}
+        <line
+          x1={o.x - r * 0.95}
+          y1={o.y - r * 0.02}
+          x2={o.x + r * 0.95}
+          y2={o.y - r * 0.02}
+          stroke={color}
+          strokeWidth="0.12"
+          opacity="0.6"
+        />
+      </g>
+    );
+  }
+  // rio / vau: lâmina d'água com margem de areia
+  return (
+    <g>
+      <ellipse cx={o.x} cy={o.y} rx={r} ry={r * 0.8} fill="oklch(0.62 0.05 88)" opacity="0.45" />
+      <ellipse cx={o.x} cy={o.y} rx={r * 0.9} ry={r * 0.7} fill="oklch(0.36 0.06 228)" />
+      <ellipse
+        cx={o.x - r * 0.18}
+        cy={o.y - r * 0.14}
+        rx={r * 0.55}
+        ry={r * 0.34}
+        fill="oklch(0.5 0.08 218)"
+        opacity="0.7"
+      />
+    </g>
+  );
+}
+
 function TerritoryGlyph({
   territory: t,
   region,
@@ -1503,7 +1862,6 @@ function TerritoryGlyph({
   const ringColor = t.progress.blue >= t.progress.red ? ALLY : ENEMY;
   const claim = owned ? color : "oklch(1 0 0 / 0.5)";
   const path = polygonPath(region);
-  const c = polygonCentroid(region, { x: t.x, y: t.y });
   return (
     <g>
       {/* REGIÃO: a ÁREA INTEIRA do território (polígono de Voronoi). A cor de posse
@@ -1514,7 +1872,7 @@ function TerritoryGlyph({
           <path
             d={path}
             fill={owned ? color : "oklch(0.2 0.01 90)"}
-            fillOpacity={owned ? 0.16 : 0.1}
+            fillOpacity={owned ? 0.11 : 0.07}
             stroke="oklch(1 0 0 / 0.3)"
             strokeWidth="0.3"
             strokeLinejoin="round"
@@ -1534,15 +1892,17 @@ function TerritoryGlyph({
       {/* Base neutra: instalação militar já erguida no meio do mapa. Além do
           marcador de captura, desenha a estrutura (quem a toma assume a posição). */}
       {t.base && <NeutralBaseArt x={t.x} y={t.y} r={t.radius} color={color} owned={owned} />}
-      {/* MARCADOR DE CAPTURA no centro da região (o "ponto branco" luminoso do chão). */}
+      {/* MARCADOR DE CAPTURA no centro da região: um PÁTIO de suprimentos (anel
+          tracejado + centro discreto), não um holofote branco. O ponto de controle
+          hasteia bandeira; o território apenas delimita a área a dominar. */}
       <circle
         cx={t.x}
         cy={t.y}
         r={t.radius * 0.62}
-        fill={owned ? color : "oklch(0.97 0.01 90)"}
-        fillOpacity={owned ? 0.5 : 0.72}
+        fill={owned ? color : "oklch(0.2 0.01 90)"}
+        fillOpacity={owned ? 0.22 : 0.16}
         stroke={claim}
-        strokeWidth={owned ? 0.55 : 0.45}
+        strokeWidth={owned ? 0.5 : 0.4}
         strokeDasharray={owned ? undefined : "1.2 1"}
       >
         {!owned && (
@@ -1554,13 +1914,26 @@ function TerritoryGlyph({
           />
         )}
       </circle>
+      {/* marcas de captura (quatro cantos) — leitura de "área a tomar" */}
+      {[0, 90, 180, 270].map((deg) => (
+        <line
+          key={`tick${deg}`}
+          x1={t.x + Math.cos((deg * Math.PI) / 180) * t.radius * 0.45}
+          y1={t.y + Math.sin((deg * Math.PI) / 180) * t.radius * 0.45}
+          x2={t.x + Math.cos((deg * Math.PI) / 180) * t.radius * 0.66}
+          y2={t.y + Math.sin((deg * Math.PI) / 180) * t.radius * 0.66}
+          stroke={claim}
+          strokeWidth="0.3"
+          opacity={owned ? 0.9 : 0.6}
+        />
+      ))}
       {/* núcleo: ponto de referência do marcador */}
       <circle
         cx={t.x}
         cy={t.y}
-        r={t.radius * 0.22}
+        r={t.radius * 0.16}
         fill={owned ? color : "oklch(1 0 0)"}
-        opacity={owned ? 0.95 : 0.9}
+        opacity={owned ? 0.95 : 0.85}
         data-testid={`territory-${t.id}`}
         data-world-x={t.x}
         data-world-y={t.y}
@@ -1588,26 +1961,49 @@ function TerritoryGlyph({
           fontFamily="var(--font-mono)"
           fill="var(--enemy)"
           fontWeight={700}
+          stroke="oklch(0 0 0 / 0.7)"
+          strokeWidth="0.45"
+          paintOrder="stroke"
+          strokeLinejoin="round"
           transform={uprightText(cam, t.x, t.y - t.radius - 0.9)}
         >
           DISPUTA
         </text>
       )}
-      {/* NOME do território no centroide da região (leitura de mapa). Branco NEUTRO
-          (chroma 0): `oklch(1 1 1)` tem chroma 1 e é rosa saturado, não branco. */}
-      <text
-        x={c.x}
-        y={c.y}
-        textAnchor="middle"
-        fontSize="1.7"
-        fontFamily="var(--font-mono)"
-        fill={owned ? color : "oklch(1 0 0)"}
-        opacity={owned ? 0.85 : 0.55}
-        fontWeight={600}
-        transform={uprightText(cam, c.x, c.y)}
-      >
-        {t.name.toUpperCase()}
-      </text>
+      {/* NOME do território: ACIMA do marcador central (o nome do ponto de controle
+          fica ABAIXO do dele, então os dois nunca se sobrepõem), preso dentro da área
+          de manobra e com halo escuro para ler sobre qualquer terreno. */}
+      {(() => {
+        const half = Math.min(t.name.length * 0.58, 17);
+        // O nome fica preso ao MARCADOR (não ao centroide do polígono): perto da borda
+        // a célula de Voronoi é grande e o centroide cai longe, jogando o texto em cima
+        // da base vizinha. Deslocamento fixo acima do marcador limpa a arte da base.
+        const lx = Math.max(
+          FIELD_MARGIN_X + half + 1,
+          Math.min(WORLD_W - FIELD_MARGIN_X - half - 1, t.x),
+        );
+        const ly = Math.max(FIELD_MARGIN_Y + 2, t.y - Math.max(t.radius * 2.6, 14));
+        return (
+          <text
+            x={lx}
+            y={ly}
+            textAnchor="middle"
+            fontSize="1.55"
+            letterSpacing="0.07em"
+            fontFamily="var(--font-mono)"
+            fill={owned ? color : "oklch(1 0 0)"}
+            opacity={owned ? 0.92 : 0.62}
+            fontWeight={600}
+            stroke="oklch(0 0 0 / 0.72)"
+            strokeWidth="0.5"
+            paintOrder="stroke"
+            strokeLinejoin="round"
+            transform={uprightText(cam, lx, ly)}
+          >
+            {t.name.toUpperCase()}
+          </text>
+        );
+      })()}
       {!owned && (t.progress.blue > 0 || t.progress.red > 0) && (
         <>
           <rect
@@ -1644,9 +2040,11 @@ function TerritoryGlyph({
 function ControlPointGlyph({
   point,
   cam,
+  hideLabel = false,
 }: {
   point: ControlPoint;
   cam?: Pick<Camera, "rotateDeg" | "tiltDeg">;
+  hideLabel?: boolean;
 }) {
   const color = point.owner === "neutro" ? "oklch(0.98 0 0)" : sideColor(point.owner);
   const bluePct = point.progress.blue;
@@ -1655,29 +2053,73 @@ function ControlPointGlyph({
   const ringColor = bluePct >= redPct ? ALLY : ENEMY;
   const contested = bluePct > 0 && redPct > 0;
   const r = point.radius * 0.7;
+  const neutral = point.owner === "neutro";
+  // Rótulo AO LADO do posto (não embaixo): abaixo ficava na mesma faixa dos nomes
+  // de território vizinhos. À direita do mastro ele tem corredor livre.
+  const labelX = point.x + r * 1.2;
+  const labelY = point.y + r * 0.45;
   return (
     <g>
-      {/* Disco de posse e anel do ponto — sem halo neon, integrado ao terreno */}
+      {/* ÁREA DE DOMÍNIO: anel tracejado que delimita o raio de captura. */}
       <circle
         cx={point.x}
         cy={point.y}
         r={point.radius}
         fill={color}
-        opacity={point.owner === "neutro" ? 0.12 : 0.18}
+        fillOpacity={neutral ? 0.06 : 0.1}
         stroke={color}
-        strokeOpacity={point.owner === "neutro" ? 0.6 : 0.9}
-        strokeWidth="0.6"
-        strokeDasharray={point.owner === "neutro" ? "1.4 1.2" : undefined}
+        strokeOpacity={neutral ? 0.45 : 0.75}
+        strokeWidth="0.35"
+        strokeDasharray="1.2 1.4"
+      />
+      {/* POSTO: pátio de terra batida cercado de sacos de areia. */}
+      <ellipse
+        cx={point.x + 0.35}
+        cy={point.y + r * 0.55}
+        rx={r * 0.95}
+        ry={r * 0.55}
+        fill="oklch(0 0 0 / 0.32)"
       />
       <circle
         cx={point.x}
         cy={point.y}
-        r={point.radius * 0.5}
-        fill="none"
-        stroke={color}
-        strokeOpacity="0.5"
-        strokeWidth="0.35"
-        strokeDasharray="1.6 1.4"
+        r={r * 0.72}
+        fill="oklch(0.27 0.012 88)"
+        stroke="oklch(0 0 0 / 0.55)"
+        strokeWidth="0.2"
+      />
+      {Array.from({ length: 10 }).map((_, i) => {
+        const a = (i / 10) * Math.PI * 2;
+        const cx = point.x + Math.cos(a) * r * 0.66;
+        const cy = point.y + Math.sin(a) * r * 0.66;
+        return (
+          <ellipse
+            key={`bag${i}`}
+            cx={cx}
+            cy={cy}
+            rx={r * 0.2}
+            ry={r * 0.12}
+            fill="oklch(0.5 0.032 85)"
+            stroke="oklch(0 0 0 / 0.35)"
+            strokeWidth="0.07"
+            transform={`rotate(${(a * 180) / Math.PI} ${cx} ${cy})`}
+          />
+        );
+      })}
+      {/* MASTRO + BANDEIRA: quem domina o posto hasteia a própria cor. */}
+      <line
+        x1={point.x}
+        y1={point.y}
+        x2={point.x}
+        y2={point.y - r * 1.6}
+        stroke="oklch(0.76 0.012 90)"
+        strokeWidth="0.2"
+      />
+      <path
+        d={`M ${point.x} ${point.y - r * 1.6} l ${r * 1.25} ${r * 0.4} l ${-r * 1.25} ${r * 0.4} Z`}
+        fill={color}
+        stroke="oklch(0 0 0 / 0.45)"
+        strokeWidth="0.12"
       />
       {progress > 0 && (
         <circle
@@ -1686,39 +2128,52 @@ function ControlPointGlyph({
           r={r}
           fill="none"
           stroke={ringColor}
-          strokeWidth="1.2"
+          strokeWidth="1.1"
           strokeLinecap="round"
           strokeDasharray={`${2 * Math.PI * r * progress} ${2 * Math.PI * r}`}
           transform={`rotate(-90 ${point.x} ${point.y})`}
         />
       )}
+      {/* Rótulo do setor AO LADO do posto (o nome do território fica acima do marcador
+          dele), com halo para não sumir no terreno. */}
+      {!hideLabel && (
+        <text
+          x={labelX}
+          y={labelY}
+          textAnchor="start"
+          fontSize="1.6"
+          letterSpacing="0.06em"
+          fontFamily="var(--font-mono)"
+          fill={neutral ? "oklch(0.9 0.01 90)" : color}
+          fontWeight={700}
+          stroke="oklch(0 0 0 / 0.72)"
+          strokeWidth="0.45"
+          paintOrder="stroke"
+          strokeLinejoin="round"
+          transform={uprightText(cam, labelX, labelY)}
+        >
+          {point.sector.toUpperCase()}
+        </text>
+      )}
       {contested && (
         <text
-          x={point.x}
-          y={point.y - point.radius - 1}
-          textAnchor="middle"
-          fontSize="1.9"
+          x={hideLabel ? point.x : labelX}
+          y={labelY + 2.2}
+          textAnchor={hideLabel ? "middle" : "start"}
+          fontSize="1.5"
+          letterSpacing="0.08em"
           fontFamily="var(--font-mono)"
           fill="var(--enemy)"
           fontWeight={700}
-          transform={uprightText(cam, point.x, point.y - point.radius - 1)}
+          stroke="oklch(0 0 0 / 0.72)"
+          strokeWidth="0.45"
+          paintOrder="stroke"
+          transform={uprightText(cam, hideLabel ? point.x : labelX, labelY + 2.2)}
         >
           DISPUTA
         </text>
       )}
-      <text
-        x={point.x}
-        y={point.y - point.radius - (contested ? 3.2 : 0.9)}
-        textAnchor="middle"
-        fontSize="2.1"
-        fontFamily="var(--font-mono)"
-        fill={color}
-        fontWeight={700}
-        transform={uprightText(cam, point.x, point.y - point.radius - (contested ? 3.2 : 0.9))}
-      >
-        {point.sector.toUpperCase()}
-      </text>
-      {/* Rótulo do setor basta: o nome completo do ponto poluía o campo. */}
+      {/* O nome completo do ponto fica no tooltip: o setor já localiza no campo. */}
       <title>{point.name}</title>
     </g>
   );
@@ -1791,7 +2246,7 @@ function UnitGlyph({
       )}
       {/* SANGUE no chão: soldado ferido perde sangue onde está. Determinístico. */}
       {(wounded || bleed) && (
-        <g fill="oklch(0.32 0.16 26 / 0.75)">
+        <g fill="oklch(0.3 0.12 26 / 0.5)">
           {bloodSpots(unit.id).map((s, i) => (
             <ellipse
               key={i}
@@ -1803,6 +2258,17 @@ function UnitGlyph({
             />
           ))}
         </g>
+      )}
+      {/* SOMBRA NO CHÃO: toda peça projeta sombra deslocada para sudeste (a mesma
+          direção da luz da mesa). Sem isso as unidades "flutuavam" sobre o terreno. */}
+      {!airborne && (
+        <ellipse
+          cx={unit.x + r * 0.22}
+          cy={unit.y + r * 0.5}
+          rx={r * 1.0}
+          ry={r * 0.46}
+          fill="oklch(0 0 0 / 0.34)"
+        />
       )}
       {airborne && (
         <ellipse
@@ -2076,6 +2542,21 @@ function unitModel(
           fill={opts.helmet ?? color}
           stroke={dark}
           strokeWidth="0.14"
+        />
+        {/* Luz no capacete (noroeste) e sombra na nuca (sudeste): dá volume ao soldado
+            sem trocar a cor de uniforme. */}
+        <circle
+          cx="-0.02"
+          cy="-0.14"
+          r={opts.bulky ? 0.2 : 0.17}
+          fill="oklch(1 0 0 / 0.18)"
+          stroke="none"
+        />
+        <path
+          d={`M 0.04 ${opts.bulky ? -0.6 : -0.5} A ${opts.bulky ? 0.6 : 0.5} ${opts.bulky ? 0.6 : 0.5} 0 0 1 ${0.04 + (opts.bulky ? 0.6 : 0.5)} 0`}
+          fill="none"
+          stroke="oklch(0 0 0 / 0.4)"
+          strokeWidth="0.12"
         />
         {weapon}
       </>,
@@ -2381,21 +2862,82 @@ function unitModel(
         </>,
       );
     case "chanceler":
+      // O CHANCELER é o personagem decisivo: silhueta humana legível (ombreiras
+      // largas, quepe com aba para frente, faixa dourada de chefe de Estado) e dois
+      // ajudantes da comitiva atrás. Lido de cima como uma figura, não como uma peça.
       return body(
         <>
-          {/* terno/estafe: torso escuro com faixa de comando dourada e comitiva */}
-          <rect x="-0.62" y="-0.44" width="0.8" height="0.3" rx="0.12" fill={dark} />
-          <rect x="-0.62" y="0.14" width="0.8" height="0.3" rx="0.12" fill={dark} />
-          <rect x="-0.12" y="-0.5" width="0.98" height="1.02" rx="0.24" fill={color} />
-          <rect x="0.34" y="-0.52" width="0.58" height="0.24" rx="0.1" fill={color} />
-          <rect x="0.34" y="0.28" width="0.58" height="0.24" rx="0.1" fill={color} />
-          <circle cx="0.04" cy="0" r="0.5" fill={color} stroke={dark} strokeWidth="0.14" />
-          {/* faixa dourada de chefe de Estado */}
-          <rect x="-0.3" y="-0.66" width="1.4" height="0.22" rx="0.1" fill="var(--primary)" />
-          {/* arma curta */}
-          <rect x="0.5" y="-0.13" width="1.2" height="0.26" rx="0.07" fill={dark} />
-          <circle cx="-0.35" cy="0" r="0.34" fill="var(--primary)" opacity={0.35}>
-            <animate attributeName="r" values="0.3;0.42;0.3" dur="1.6s" repeatCount="indefinite" />
+          <ellipse cx="0" cy="0.12" rx="1.2" ry="0.98" fill="oklch(0 0 0 / 0.32)" stroke="none" />
+          {/* comitiva: dois ajudantes atrás do chanceler */}
+          <circle cx="-0.98" cy="-0.6" r="0.3" fill={color} stroke={dark} strokeWidth="0.1" />
+          <circle cx="-0.98" cy="0.6" r="0.3" fill={color} stroke={dark} strokeWidth="0.1" />
+          {/* ombreiras / casaco de gala */}
+          <path
+            d="M -0.52 -0.64 Q 0.16 -0.82 0.78 -0.44 L 0.86 0.44 Q 0.16 0.82 -0.52 0.64 Z"
+            fill={color}
+            stroke={dark}
+            strokeWidth="0.12"
+          />
+          {/* faixa dourada de chefe de Estado, do ombro ao peito */}
+          <path
+            d="M 0.16 -0.62 L 0.52 -0.42 L 0.52 0.42 L 0.16 0.62 Z"
+            fill="var(--primary)"
+            opacity="0.85"
+            stroke="none"
+          />
+          {/* dragonas */}
+          <rect
+            x="-0.52"
+            y="-0.74"
+            width="0.44"
+            height="0.2"
+            rx="0.09"
+            fill="var(--primary)"
+            stroke="none"
+          />
+          <rect
+            x="-0.52"
+            y="0.54"
+            width="0.44"
+            height="0.2"
+            rx="0.09"
+            fill="var(--primary)"
+            stroke="none"
+          />
+          {/* cabeça + quepe (a aba aponta para o sentido de marcha) */}
+          <circle
+            cx="0.36"
+            cy="0"
+            r="0.4"
+            fill="oklch(0.72 0.06 70)"
+            stroke={dark}
+            strokeWidth="0.12"
+          />
+          <path
+            d="M 0.0 -0.37 Q 0.38 -0.54 0.72 -0.32 L 0.78 0 Q 0.38 -0.2 0.0 0 Z"
+            fill={dark}
+            stroke="none"
+          />
+          <rect x="0.7" y="-0.15" width="0.28" height="0.3" rx="0.08" fill={dark} stroke="none" />
+          {/* arma curta de cerimônia */}
+          <rect x="0.55" y="-0.66" width="0.92" height="0.18" rx="0.06" fill={dark} stroke="none" />
+          {/* anel de comando pulsante: o personagem é o centro da batalha */}
+          <circle
+            cx="0.18"
+            cy="0"
+            r="0.98"
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth="0.07"
+            strokeDasharray="0.5 0.7"
+            opacity="0.5"
+          >
+            <animate
+              attributeName="opacity"
+              values="0.22;0.6;0.22"
+              dur="2.4s"
+              repeatCount="indefinite"
+            />
           </circle>
         </>,
       );
@@ -2638,20 +3180,5 @@ function EffectGlyph({ effect: e }: { effect: VisualEffect }) {
           />
         </g>
       );
-  }
-}
-
-function obstacleFill(kind: string): string {
-  switch (kind) {
-    case "rio":
-      return "oklch(0.35 0.06 230)";
-    case "construcao":
-      return "oklch(0.32 0.01 100)";
-    case "vegetacao":
-      return "oklch(0.3 0.05 145)";
-    case "elevacao":
-      return "oklch(0.38 0.02 90)";
-    default:
-      return "oklch(0.4 0.02 90)";
   }
 }

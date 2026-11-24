@@ -10,12 +10,7 @@ import {
   type NationState,
 } from "@/game/battle/missions";
 import type { BattleConfig } from "@/game/battle/types";
-import {
-  difficultyForChapter,
-  modsFromAccessories,
-  type Difficulty,
-  type Reward,
-} from "./catalog";
+import { difficultyForChapter, modsFromAccessories, type Difficulty, type Reward } from "./catalog";
 import {
   activeAccessories,
   cardLevelsForDeck,

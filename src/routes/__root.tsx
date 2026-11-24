@@ -10,7 +10,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ProfileProvider, useProfile } from "@/game/progress/store";
 
@@ -128,10 +128,64 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ProfileProvider>
+        <DocumentTitle />
         <AuthGate />
         <Toaster />
       </ProfileProvider>
     </QueryClientProvider>
+  );
+}
+
+// O <HeadContent /> cobre o servidor, mas na navegação do cliente nenhum título novo
+// era aplicado e a aba ficava presa na primeira página aberta. Aqui o título acompanha
+// a rota resolvida: usa o `meta` já resolvido quando existe e, no cliente, chama o
+// `head()` da própria rota — a mesma fonte do SSR, sem duplicar títulos.
+type HeadMeta = Array<{ title?: unknown }>;
+
+function titleOfMeta(meta: unknown): string | null {
+  if (!Array.isArray(meta)) return null;
+  for (const entry of meta as HeadMeta) {
+    if (typeof entry?.title === "string" && entry.title) return entry.title;
+  }
+  return null;
+}
+
+function DocumentTitle() {
+  const router = useRouter();
+  const title = useRouterState({
+    select: (s) => {
+      for (let i = s.matches.length - 1; i >= 0; i--) {
+        const match = s.matches[i];
+        if (!match) continue;
+        const resolved = titleOfMeta(match.meta);
+        if (resolved) return resolved;
+        const route = router.routesById[match.routeId] as
+          { options?: { head?: unknown } } | undefined;
+        // O `head` recebe o contexto resolvido da rota; aqui só o título interessa.
+        const head = route?.options?.head as ((ctx: never) => unknown) | undefined;
+        if (typeof head === "function") {
+          const generated = titleOfMeta((head({} as never) as { meta?: unknown }).meta);
+          if (generated) return generated;
+        }
+      }
+      return "SOVEREIGN — A história que não te contaram";
+    },
+  });
+
+  useEffect(() => {
+    if (typeof document !== "undefined" && document.title !== title) document.title = title;
+  }, [title]);
+
+  return null;
+}
+
+function Connecting() {
+  return (
+    <div className="flex h-[100dvh] items-center justify-center">
+      <p className="animate-flicker font-mono text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+        Estabelecendo ligação segura…
+      </p>
+    </div>
   );
 }
 
@@ -141,17 +195,15 @@ function AuthGate() {
   const { ready, session } = useProfile();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isEntry = pathname === "/entrar";
+  // HIDRATAÇÃO: o servidor não tem localStorage, então `ready` é false no SSR. Se o
+  // cliente restaurasse a sessão já no primeiro render, a árvore divergiria do HTML
+  // enviado (erro de hydration). Seguramos a tela de ligação até o primeiro efeito —
+  // aí cliente e servidor concordam e o portão decide com a sessão real.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
+  if (!hydrated || !ready) return <Connecting />;
   if (isEntry) return <Outlet />;
-  if (!ready) {
-    return (
-      <div className="flex h-[100dvh] items-center justify-center">
-        <p className="animate-flicker font-mono text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-          Estabelecendo ligação segura…
-        </p>
-      </div>
-    );
-  }
   if (!session) return <Navigate to="/entrar" />;
   return <Outlet />;
 }

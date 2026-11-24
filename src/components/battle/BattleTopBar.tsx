@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { NationFlag } from "./NationFlag";
 import { captureProgress } from "@/game/battle/engine";
 import type { BattlePhase, BattleState, Side, Structure } from "@/game/battle/types";
 
@@ -106,7 +107,7 @@ function SideBadge({
       {align === "right" && <BaseBar base={base} tone={tone} />}
       <div className={cn("min-w-0", align === "right" && "text-right")}>
         <p className="flex items-center gap-1 truncate font-display text-xs font-bold uppercase leading-tight sm:text-sm">
-          <span className="text-base leading-none sm:text-lg">{cfg.flag}</span>
+          <NationFlag flag={cfg.flag} label={cfg.countryName} className="sm:h-3.5 sm:w-5" />
           <span className="truncate">{cfg.countryName}</span>
         </p>
         <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">

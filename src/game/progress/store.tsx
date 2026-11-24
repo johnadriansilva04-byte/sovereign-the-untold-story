@@ -23,6 +23,7 @@ import {
   signIn,
   signOut,
   signUp,
+  startGuestSession,
   type Account,
   type AuthResult,
   type AuthSession,
@@ -72,6 +73,8 @@ export interface ProfileContextValue {
   signUpAccount: (c: Credentials) => Promise<AuthResult>;
   /** Entra numa conta existente. */
   signInAccount: (email: string, password: string) => Promise<AuthResult>;
+  /** Entra direto no jogo, sem cadastro (progresso só neste dispositivo). */
+  playAsGuest: () => void;
   /** Encerra a sessão (mantém o progresso local). */
   signOutAccount: () => Promise<void>;
   /** Conclui um capítulo, aplicando recompensa e desbloqueando o próximo. */
@@ -372,6 +375,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
+  const playAsGuest = useCallback(() => {
+    const session = startGuestSession(profileRef.current.displayName);
+    setSession(session);
+    setAccount(loadAccount());
+    persist({ ...profileRef.current, displayName: session.username });
+    setSignedIn(false);
+  }, [persist]);
+
   const signOutAccount = useCallback(async () => {
     await signOut();
     setSession(null);
@@ -398,6 +409,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       session,
       signUpAccount,
       signInAccount,
+      playAsGuest,
       signOutAccount,
       completeChapter,
       recordBattle,
@@ -421,6 +433,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     session,
     signUpAccount,
     signInAccount,
+    playAsGuest,
     signOutAccount,
     completeChapter,
     recordBattle,

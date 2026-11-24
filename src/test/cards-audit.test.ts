@@ -32,7 +32,9 @@ function makeBattle(cardId: string): BattleState {
  * causa dano, a vida total do vermelho cai. Contar só estruturas mascararia o combate
  * no meio do mapa, onde as forças se encontram. */
 function enemyHp(st: BattleState): number {
-  const structs = st.structures.filter((s) => s.side === "red" && s.alive).reduce((a, s) => a + s.hp, 0);
+  const structs = st.structures
+    .filter((s) => s.side === "red" && s.alive)
+    .reduce((a, s) => a + s.hp, 0);
   const units = st.red.units.filter((u) => u.alive).reduce((a, u) => a + u.hp, 0);
   return structs + units;
 }
@@ -41,10 +43,17 @@ describe("auditoria de cartas de apoio: cada apoio altera o estado", () => {
   // Cartas de efeito ofensivo agem sobre o inimigo; as de suporte agem sobre as nossas
   // tropas. O teste confere que CADA uma altera de fato o estado do motor (vida, zonas,
   // efeitos, obstáculos ou número de unidades) — apoio que "não faz nada" é defeito.
-  const OFFENSIVE = new Set(["sup-aereo", "sup-gas", "sup-bombardeiro", "sup-paraquedistas", "sup-interferencia"]);
+  const OFFENSIVE = new Set([
+    "sup-aereo",
+    "sup-gas",
+    "sup-bombardeiro",
+    "sup-paraquedistas",
+    "sup-interferencia",
+  ]);
 
   const snapshot = (st: BattleState) => ({
-    hp: st.red.units.filter((u) => u.alive).reduce((a, u) => a + u.hp, 0) +
+    hp:
+      st.red.units.filter((u) => u.alive).reduce((a, u) => a + u.hp, 0) +
       st.structures.filter((s) => s.side === "red" && s.alive).reduce((a, s) => a + s.hp, 0),
     zones: st.zones.length,
     effects: st.effects.length,
@@ -103,7 +112,7 @@ describe("auditoria de cartas: cada carta produz efeito real", () => {
       let deployed = 0;
       let maxStall = 0;
       const stuckIds = new Set<string>();
-      for (let i = 0; i < (SECONDS / STEP); i++) {
+      for (let i = 0; i < SECONDS / STEP; i++) {
         // A recarga é ignorada nesta auditoria: a carta fica pronta a cada tentativa.
         const hand = st.blue.deck.hand.find((h) => h.cardId === card.id);
         if (hand) hand.ready = true;

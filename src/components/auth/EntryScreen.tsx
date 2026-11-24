@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import heroSovereign from "@/assets/hero-sovereign.jpg";
 import { cn } from "@/lib/utils";
 import { useProfile } from "@/game/progress/store";
 
@@ -10,7 +11,7 @@ type Mode = "entrar" | "criar";
 // o perfil e o progresso ficam salvos na conta dele.
 export function EntryScreen() {
   const navigate = useNavigate();
-  const { session, signInAccount, signUpAccount } = useProfile();
+  const { session, signInAccount, signUpAccount, playAsGuest } = useProfile();
   const [mode, setMode] = useState<Mode>("entrar");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -46,7 +47,14 @@ export function EntryScreen() {
 
   return (
     <div className="relative flex h-[100dvh] w-full items-center justify-center overflow-hidden px-4">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,oklch(0.76_0.13_78_/_0.12),transparent_60%)]" />
+      <img
+        src={heroSovereign}
+        alt=""
+        aria-hidden
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-45"
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_35%,transparent_0%,oklch(0.12_0.01_60_/_0.85)_75%)]" />
+      <div className="scanlines pointer-events-none absolute inset-0 opacity-30" />
       <div className="hud-panel hud-corners relative w-full max-w-md p-6">
         <p className="font-display text-3xl font-black tracking-[0.2em]">
           SOVEREIGN<span className="text-primary">.</span>
@@ -136,8 +144,28 @@ export function EntryScreen() {
           </button>
         </form>
 
+        <div className="mt-4 flex items-center gap-2">
+          <span className="h-px flex-1 bg-border" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            ou
+          </span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            playAsGuest();
+            void navigate({ to: "/" });
+          }}
+          className="mt-3 w-full border border-border py-2.5 font-mono text-[11px] uppercase tracking-[0.2em] text-foreground transition hover:border-primary/60 hover:text-primary"
+        >
+          Jogar agora, sem conta
+        </button>
+
         <p className="mt-3 text-center font-mono text-[10px] leading-relaxed text-muted-foreground">
-          Sua conta guarda o progresso da campanha, o baralho e as conquistas.
+          Sem conta o progresso fica só neste dispositivo. A conta guarda campanha, baralho e
+          conquistas.
         </p>
       </div>
     </div>

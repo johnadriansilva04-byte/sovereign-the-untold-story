@@ -127,6 +127,14 @@ function newSession(userId: string, username: string, email: string): AuthSessio
   return { userId, username, email, at: new Date().toISOString() };
 }
 
+// Sessão de convidado: entra no jogo sem cadastro. O progresso fica apenas neste
+// dispositivo (localStorage) e pode ser vinculado a uma conta depois, sem perder nada.
+export function startGuestSession(username = "Comandante"): AuthSession {
+  const session = newSession("convidado", username.trim() || "Comandante", "");
+  saveSession(session);
+  return session;
+}
+
 export interface AuthResult {
   ok: boolean;
   session?: AuthSession;

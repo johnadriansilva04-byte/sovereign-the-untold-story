@@ -247,25 +247,28 @@ export function useBattle(
     [local],
   );
 
-  const moveGroup = useCallback((groupId: string, x: number, y: number, target?: DeployTarget) => {
-    const action: {
-      type: "reposicionar";
-      side: Side;
-      groupId: string;
-      x: number;
-      y: number;
-      holdAtArrival: boolean;
-      targetUnitId?: string;
-      targetStructureId?: string;
-      targetTerritoryId?: string;
-    } = { type: "reposicionar", side: local, groupId, x, y, holdAtArrival: false };
-    if (target?.unitId) action.targetUnitId = target.unitId;
-    if (target?.structureId) action.targetStructureId = target.structureId;
-    if (target?.territoryId) action.targetTerritoryId = target.territoryId;
-    const ok = applyAction(stateRef.current, action).ok;
-    forceRender();
-    return ok;
-  }, []);
+  const moveGroup = useCallback(
+    (groupId: string, x: number, y: number, target?: DeployTarget) => {
+      const action: {
+        type: "reposicionar";
+        side: Side;
+        groupId: string;
+        x: number;
+        y: number;
+        holdAtArrival: boolean;
+        targetUnitId?: string;
+        targetStructureId?: string;
+        targetTerritoryId?: string;
+      } = { type: "reposicionar", side: local, groupId, x, y, holdAtArrival: false };
+      if (target?.unitId) action.targetUnitId = target.unitId;
+      if (target?.structureId) action.targetStructureId = target.structureId;
+      if (target?.territoryId) action.targetTerritoryId = target.territoryId;
+      const ok = applyAction(stateRef.current, action).ok;
+      forceRender();
+      return ok;
+    },
+    [local],
+  );
 
   const capture = useCallback(
     (sel: { groupId?: string; unitId?: string }, targetUnitId: string) => {
@@ -350,9 +353,10 @@ export function useBattle(
   const result = state.outcome ? computeResult(state) : null;
 
   const cardMeta = useCallback((cardId: string) => cardById(cardId), []);
+  const doctrine = state[local].doctrine;
   const costOf = useCallback(
-    (cardId: string) => effectiveCost(cardById(cardId), state[local].doctrine),
-    [state[local].doctrine, local],
+    (cardId: string) => effectiveCost(cardById(cardId), doctrine),
+    [doctrine],
   );
 
   return {

@@ -118,7 +118,10 @@ function CollectionCardTile({
           </span>
         </div>
         <div className="mt-auto h-1 w-full overflow-hidden bg-muted">
-          <div className="h-full transition-all" style={{ width: `${progress}%`, background: accent }} />
+          <div
+            className="h-full transition-all"
+            style={{ width: `${progress}%`, background: accent }}
+          />
         </div>
         <p className="font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
           {maxed ? "nível máximo" : `${Math.max(0, need - qty)} cópias p/ nv ${level + 1}`}

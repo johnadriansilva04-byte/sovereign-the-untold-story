@@ -113,7 +113,16 @@ describe("baralho do inimigo: cartas novas desde o primeiro capítulo", () => {
   });
 
   it("o inimigo traz pelo menos uma carta que o jogador não possui, em todo capítulo", () => {
-    const owned = ["inf-fuzileiros", "inf-assalto", "inf-engenheiro", "rec-drone", "sup-gas", "art-canhao", "bld-vbld", "inf-antitanque"];
+    const owned = [
+      "inf-fuzileiros",
+      "inf-assalto",
+      "inf-engenheiro",
+      "rec-drone",
+      "sup-gas",
+      "art-canhao",
+      "bld-vbld",
+      "inf-antitanque",
+    ];
     for (const meta of chapterMeta) {
       const scale = enemyScalingForChapter(meta.number);
       const config = buildBattleConfig({

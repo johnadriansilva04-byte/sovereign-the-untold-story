@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { NationFlag } from "./NationFlag";
 import type { BattleUnit, Card, Order, SideState, Structure } from "@/game/battle/types";
 
 const CATEGORY_TONE: Record<string, string> = {
@@ -58,7 +59,10 @@ export function CommandBar({
     <div className={cn("flex items-center gap-3", right && "flex-row-reverse")}>
       <div className={compact ? "w-36 sm:w-52" : "w-40"}>
         <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <span>{side.flag} Sov</span>
+          <span className="flex items-center gap-1">
+            <NationFlag flag={side.flag} />
+            Sov
+          </span>
           <span className={cn("tabular-nums", low ? "text-destructive" : "text-primary")}>
             {Math.floor(side.command)} / {side.commandMax}
           </span>

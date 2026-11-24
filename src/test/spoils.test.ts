@@ -65,9 +65,17 @@ describe("espólio de guerra (inteligência de captura)", () => {
     const anchor = { x: 60, y: 46 };
     // Duas unidades vermelhas a distâncias IGUAIS do atirador azul: uma porta a carta
     // ausente (espólio), a outra não. A inteligência deve preferir a primeira.
-    deploy(state, "red", bountyCard, redBase.x, redBase.y, { x: redBase.x, y: redBase.y, skipRecharge: true });
+    deploy(state, "red", bountyCard, redBase.x, redBase.y, {
+      x: redBase.x,
+      y: redBase.y,
+      skipRecharge: true,
+    });
     const spoils = state.red.units[state.red.units.length - 1]!;
-    deploy(state, "red", "inf-fuzileiros", redBase.x, redBase.y, { x: redBase.x, y: redBase.y, skipRecharge: true });
+    deploy(state, "red", "inf-fuzileiros", redBase.x, redBase.y, {
+      x: redBase.x,
+      y: redBase.y,
+      skipRecharge: true,
+    });
     const plain = state.red.units[state.red.units.length - 1]!;
     for (const [u, dx] of [
       [spoils, -6],
@@ -80,7 +88,11 @@ describe("espólio de guerra (inteligência de captura)", () => {
       u.order = "manter";
       u.holdAtGoal = true;
     }
-    deploy(state, "blue", "inf-fuzileiros", blueBase.x, blueBase.y, { x: blueBase.x, y: blueBase.y, skipRecharge: true });
+    deploy(state, "blue", "inf-fuzileiros", blueBase.x, blueBase.y, {
+      x: blueBase.x,
+      y: blueBase.y,
+      skipRecharge: true,
+    });
     const shooter = state.blue.units[state.blue.units.length - 1]!;
     shooter.x = anchor.x;
     shooter.y = anchor.y;
