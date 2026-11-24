@@ -377,6 +377,9 @@ export interface BattleUnit {
   // local) em vez de retomar o avanço automático. Ordens do jogador marcam true.
   holdAtGoal?: boolean;
   aim: number; // ângulo de mira (radianos)
+  /** Direção do casco (radianos). Veículos andam de frente para onde vão e a torre gira
+   *  sobre esse rumo; nasce igual à mira para a peça já entrar em campo apontada. */
+  heading?: number;
   recoil: number; // recuo visual após disparo
   alive: boolean;
   engaged: boolean;

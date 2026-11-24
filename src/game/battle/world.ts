@@ -336,6 +336,36 @@ export function stageToWorld(cam: Camera, px: number, py: number): { x: number; 
 }
 
 /**
+ * Transformação local para uma PEÇA ficar EM PÉ sobre a mesa inclinada.
+ *
+ * A câmera achata o eixo vertical do palco por `cos(tilt)` (em telas largas o fator chega
+ * a 0,4). Aplicado a uma peça desenhada de cima — tanque, canhão, base — o achatamento
+ * transformava o desenho numa lâmina torta. Aqui o achatamento é desfeito ANTES do giro de
+ * tela: em tela o resultado é exatamente `R(ângulo)`, ou seja, a peça mantém a forma e a
+ * rotação que teria numa mesa vista de frente, como uma miniatura em pé. O chão (terreno,
+ * territórios, sombras) continua projetado normalmente — é o que dá a perspectiva.
+ */
+export function standMatrix(
+  cam: Pick<Camera, "rotateDeg" | "tiltDeg"> | undefined,
+  angleDeg: number,
+): string {
+  const ct = Math.max(0.05, Math.cos(((cam?.tiltDeg ?? 0) * Math.PI) / 180));
+  const phi = ((cam?.rotateDeg ?? 0) * Math.PI) / 180;
+  const theta = (angleDeg * Math.PI) / 180;
+  const cp = Math.cos(phi);
+  const sp = Math.sin(phi);
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  // M = R(−phi) · diag(1, 1/cos tilt) · R(theta), com M = [[a c],[b d]] no formato do SVG.
+  const a = cp * c + (sp * s) / ct;
+  const b = -sp * c + (cp * s) / ct;
+  const cc = cp * -s + (sp * c) / ct;
+  const d = sp * s + (cp * c) / ct;
+  const f = (v: number) => Number(v.toFixed(5));
+  return `matrix(${f(a)} ${f(b)} ${f(cc)} ${f(d)} 0 0)`;
+}
+
+/**
  * Compatibilidade: ponto do mundo → pixel de tela relativo ao palco `w`×`h`.
  * Mantido porque testes e a pré-visualização calculam posições por aqui.
  */

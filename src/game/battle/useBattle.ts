@@ -113,6 +113,11 @@ export function useBattle(
     let last = performance.now();
     let raf = 0;
     let acc = 0;
+    let lastDraw = 0;
+    // A cena é grande (terreno, territórios, unidades). Redesenhar a cada quadro do
+    // navegador custa caro e não muda nada visível entre passos do motor: o desenho é
+    // limitado a ~30 Hz, com a suavização do arena compensando o intervalo.
+    const MIN_DRAW_MS = 1000 / 30;
     const loop = (now: number) => {
       const elapsed = Math.min(0.5, (now - last) / 1000);
       last = now;
@@ -160,7 +165,11 @@ export function useBattle(
           }
         }
       }
-      forceRender();
+      const hidden = typeof document !== "undefined" && document.hidden;
+      if (!hidden && now - lastDraw >= MIN_DRAW_MS) {
+        lastDraw = now;
+        forceRender();
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

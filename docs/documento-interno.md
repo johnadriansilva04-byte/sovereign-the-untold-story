@@ -359,6 +359,30 @@ leitura de mundo, embalada como obra de ficção.
   `text-border` (quase invisíveis) e pareciam valores cortados; agora usam
   `text-muted-foreground`.
 
+### Atualização 24/11/2026 (3) — chanceler com nome, blindados de frente e quadro estável
+
+- **Chanceler com identidade** (`src/game/battle/chancellor.ts`): cada país tem uma persona
+  fixa (nome, patente, estilo de comando e biografia curta) e as forças irregulares têm a
+  própria. O cartão do herói deixou de mostrar "País · Chanceler" e passa a mostrar
+  "SEU CHANCELER / DAVI MORAES / METÓDICO" com a bio em duas linhas. A escolha do comando
+  manual ficou mais responsiva (`HERO_DRIVE_GAIN = 1.9`) sem mexer na velocidade de marcha —
+  subir a velocidade base quebrava o equilíbrio da campanha (cap. 22).
+- **Blindados deixaram de andar "de lado"** (`types.ts` + `engine.ts`): a unidade ganhou
+  `heading`, atualizado a cada passo em `advance()`. Veículo e artilharia rebocada
+  (`HULL_MODELS`) agora desenham o casco no rumo real do deslocamento e só a torre gira para
+  o alvo (`mira − rumo`); a infantaria mantém a diagonal isométrica fixa.
+- **Silhueta dos blindados legível** (`BattleArena.tsx`): esteiras com elos e tom próprio
+  (`track`), chapa superior mais clara no casco, torre com anel claro e **cano que sobressai**
+  do casco. O VBTP/veículo blindado lia como "caixa" antes. Escala de desenho revista
+  (tanque 2.0, VBTP 1.85, canhão 1.6) — só apresentação, a simulação não muda.
+- **Quadro mais leve** (`BattleArena.tsx`): terreno, relevo, rio, detalhes, rotas, moldura,
+  zonas e obstáculos viraram `useMemo` (dependem só da arena) e as regiões territoriais são
+  memorizadas pela assinatura de posse. O React parou de remontar centenas de nós a 30 Hz —
+  era o maior custo por quadro e a origem do "travando muito".
+- **Campanha**: baralho da operação mostrado como cartas reais (`CardFace`), decisão de
+  comando com cartões redesenhados (tag colorida + efeitos em linhas "rótulo → valor") e
+  briefing centralizado no palco.
+
 ## 6. Créditos
 
 Desenvolvido por **Variant** — em homenagem à Força Expedicionária Brasileira. A cobra fumou.

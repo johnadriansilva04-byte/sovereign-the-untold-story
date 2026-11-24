@@ -133,8 +133,10 @@ describe("dilema de comando antes da batalha", () => {
     expect(
       screen.getByRole("button", { name: new RegExp(decision.options[0]!.label) }),
     ).toBeInTheDocument();
-    // o resumo traduz o efeito real do motor (doutrina)
-    expect(screen.getByText(/Doutrina: Mobilidade/)).toBeInTheDocument();
+    // o resumo traduz o efeito real do motor (doutrina + modificador), em linhas
+    // "rótulo → valor" em vez de uma lista corrida.
+    expect(screen.getAllByText("Doutrina").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Mobilidade/).length).toBeGreaterThan(0);
   });
 
   it("escolher grava a decisão no perfil e concede o bônus uma única vez", () => {

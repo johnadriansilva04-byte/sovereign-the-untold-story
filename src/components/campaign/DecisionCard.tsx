@@ -8,6 +8,13 @@ const TAG_STYLE: Record<DecisionTag, string> = {
   político: "border-accent-foreground/50 text-accent-foreground",
 };
 
+const TAG_BAR: Record<DecisionTag, string> = {
+  ousado: "bg-destructive",
+  prudente: "bg-fact",
+  técnico: "bg-primary",
+  político: "bg-accent-foreground",
+};
+
 const TAG_LABEL: Record<DecisionTag, string> = {
   ousado: "Ousado",
   prudente: "Prudente",
@@ -57,42 +64,67 @@ export function DecisionCard({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 [@media(max-height:560px)]:grid-cols-2 [@media(max-height:560px)]:gap-1.5">
+      <div className="grid min-h-0 gap-3 sm:grid-cols-2 [@media(max-height:560px)]:grid-cols-2 [@media(max-height:560px)]:gap-1.5">
         {decision.options.map((opt) => {
           const active = selected === opt.id;
           return (
             <button
               key={opt.id}
               onClick={() => onChoose(opt.id)}
+              aria-pressed={active}
               className={cn(
-                "hud-panel hud-corners group flex flex-col items-start gap-3 p-5 text-left transition [@media(max-height:560px)]:gap-0.5 [@media(max-height:560px)]:p-2",
-                active ? "border-primary" : "border-border hover:border-primary/70",
+                "group relative flex min-h-0 flex-1 flex-col overflow-hidden border bg-background/85 p-4 text-left backdrop-blur-sm transition [@media(max-height:560px)]:p-2.5",
+                active
+                  ? "border-primary shadow-brass"
+                  : "border-border hover:border-primary/70 hover:bg-background",
               )}
             >
+              {/* Faixa lateral na cor do tipo de decisão: o jogador lê o tempero antes do texto. */}
               <span
-                className={cn(
-                  "border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
-                  TAG_STYLE[opt.tag],
+                aria-hidden
+                className={cn("absolute inset-y-0 left-0 w-[3px]", TAG_BAR[opt.tag] ?? "bg-border")}
+              />
+              <span className="flex items-center justify-between gap-2 pl-2">
+                <span
+                  className={cn(
+                    "border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
+                    TAG_STYLE[opt.tag],
+                  )}
+                >
+                  {TAG_LABEL[opt.tag]}
+                </span>
+                {active && (
+                  <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary">
+                    Escolhido
+                  </span>
                 )}
-              >
-                {TAG_LABEL[opt.tag]}
               </span>
-              <span className="font-display text-xl font-black uppercase leading-tight [@media(max-height:560px)]:text-sm">
+              <span className="mt-2 pl-2 font-display text-2xl font-black uppercase leading-none [@media(max-height:560px)]:text-lg">
                 {opt.label}
               </span>
-              <span className="font-serif text-sm leading-snug text-foreground/80 [@media(max-height:560px)]:hidden">
+              <span className="mt-1.5 pl-2 font-serif text-sm leading-snug text-foreground/80 [@media(max-height:560px)]:hidden">
                 {opt.text}
               </span>
               <EffectSummary option={opt} />
               <span
                 className={cn(
-                  "mt-1 w-full px-6 py-2.5 text-center font-mono text-xs uppercase tracking-[0.2em] transition [@media(max-height:560px)]:py-1 [@media(max-height:560px)]:text-[11px]",
+                  "mt-auto flex items-center justify-between gap-2 border-t pl-2 pt-2 font-mono text-[11px] uppercase tracking-[0.18em] transition [@media(max-height:560px)]:pt-1 [@media(max-height:560px)]:text-[10px]",
                   active
-                    ? "bg-primary text-primary-foreground"
-                    : "border border-primary/50 text-primary group-hover:bg-primary/10",
+                    ? "border-primary/50 text-primary"
+                    : "border-border/60 text-muted-foreground",
                 )}
               >
-                {active ? "Escolhido" : "Escolher e partir"}
+                {active ? "Decisão tomada" : "Escolher esta opção"}
+                <span
+                  className={cn(
+                    "flex h-6 w-6 shrink-0 items-center justify-center border text-[12px] transition",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-primary/50 text-primary group-hover:bg-primary group-hover:text-primary-foreground",
+                  )}
+                >
+                  →
+                </span>
               </span>
             </button>
           );
@@ -111,37 +143,41 @@ export function DecisionCard({
   );
 }
 
-// Traduz o efeito do motor para o jogador: doutrina e modificadores reais.
+// Traduz o efeito do motor para o jogador: doutrina e modificadores reais, em linhas
+// de "rótulo → valor" para a leitura ser imediata em vez de uma lista corrida.
 function EffectSummary({ option }: { option: Decision["options"][number] }) {
-  const lines: string[] = [];
+  const rows: { label: string; value: string }[] = [];
   const { doctrine, mods, research, sovereigns } = option.effect;
-  if (doctrine) lines.push(`Doutrina: ${doctrine}`);
+  if (doctrine) rows.push({ label: "Doutrina", value: doctrine });
   const cat: Record<string, string> = {
-    infantaria: "infantaria",
-    blindado: "blindados",
-    artilharia: "artilharia",
-    defesa: "defesa",
-    reconhecimento: "reconhecimento",
-    apoio: "apoio",
+    infantaria: "Infantaria",
+    blindado: "Blindados",
+    artilharia: "Artilharia",
+    defesa: "Defesa",
+    reconhecimento: "Reconhecimento",
+    apoio: "Apoio",
   };
   const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
   for (const [k, v] of Object.entries(mods?.hp ?? {}))
-    lines.push(`${cat[k] ?? k}: ${pct(v)} de vida`);
+    rows.push({ label: `${cat[k] ?? k} · vida`, value: pct(v) });
   for (const [k, v] of Object.entries(mods?.dmg ?? {}))
-    lines.push(`${cat[k] ?? k}: ${pct(v)} de dano`);
+    rows.push({ label: `${cat[k] ?? k} · dano`, value: pct(v) });
   for (const [k, v] of Object.entries(mods?.speed ?? {}))
-    lines.push(`${cat[k] ?? k}: ${pct(v)} de velocidade`);
-  if (mods?.capture) lines.push(`Captura de território: ${pct(mods.capture)}`);
-  if (mods?.sight) lines.push(`Visão: ${pct(mods.sight)}`);
-  if (mods?.commandMax) lines.push(`Energia máxima: +${mods.commandMax}`);
-  if (research) lines.push(`+${research} pesquisa`);
-  if (sovereigns) lines.push(`+${sovereigns} Sovereigns`);
-  if (!lines.length) return null;
+    rows.push({ label: `${cat[k] ?? k} · velocidade`, value: pct(v) });
+  if (mods?.capture) rows.push({ label: "Captura de território", value: pct(mods.capture) });
+  if (mods?.sight) rows.push({ label: "Visão", value: pct(mods.sight) });
+  if (mods?.commandMax) rows.push({ label: "Energia máxima", value: `+${mods.commandMax}` });
+  if (research) rows.push({ label: "Pesquisa", value: `+${research}` });
+  if (sovereigns) rows.push({ label: "Sovereigns", value: `+${sovereigns}` });
+  if (!rows.length) return null;
   return (
-    <ul className="w-full space-y-0.5 border-t border-border/60 pt-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-      {lines.map((l) => (
-        <li key={l}>{l}</li>
+    <dl className="mt-2 w-full space-y-0.5 border-t border-border/60 pl-2 pt-2 font-mono text-[10px] uppercase tracking-wider">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-baseline justify-between gap-2">
+          <dt className="text-muted-foreground">{r.label}</dt>
+          <dd className="text-right font-bold text-fact">{r.value}</dd>
+        </div>
       ))}
-    </ul>
+    </dl>
   );
 }

@@ -21,6 +21,7 @@ import {
   militaryById,
   unitsPerDeploy,
 } from "./catalog";
+import { chancellorPersona } from "./chancellor";
 import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
@@ -363,6 +364,7 @@ function completeCapture(state: BattleState, side: Side, target: BattleUnit): vo
     order: "avancar",
     groupId: `car${state.nextId}`,
     aim: HOME_AIM[side],
+    heading: HOME_AIM[side],
     recoil: 0,
     alive: true,
     engaged: false,
@@ -544,8 +546,9 @@ function spawnChancellor(
   initial: HeroStatus["state"] = "livre",
 ): BattleUnit {
   const cfg = side === "blue" ? state.blue : state.red;
+  const persona = chancellorPersona(cfg.countryId, cfg.countryName);
   const u = spawnUnit(state, side, HERO_CARD, x, y, {
-    name: `${cfg.countryName} · Chanceler`,
+    name: persona.name,
     groupId: `hero-${side}`,
   });
   u.hero = true;
@@ -553,7 +556,7 @@ function spawnChancellor(
   u.order = "manter";
   cfg.units.push(u);
   state.heroes[side] = { state: initial, unitId: u.id };
-  pushLog(state, side, "evento", `Chanceler ${cfg.countryName} entrou em campo.`);
+  pushLog(state, side, "evento", `${persona.name} entrou em campo.`);
   return u;
 }
 
@@ -1541,6 +1544,7 @@ function spawnUnit(
     groupId: opts.groupId ?? `g${state.nextId}`,
     ...(opts.groupLabel ? { groupLabel: opts.groupLabel } : {}),
     aim: HOME_AIM[side],
+    heading: HOME_AIM[side],
     recoil: 0,
     alive: true,
     engaged: false,
@@ -3529,13 +3533,17 @@ function stickyPoint(
 
 // Comando em tempo real do chanceler: converte o vetor (driveX, driveY) em deslocamento
 // do passo. Reaproveita `moveToward`, então o herói contorna obstáculo e nunca sai do
-// mundo. Um pequeno "ponto à frente" dá a direção; a velocidade é a da própria unidade.
+// mundo. Um pequeno "ponto à frente" dá a direção; a velocidade é a da própria unidade,
+// multiplicada pelo ganho de comando manual — nas mãos do jogador o chanceler responde
+// rápido, enquanto a marcha automática segue o ritmo da tropa (e o equilíbrio do cenário).
+export const HERO_DRIVE_GAIN = 1.9;
+
 function applyDrive(state: BattleState, u: BattleUnit, dt: number, slow: number): void {
   const dx = u.driveX ?? 0;
   const dy = u.driveY ?? 0;
   const len = Math.hypot(dx, dy);
   if (len < 0.01) return;
-  moveToward(state, u, u.x + (dx / len) * 12, u.y + (dy / len) * 12, dt, slow);
+  moveToward(state, u, u.x + (dx / len) * 12, u.y + (dy / len) * 12, dt, slow, HERO_DRIVE_GAIN);
 }
 
 // Vira a mira em direção a (tx, ty) a uma taxa LIMITADA. Evita o "giro no lugar":
@@ -3550,6 +3558,17 @@ function turnAim(u: BattleUnit, tx: number, ty: number, dt: number): void {
   u.aim += Math.max(-max, Math.min(max, diff));
 }
 
+/** Aplica deslocamento e memoriza o rumo real do casco (usado só pelo desenho). */
+function advance(u: BattleUnit, dx: number, dy: number): void {
+  const nx = clamp(u.x + dx, WORLD_X_MIN, WORLD_X_MAX);
+  const ny = clamp(u.y + dy, WORLD_Y_MIN, WORLD_Y_MAX);
+  if (Math.abs(nx - u.x) + Math.abs(ny - u.y) > 1e-4) {
+    u.heading = Math.atan2(ny - u.y, nx - u.x);
+  }
+  u.x = nx;
+  u.y = ny;
+}
+
 function moveToward(
   state: BattleState,
   u: BattleUnit,
@@ -3557,6 +3576,7 @@ function moveToward(
   ty: number,
   dt: number,
   slow: number,
+  gain = 1,
 ): void {
   const dx = tx - u.x;
   const dy = ty - u.y;
@@ -3571,9 +3591,8 @@ function moveToward(
     const nx = (dx / d) * 0.35 + perp.x * s;
     const ny = (dy / d) * 0.35 + perp.y * s;
     const nl = Math.hypot(nx, ny) || 1;
-    const step = u.speed * slow * dt;
-    u.x = clamp(u.x + (nx / nl) * step, WORLD_X_MIN, WORLD_X_MAX);
-    u.y = clamp(u.y + (ny / nl) * step, WORLD_Y_MIN, WORLD_Y_MAX);
+    const step = u.speed * gain * slow * dt;
+    advance(u, (nx / nl) * step, (ny / nl) * step);
     return;
   }
   if (u.domain === "terra") {
@@ -3588,14 +3607,12 @@ function moveToward(
       const s =
         u.stallSign ?? (Math.sign(perp.x * (blocked.x - u.x) + perp.y * (blocked.y - u.y)) || 1);
       u.stallSign = s;
-      u.x = clamp(u.x + perp.x * u.speed * slow * dt * s, WORLD_X_MIN, WORLD_X_MAX);
-      u.y = clamp(u.y + perp.y * u.speed * slow * dt * s, WORLD_Y_MIN, WORLD_Y_MAX);
+      advance(u, perp.x * u.speed * gain * slow * dt * s, perp.y * u.speed * gain * slow * dt * s);
       return;
     }
   }
-  const step = u.speed * slow * dt;
-  u.x = clamp(u.x + (dx / d) * step, WORLD_X_MIN, WORLD_X_MAX);
-  u.y = clamp(u.y + (dy / d) * step, WORLD_Y_MIN, WORLD_Y_MAX);
+  const step = u.speed * gain * slow * dt;
+  advance(u, (dx / d) * step, (dy / d) * step);
 }
 
 function combinedArmsMultiplier(state: BattleState, u: BattleUnit): number {

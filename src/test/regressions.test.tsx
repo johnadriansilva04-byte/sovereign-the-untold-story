@@ -55,7 +55,7 @@ describe("fluxo da campanha", () => {
 
     // overview → dilema → briefing → batalha → veredito → livro
     fireEvent.click(screen.getByText(/Tomar a decisão|Iniciar operação/));
-    fireEvent.click(screen.getAllByText(/Escolher e partir/)[0]!);
+    fireEvent.click(screen.getAllByText(/Escolher esta opção/)[0]!);
     fireEvent.click(screen.getByText(/^Iniciar operação$/));
     await settle();
     const advance = screen.queryByText(/^Continuar$/) ?? screen.queryByText(/^Coletar$/);
@@ -70,7 +70,7 @@ describe("fluxo da campanha", () => {
 
     // O próximo capítulo tem dilema pendente: a tela de decisão aparece UMA vez (com
     // duas opções) e o briefing de cartas NÃO pode surgir por baixo dela.
-    expect(screen.getAllByText(/Escolher e partir/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Escolher esta opção/).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText(/Cartas desta operação/)).not.toBeInTheDocument();
   });
 });

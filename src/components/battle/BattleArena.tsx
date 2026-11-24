@@ -15,6 +15,7 @@ import {
   cameraFor,
   cameraMatrix3d,
   cameraScale,
+  standMatrix,
   stageToWorld,
   uprightText,
   FIELD_H,
@@ -570,6 +571,222 @@ export function BattleArena({
     : null;
   const ghostValid = Boolean(originId);
 
+  // CAMADAS ESTÁTICAS: terreno, relevo, rio, detalhes, rotas, moldura, zonas e obstáculos
+  // só mudam com a ARENA. Memorizadas, o React para de remontar centenas de nós a cada
+  // quadro — era o maior custo de CPU por frame no teatro de operações.
+  const groundLayer = useMemo(
+    () => (
+      <>
+        {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria.
+          Estende ALÉM do campo para cobrir as folgas que a inclinação expõe: a mesa
+          vai de fora a fora da tela, sem "buracos" no fundo. */}
+        <rect
+          x={-GROUND_PAD}
+          y={-GROUND_PAD}
+          width={WORLD_W + GROUND_PAD * 2}
+          height={WORLD_H + GROUND_PAD * 2}
+          fill={ground.base}
+        />
+        {/* Iluminação da mesa: quente a noroeste, sombra a sudeste. */}
+        <rect
+          x={-GROUND_PAD}
+          y={-GROUND_PAD}
+          width={WORLD_W + GROUND_PAD * 2}
+          height={WORLD_H + GROUND_PAD * 2}
+          fill="url(#fieldLight)"
+          pointerEvents="none"
+        />
+        {/* BEIRADA: faixa de borda fora da área de manobra (bases nunca encostam na parede) */}
+        <rect
+          x={FIELD_MARGIN_X}
+          y={FIELD_MARGIN_Y}
+          width={FIELD_W}
+          height={FIELD_H}
+          fill={ground.accent}
+          opacity="0.5"
+        />
+        <rect
+          x={FIELD_MARGIN_X}
+          y={FIELD_MARGIN_Y}
+          width={FIELD_W}
+          height={FIELD_H}
+          fill="none"
+          stroke="oklch(0 0 0 / 0.35)"
+          strokeWidth="0.6"
+        />
+        {/* Manchas de solo: variam a superfície sem virar grade artificial */}
+        <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />
+        <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
+        <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
+
+        {/* RELEVO do terreno (montanha/floresta/campo): sombra + realce deslocados
+          na direção da luz, com curvas de nível nas elevações. */}
+        <g pointerEvents="none">
+          {terrainRelief(arena.terrain).map((r, i) => (
+            <g key={`relief${i}`} transform={`translate(${r.x} ${r.y}) rotate(${r.rot})`}>
+              <ellipse
+                rx={r.rx}
+                ry={r.ry}
+                fill="oklch(0 0 0 / 0.14)"
+                transform="translate(1.8 2.6)"
+                opacity={r.strength * 0.55}
+              />
+              <ellipse
+                rx={r.rx}
+                ry={r.ry}
+                fill="oklch(1 0 0 / 0.045)"
+                transform="translate(-1.2 -1.6)"
+                opacity={r.strength}
+              />
+              {arena.terrain === "Montanha" && (
+                <ellipse
+                  rx={r.rx * 0.6}
+                  ry={r.ry * 0.6}
+                  fill="none"
+                  stroke="oklch(0 0 0 / 0.16)"
+                  strokeWidth="0.28"
+                />
+              )}
+            </g>
+          ))}
+        </g>
+
+        {/* Rio (travessia): atravessa o teatro por baixo das rotas e territórios. */}
+        <RiverGlyph terrain={arena.terrain} />
+
+        {/* Detalhes de solo: tufos, pedras e arbustos — identidade de território */}
+        <g>
+          {terrainDetails(arena.terrain).map((d, i) => (
+            <TerrainDetailGlyph key={`td${i}`} detail={d} ground={ground} />
+          ))}
+        </g>
+
+        {/* Caminhos de terra ligando os territórios: dão rotas visíveis de avanço */}
+        <g stroke={ground.path} strokeLinecap="round" fill="none">
+          {arena.routes.map((r, i) => (
+            <line
+              key={`path-bg${i}`}
+              x1={r.from[0]}
+              y1={r.from[1]}
+              x2={r.to[0]}
+              y2={r.to[1]}
+              strokeWidth="2.6"
+              opacity="0.35"
+            />
+          ))}
+          {arena.routes.map((r, i) => (
+            <line
+              key={`path-fg${i}`}
+              x1={r.from[0]}
+              y1={r.from[1]}
+              x2={r.to[0]}
+              y2={r.to[1]}
+              strokeWidth="1.1"
+              opacity="0.5"
+            />
+          ))}
+        </g>
+
+        {/* TINTO DE INFLUÊNCIA: radial nos cantos (noroeste aliado, sudeste inimigo).
+          O centro do teatro fica neutro, então o campo lê como território disputado
+          e não como duas metades pintadas. */}
+        <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#allyZone)" />
+        <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#enemyZone)" />
+        <rect
+          x="0"
+          y="0"
+          width={WORLD_W}
+          height={WORLD_H}
+          fill="url(#fieldVignette)"
+          pointerEvents="none"
+        />
+
+        {/* Moldura do tabuleiro: a "linha de fora a fora" que fecha o mapa (como o
+          contorno de um mapa-múndi). Dupla: brilho interno + traço escuro externo. */}
+        <rect
+          x="0.9"
+          y="0.9"
+          width={WORLD_W - 1.8}
+          height={WORLD_H - 1.8}
+          fill="none"
+          stroke="oklch(1 0 0 / 0.28)"
+          strokeWidth="0.7"
+        />
+        <rect
+          x="2"
+          y="2"
+          width={WORLD_W - 4}
+          height={WORLD_H - 4}
+          fill="none"
+          stroke="oklch(0 0 0 / 0.25)"
+          strokeWidth="0.3"
+        />
+
+        {/* Linha divisória das metades (diagonal noroeste↔sudeste, perpendicular à
+          linha que liga as duas bases) */}
+        <line
+          x1={WORLD_W}
+          y1="0"
+          x2="0"
+          y2={WORLD_H}
+          stroke="oklch(0 0 0 / 0.22)"
+          strokeWidth="0.35"
+          strokeDasharray="2 2"
+        />
+        <line
+          x1={WORLD_W - 0.4}
+          y1="0"
+          x2={-0.4}
+          y2={WORLD_H}
+          stroke="oklch(1 0 0 / 0.1)"
+          strokeWidth="0.25"
+          strokeDasharray="2 2"
+        />
+
+        {/* Zonas de desdobramento */}
+        {(["red", "blue"] as Side[]).map((s) => {
+          const z = arena.deployZone[s];
+          const active = operationActive && s === ally;
+          return (
+            <rect
+              key={s}
+              x={z.x}
+              y={z.y}
+              width={z.w}
+              height={z.h}
+              fill={active ? sideColor(s) : "none"}
+              fillOpacity={active ? 0.12 : 0}
+              stroke={sideColor(s)}
+              strokeOpacity={active ? 0.75 : 0.3}
+              strokeDasharray="1.5 1.5"
+              strokeWidth={active ? 0.5 : 0.3}
+            />
+          );
+        })}
+
+        {/* Obstáculos */}
+        {arena.obstacles.map((o) => (
+          <ObstacleGlyph key={o.id} o={o} />
+        ))}
+      </>
+    ),
+    // A geometria depende apenas da arena montada.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [arena],
+  );
+
+  // REGIÕES: a geometria é fixa e só o DONO muda. Memorizar evita redesenhar dezenas de
+  // polígonos a cada quadro; a chave é a assinatura de posse.
+  const territoryKey = state.territories.map((t) => t.owner ?? "-").join("|");
+  const regionLayer = useMemo(
+    () =>
+      state.territories.map((t, i) => (
+        <TerritoryGlyph key={t.id} territory={t} region={regionPolys[i] ?? []} cam={cam} />
+      )),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [territoryKey, regionPolys, cam],
+  );
+
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* Fundo do "teatro de operações": preenche os cantos que a inclinação da
@@ -683,203 +900,11 @@ export function BattleArena({
               fill="oklch(0.06 0.008 80)"
               opacity="0.9"
             />
-            {/* Terreno base — cor terrosa por terreno, para cada fase ter cara própria.
-                Estende ALÉM do campo para cobrir as folgas que a inclinação expõe: a mesa
-                vai de fora a fora da tela, sem "buracos" no fundo. */}
-            <rect
-              x={-GROUND_PAD}
-              y={-GROUND_PAD}
-              width={WORLD_W + GROUND_PAD * 2}
-              height={WORLD_H + GROUND_PAD * 2}
-              fill={ground.base}
-            />
-            {/* Iluminação da mesa: quente a noroeste, sombra a sudeste. */}
-            <rect
-              x={-GROUND_PAD}
-              y={-GROUND_PAD}
-              width={WORLD_W + GROUND_PAD * 2}
-              height={WORLD_H + GROUND_PAD * 2}
-              fill="url(#fieldLight)"
-              pointerEvents="none"
-            />
-            {/* BEIRADA: faixa de borda fora da área de manobra (bases nunca encostam na parede) */}
-            <rect
-              x={FIELD_MARGIN_X}
-              y={FIELD_MARGIN_Y}
-              width={FIELD_W}
-              height={FIELD_H}
-              fill={ground.accent}
-              opacity="0.5"
-            />
-            <rect
-              x={FIELD_MARGIN_X}
-              y={FIELD_MARGIN_Y}
-              width={FIELD_W}
-              height={FIELD_H}
-              fill="none"
-              stroke="oklch(0 0 0 / 0.35)"
-              strokeWidth="0.6"
-            />
-            {/* Manchas de solo: variam a superfície sem virar grade artificial */}
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
-
-            {/* RELEVO do terreno (montanha/floresta/campo): sombra + realce deslocados
-                na direção da luz, com curvas de nível nas elevações. */}
-            <g pointerEvents="none">
-              {terrainRelief(arena.terrain).map((r, i) => (
-                <g key={`relief${i}`} transform={`translate(${r.x} ${r.y}) rotate(${r.rot})`}>
-                  <ellipse
-                    rx={r.rx}
-                    ry={r.ry}
-                    fill="oklch(0 0 0 / 0.14)"
-                    transform="translate(1.8 2.6)"
-                    opacity={r.strength * 0.55}
-                  />
-                  <ellipse
-                    rx={r.rx}
-                    ry={r.ry}
-                    fill="oklch(1 0 0 / 0.045)"
-                    transform="translate(-1.2 -1.6)"
-                    opacity={r.strength}
-                  />
-                  {arena.terrain === "Montanha" && (
-                    <ellipse
-                      rx={r.rx * 0.6}
-                      ry={r.ry * 0.6}
-                      fill="none"
-                      stroke="oklch(0 0 0 / 0.16)"
-                      strokeWidth="0.28"
-                    />
-                  )}
-                </g>
-              ))}
-            </g>
-
-            {/* Rio (travessia): atravessa o teatro por baixo das rotas e territórios. */}
-            <RiverGlyph terrain={arena.terrain} />
-
-            {/* Detalhes de solo: tufos, pedras e arbustos — identidade de território */}
-            <g>
-              {terrainDetails(arena.terrain).map((d, i) => (
-                <TerrainDetailGlyph key={`td${i}`} detail={d} ground={ground} />
-              ))}
-            </g>
-
-            {/* Caminhos de terra ligando os territórios: dão rotas visíveis de avanço */}
-            <g stroke={ground.path} strokeLinecap="round" fill="none">
-              {arena.routes.map((r, i) => (
-                <line
-                  key={`path-bg${i}`}
-                  x1={r.from[0]}
-                  y1={r.from[1]}
-                  x2={r.to[0]}
-                  y2={r.to[1]}
-                  strokeWidth="2.6"
-                  opacity="0.35"
-                />
-              ))}
-              {arena.routes.map((r, i) => (
-                <line
-                  key={`path-fg${i}`}
-                  x1={r.from[0]}
-                  y1={r.from[1]}
-                  x2={r.to[0]}
-                  y2={r.to[1]}
-                  strokeWidth="1.1"
-                  opacity="0.5"
-                />
-              ))}
-            </g>
-
-            {/* TINTO DE INFLUÊNCIA: radial nos cantos (noroeste aliado, sudeste inimigo).
-                O centro do teatro fica neutro, então o campo lê como território disputado
-                e não como duas metades pintadas. */}
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#allyZone)" />
-            <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#enemyZone)" />
-            <rect
-              x="0"
-              y="0"
-              width={WORLD_W}
-              height={WORLD_H}
-              fill="url(#fieldVignette)"
-              pointerEvents="none"
-            />
-
-            {/* Moldura do tabuleiro: a "linha de fora a fora" que fecha o mapa (como o
-                contorno de um mapa-múndi). Dupla: brilho interno + traço escuro externo. */}
-            <rect
-              x="0.9"
-              y="0.9"
-              width={WORLD_W - 1.8}
-              height={WORLD_H - 1.8}
-              fill="none"
-              stroke="oklch(1 0 0 / 0.28)"
-              strokeWidth="0.7"
-            />
-            <rect
-              x="2"
-              y="2"
-              width={WORLD_W - 4}
-              height={WORLD_H - 4}
-              fill="none"
-              stroke="oklch(0 0 0 / 0.25)"
-              strokeWidth="0.3"
-            />
-
-            {/* Linha divisória das metades (diagonal noroeste↔sudeste, perpendicular à
-                linha que liga as duas bases) */}
-            <line
-              x1={WORLD_W}
-              y1="0"
-              x2="0"
-              y2={WORLD_H}
-              stroke="oklch(0 0 0 / 0.22)"
-              strokeWidth="0.35"
-              strokeDasharray="2 2"
-            />
-            <line
-              x1={WORLD_W - 0.4}
-              y1="0"
-              x2={-0.4}
-              y2={WORLD_H}
-              stroke="oklch(1 0 0 / 0.1)"
-              strokeWidth="0.25"
-              strokeDasharray="2 2"
-            />
-
-            {/* Zonas de desdobramento */}
-            {(["red", "blue"] as Side[]).map((s) => {
-              const z = arena.deployZone[s];
-              const active = operationActive && s === ally;
-              return (
-                <rect
-                  key={s}
-                  x={z.x}
-                  y={z.y}
-                  width={z.w}
-                  height={z.h}
-                  fill={active ? sideColor(s) : "none"}
-                  fillOpacity={active ? 0.12 : 0}
-                  stroke={sideColor(s)}
-                  strokeOpacity={active ? 0.75 : 0.3}
-                  strokeDasharray="1.5 1.5"
-                  strokeWidth={active ? 0.5 : 0.3}
-                />
-              );
-            })}
-
-            {/* Obstáculos */}
-            {arena.obstacles.map((o) => (
-              <ObstacleGlyph key={o.id} o={o} />
-            ))}
+            {groundLayer}
 
             {/* REGIÕES TERRITORIAIS: o campo inteiro particionado em áreas completas
                 (um polígono por ponto de expansão). Conquistar pinta a área toda. */}
-            {state.territories.map((t, i) => (
-              <TerritoryGlyph key={t.id} territory={t} region={regionPolys[i] ?? []} cam={cam} />
-            ))}
+            {regionLayer}
 
             {/* Pontos de controle. Quando o ponto nasce junto de uma BASE NEUTRA (norte
                 e sul), o nome do setor some: a base já nomeia a área e os dois rótulos
@@ -2203,14 +2228,21 @@ function UnitGlyph({
   // jogador enxergar a diferença entre fuzileiro, tanque e drone à primeira vista.
   const scale = MODEL_SCALE[unit.model] ?? 1;
   const r = unit.radius * scale;
-  // Corpo na diagonal FIXA (leitura isométrica). As peças com TORRE (canhão, tanque,
-  // lançador…) recebem um giro LOCAL = mira − base, então a torre segue o alvo enquanto
-  // o casco permanece na diagonal. Ambos os ângulos no espaço de tela.
-  // Compensa o giro da câmera para o casco manter SEMPRE a mesma diagonal na tela
-  // (isométrica), em qualquer aparelho, e a torre continuar mirando o alvo.
+  // ORIENTAÇÃO: blindado e artilharia rebocada andam de frente para onde vão — o casco
+  // segue o rumo e só a torre gira para o alvo (sem isso o tanque atravessava o mapa
+  // "de lado", torto, o que lia como erro de desenho). A infantaria mantém a diagonal
+  // isométrica fixa, que é como um soldado em campo é lido.
+  // Ângulos em graus de TELA: o mundo gira com a câmera, então o rumo do casco vira
+  // (rumo − giro da câmera) e a torre fica relativa ao casco (mira − rumo).
   const camRot = cam?.rotateDeg ?? 0;
-  const bodyDeg = UNIT_DIAGONAL_SCREEN_DEG - camRot;
-  const turretDeg = TURRET_MODELS.has(unit.model) ? (unit.aim * 180) / Math.PI - bodyDeg : 0;
+  const hull = HULL_MODELS.has(unit.model);
+  const headingDeg =
+    hull && unit.heading !== undefined
+      ? (unit.heading * 180) / Math.PI - camRot
+      : UNIT_DIAGONAL_SCREEN_DEG;
+  const turretDeg = TURRET_MODELS.has(unit.model)
+    ? (unit.aim * 180) / Math.PI - (hull ? headingDeg + camRot : camRot + UNIT_DIAGONAL_SCREEN_DEG)
+    : 0;
   // Chão marcado pela guerra: os veículos de esteira deixam rastro e os feridos
   // sangram no solo. Tudo é decal determinístico (deriva do id da unidade), então não
   // treme a cada quadro e não polui a leitura do campo.
@@ -2307,7 +2339,7 @@ function UnitGlyph({
           opacity={0.85}
         />
       )}
-      <g transform={`translate(${unit.x} ${y}) rotate(${bodyDeg}) scale(${scale})`}>
+      <g transform={`translate(${unit.x} ${y}) ${standMatrix(cam, headingDeg)} scale(${scale})`}>
         {unitModel(unit.model, unitBodyColor(unit.side), selected, turretDeg)}
       </g>
       {unit.smoke > 0 && (
@@ -2421,13 +2453,13 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
   sniper: 2.2,
   morteiro: 1.8,
   engenheiro: 2.2,
-  canhao: 1.4,
-  "artilharia-pesada": 1.35,
+  canhao: 1.6,
+  "artilharia-pesada": 1.55,
   lmf: 1.35,
   "lancador-missil": 1.4,
-  tanque: 1.7,
-  vbld: 1.7,
-  "caca-tanques": 1.7,
+  tanque: 2.0,
+  vbld: 1.85,
+  "caca-tanques": 2.0,
   comboio: 1.8,
   "carro-prisao": 1.75,
   "drone-recon": 1.5,
@@ -2445,6 +2477,24 @@ const MODEL_SCALE: Record<BattleUnit["model"], number> = {
 // O ângulo é definido no ESPAÇO DE TELA; o giro local desfaz a rotação da câmera para a
 // diagonal sair igual em qualquer aparelho.
 const UNIT_DIAGONAL_SCREEN_DEG = -45;
+
+// Elos das esteiras: posições fixas ao longo do casco do blindado.
+const TRACK_LINKS = [-2.1, -1.3, -0.5, 0.3, 1.1, 1.9];
+
+// Modelos com CASCO: veículo/peça rebocada que se desloca de frente e por isso gira com
+// o próprio rumo em vez de manter a diagonal fixa da infantaria.
+const HULL_MODELS = new Set<BattleUnit["model"]>([
+  "tanque",
+  "vbld",
+  "caca-tanques",
+  "canhao",
+  "artilharia-pesada",
+  "lmf",
+  "lancador-missil",
+  "comboio",
+  "carro-prisao",
+  "aa",
+]);
 
 // Modelos com TORRE/cano orientável: o casco fica na diagonal fixa e só a peça superior
 // gira para o alvo (giro local = mira − base). São as peças de tiro direto que precisam
@@ -2518,6 +2568,9 @@ function unitModel(
   // Tons neutros para armas/cano e detalhes — evita o visual "neon" das cores de equipe.
   const dark = "oklch(0.17 0.008 90)";
   const steel = "oklch(0.32 0.008 90)";
+  // Esteira: tom próprio (nem preto do contorno, nem cor de equipe) para o blindado
+  // manter leitura de "veículo" mesmo a distância.
+  const track = "oklch(0.24 0.01 90)";
   // Corpo humano visto de cima (nariz para +x): pernas, torso, braços e capacete.
   // A arma entra como parâmetro para cada especialidade manter silhueta própria.
   const soldier = (weapon: ReactNode, opts: { bulky?: boolean; helmet?: string } = {}) =>
@@ -2690,19 +2743,39 @@ function unitModel(
     case "tanque":
       return body(
         <>
-          {/* esteiras */}
-          <rect x="-2.4" y="-1.75" width="4.6" height="0.62" rx="0.12" fill={dark} />
-          <rect x="-2.4" y="1.13" width="4.6" height="0.62" rx="0.12" fill={dark} />
-          {/* casco */}
-          <rect x="-2.35" y="-1.2" width="4.5" height="2.4" rx="0.28" fill={color} />
-          <path d="M2.15 -1.2 L2.9 0 L2.15 1.2 Z" fill={color} />
+          {/* esteiras com elos: sem eles o blindado lia como uma "caixa" marrom */}
+          <rect
+            x="-2.55"
+            y="-1.85"
+            width="4.95"
+            height="0.7"
+            rx="0.14"
+            fill={track}
+            stroke="none"
+          />
+          <rect x="-2.55" y="1.15" width="4.95" height="0.7" rx="0.14" fill={track} stroke="none" />
+          {TRACK_LINKS.map((x) => (
+            <g key={x} fill={steel} stroke="none" opacity={0.7}>
+              <rect x={x} y="-1.72" width="0.34" height="0.44" rx="0.06" />
+              <rect x={x} y="1.28" width="0.34" height="0.44" rx="0.06" />
+            </g>
+          ))}
+          {/* casco chanfrado + chapa superior clara (volume, não silhueta chapada) */}
+          <path d="M-2.45 -1.15 L2.05 -1.15 L2.9 0 L2.05 1.15 L-2.45 1.15 Z" fill={color} />
+          <path
+            d="M-1.95 -0.75 L1.45 -0.75 L1.95 0 L1.45 0.75 L-1.95 0.75 Z"
+            fill={steel}
+            opacity={0.22}
+            stroke="none"
+          />
           {/* torre + canhão (gira para o alvo) */}
           {turret(
             <>
-              <circle cx="-0.1" cy="0" r="1.05" fill={steel} />
-              <circle cx="-0.1" cy="0" r="0.66" fill={color} />
-              <rect x="0.7" y="-0.26" width="3.7" height="0.52" rx="0.1" fill={dark} />
-              <rect x="4.15" y="-0.4" width="0.5" height="0.8" rx="0.1" fill={steel} />
+              <circle cx="-0.15" cy="0" r="1.15" fill={steel} />
+              <circle cx="-0.15" cy="0" r="0.78" fill={color} />
+              <circle cx="-0.4" cy="-0.34" r="0.26" fill="oklch(1 0 0 / 0.16)" stroke="none" />
+              <rect x="0.85" y="-0.29" width="3.35" height="0.58" rx="0.12" fill={steel} />
+              <rect x="4.0" y="-0.44" width="0.62" height="0.88" rx="0.1" fill={dark} />
             </>,
           )}
         </>,
@@ -2710,12 +2783,22 @@ function unitModel(
     case "vbld":
       return body(
         <>
-          <rect x="-2.3" y="-1.55" width="4.4" height="0.55" rx="0.1" fill={dark} />
-          <rect x="-2.3" y="1" width="4.4" height="0.55" rx="0.1" fill={dark} />
-          <path d="M-2.1 -1.25 L1.7 -1.25 L2.6 0 L1.7 1.25 L-2.1 1.25 Z" fill={color} />
-          <circle cx="-0.1" cy="0" r="0.72" fill={steel} />
-          <circle cx="-0.1" cy="0" r="0.36" fill={dark} />
-          <rect x="1.1" y="-0.16" width="1.7" height="0.32" rx="0.08" fill={dark} />
+          <rect x="-2.35" y="-1.6" width="4.5" height="0.6" rx="0.12" fill={track} stroke="none" />
+          <rect x="-2.35" y="1" width="4.5" height="0.6" rx="0.12" fill={track} stroke="none" />
+          <path d="M-2.15 -1.2 L1.55 -1.2 L2.55 0 L1.55 1.2 L-2.15 1.2 Z" fill={color} />
+          <path
+            d="M-1.75 -0.75 L1.15 -0.75 L1.75 0 L1.15 0.75 L-1.75 0.75 Z"
+            fill={steel}
+            opacity={0.2}
+            stroke="none"
+          />
+          {/* torre pequena: anel claro por fora, interior escuro (leitura de "torre") */}
+          <circle cx="-0.3" cy="0" r="0.8" fill={steel} />
+          <circle cx="-0.3" cy="0" r="0.4" fill={dark} />
+          <circle cx="-0.5" cy="-0.22" r="0.16" fill="oklch(1 0 0 / 0.18)" stroke="none" />
+          {/* o cano precisa SOBRESSair do casco: dentro dele o veículo lia como "caixa" */}
+          <rect x="0.35" y="-0.18" width="3.1" height="0.36" rx="0.09" fill={steel} />
+          <rect x="3.3" y="-0.28" width="0.34" height="0.56" rx="0.07" fill={dark} />
         </>,
       );
     // COMBOIO DE CARGA: caminhão de transporte com contêiner, NÃO combate nem anda.

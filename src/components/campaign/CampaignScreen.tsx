@@ -44,6 +44,15 @@ const CATEGORY_TONE: Record<string, string> = {
   apoio: "border-fiction text-fiction",
 };
 
+const CATEGORY_BAR: Record<string, string> = {
+  infantaria: "bg-fact",
+  blindado: "bg-primary",
+  artilharia: "bg-doc",
+  defesa: "bg-ally",
+  reconhecimento: "bg-ai",
+  apoio: "bg-fiction",
+};
+
 type View =
   | { kind: "overview" }
   | { kind: "collection" }
@@ -825,7 +834,7 @@ function CampaignBriefing({
   return (
     <>
       <CampaignBackdrop />
-      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-2 overflow-hidden px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col justify-center gap-2 overflow-hidden px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-2 [@media(max-height:560px)]:pb-1.5">
           <div className="min-w-0">
             <p className="label-mono text-primary">
@@ -852,8 +861,8 @@ function CampaignBriefing({
           </p>
         )}
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3 [@media(max-height:560px)]:gap-1.5">
-          <section className="hud-panel hud-corners flex min-h-0 flex-col p-3 lg:self-start [@media(max-height:560px)]:p-2">
+        <div className="flex min-h-0 flex-col gap-2 lg:flex-row lg:gap-3 [@media(max-height:560px)]:gap-1.5">
+          <section className="hud-panel hud-corners flex min-h-0 shrink-0 flex-col p-3 lg:self-start [@media(max-height:560px)]:p-2">
             <div className="flex shrink-0 items-center justify-between">
               <p className="label-mono">Cartas desta operação</p>
               <span
@@ -862,7 +871,7 @@ function CampaignBriefing({
                 {deck.length}/8
               </span>
             </div>
-            <div className="mt-2 grid min-h-0 grid-cols-3 content-start gap-1.5 overflow-y-auto pr-1 sm:grid-cols-4">
+            <div className="mt-2 grid min-h-0 grid-cols-3 content-start gap-2 sm:grid-cols-4 xl:grid-cols-5">
               {owned.map((id) => {
                 const card = cardById(id);
                 const on = deck.includes(id);
@@ -870,27 +879,58 @@ function CampaignBriefing({
                   <button
                     key={id}
                     onClick={() => toggle(id)}
+                    aria-pressed={on}
                     className={cn(
-                      "border p-2 text-left transition [@media(max-height:560px)]:p-1.5",
-                      on ? "border-primary bg-accent" : "border-border hover:border-primary/50",
+                      "group relative flex h-[126px] flex-col justify-between overflow-hidden border bg-card/70 p-1.5 text-left transition",
+                      on
+                        ? "border-primary shadow-brass"
+                        : "border-border hover:border-primary/60 hover:bg-card",
+                      !on && full && "opacity-45",
                     )}
                   >
-                    <div className="flex items-center justify-between">
+                    {/* Marcador de categoria na base: a cor da função da carta. */}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "absolute inset-x-0 bottom-0 h-[3px] opacity-80",
+                        CATEGORY_BAR[card.category] ?? "bg-border",
+                      )}
+                    />
+                    {/* Marca d'água do código: dá relevo ao cartão sem ruído. */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -bottom-0.5 right-0.5 font-display text-[38px] font-black leading-none text-foreground/[0.10]"
+                    >
+                      {card.short}
+                    </span>
+                    <span className="relative flex items-center justify-between gap-1">
                       <span
                         className={cn(
-                          "border px-1 font-mono text-[8px] uppercase",
+                          "border px-1 font-mono text-[8px] uppercase tracking-wider",
                           CATEGORY_TONE[card.category],
                         )}
                       >
                         {card.short}
                       </span>
-                      <span className="font-mono text-[9px] text-muted-foreground">
+                      <span
+                        className={cn(
+                          "flex h-[15px] min-w-[15px] items-center justify-center px-1 font-mono text-[9px] font-bold",
+                          on
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
                         {card.cost}
                       </span>
-                    </div>
-                    <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
-                      {card.name}
-                    </p>
+                    </span>
+                    <span className="relative z-10 mt-auto block">
+                      <span className="line-clamp-2 block font-display text-[11px] font-bold uppercase leading-[1.15]">
+                        {card.name}
+                      </span>
+                      <span className="mt-0.5 block truncate font-mono text-[7px] uppercase tracking-[0.16em] text-muted-foreground">
+                        {card.category}
+                      </span>
+                    </span>
                   </button>
                 );
               })}
@@ -924,7 +964,7 @@ function CampaignBriefing({
             </div>
           </section>
 
-          <aside className="flex min-h-0 w-full shrink-0 flex-col gap-1.5 lg:w-[300px] lg:gap-2">
+          <aside className="flex min-h-0 w-full shrink-0 flex-col gap-1.5 lg:w-[300px] lg:self-start lg:gap-2">
             <div className="hud-panel hud-corners shrink-0 p-2.5 [@media(max-height:560px)]:p-2">
               <p className="label-mono mb-1.5">Sequência de lançamento</p>
               <div className="flex flex-wrap gap-1">
@@ -988,7 +1028,7 @@ function CampaignBriefing({
               </div>
             )}
 
-            <div className="mt-auto flex shrink-0 flex-col gap-1.5 lg:gap-2">
+            <div className="flex shrink-0 flex-col gap-1.5 lg:gap-2">
               <button
                 disabled={!full}
                 onClick={onStart}

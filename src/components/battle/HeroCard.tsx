@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { chancellorPersona } from "@/game/battle/chancellor";
 import type { BattleState, Side } from "@/game/battle/types";
 
 // PAINEL DO PERSONAGEM: o chanceler é a peça que decide a batalha, mas no teatro ele é
@@ -36,6 +37,8 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
             ? "Seguro"
             : "Em campo";
   const uniform = side === "blue" ? "var(--ally-unit)" : "var(--enemy-unit)";
+  const cfg = side === "blue" ? state.blue : state.red;
+  const persona = chancellorPersona(cfg.countryId, cfg.countryName);
 
   return (
     <div
@@ -56,10 +59,17 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
           <p className="font-mono text-[8px] uppercase tracking-[0.22em] text-primary">
             {mode === "defender" ? "Seu chanceler" : "Chanceler inimigo"}
           </p>
-          <p className="truncate font-display text-sm font-bold uppercase leading-tight">
-            {unit?.name ?? "Chanceler"}
+          <p
+            className="truncate font-display text-sm font-bold uppercase leading-tight"
+            title={persona.bio}
+          >
+            {unit?.name ?? persona.name}
           </p>
-          <p className={cn("font-mono text-[9px] uppercase tracking-wider", tone)}>{label}</p>
+          <p className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider">
+            <span className="text-muted-foreground">{persona.trait}</span>
+            <span className="text-border">·</span>
+            <span className={cn(tone)}>{label}</span>
+          </p>
         </div>
       </div>
 
@@ -81,6 +91,9 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
           Setas / analógico · comando direto
         </p>
       )}
+      <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground/90">
+        {persona.bio}
+      </p>
     </div>
   );
 }
