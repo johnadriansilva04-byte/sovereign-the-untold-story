@@ -18,7 +18,6 @@ import {
   chancellorLoadout,
   describeMods,
   equippedBySlot,
-  gearById,
   type GearSlot,
 } from "@/game/battle/chancellorGear";
 import { chancellorIdentity } from "@/game/progress/profile";
@@ -385,5 +384,3 @@ function GearSection({
     </section>
   );
 }
-
-export { gearById };
