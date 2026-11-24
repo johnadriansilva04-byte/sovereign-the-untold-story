@@ -547,16 +547,36 @@ function spawnChancellor(
 ): BattleUnit {
   const cfg = side === "blue" ? state.blue : state.red;
   const persona = chancellorPersona(cfg.countryId, cfg.countryName);
+  // O NOSSO chanceler carrega a identidade criada na campanha e o bônus do equipamento;
+  // o adversário usa a persona fixa do país. Os bônus entram nos atributos da unidade —
+  // é o que faz "ganhar equipamento" valer em campo, e não só na ficha.
+  const loadout = cfg.hero;
   const u = spawnUnit(state, side, HERO_CARD, x, y, {
-    name: persona.name,
+    name: loadout?.name ?? persona.name,
     groupId: `hero-${side}`,
   });
+  if (loadout?.mods) {
+    const mods = loadout.mods;
+    u.maxHp = Math.max(1, Math.round(u.maxHp + (mods.hp ?? 0)));
+    u.hp = u.maxHp;
+    u.dmg = Math.max(1, Math.round((u.dmg + (mods.dmg ?? 0)) * 10) / 10);
+    u.speed = Math.max(0.5, Math.round((u.speed + (mods.speed ?? 0)) * 100) / 100);
+    u.range = Math.max(1, Math.round((u.range + (mods.range ?? 0)) * 100) / 100);
+    u.cooldown = Math.max(0.2, Math.round((u.cooldown + (mods.cooldown ?? 0)) * 100) / 100);
+    if (mods.projectileSpeed && u.weapon.projectileSpeed) {
+      u.weapon = {
+        ...u.weapon,
+        projectileSpeed: u.weapon.projectileSpeed + mods.projectileSpeed,
+      };
+    }
+  }
   u.hero = true;
   // O chanceler NÃO avança sozinho: fica onde está até receber ordem explícita.
   u.order = "manter";
   cfg.units.push(u);
   state.heroes[side] = { state: initial, unitId: u.id };
-  pushLog(state, side, "evento", `${persona.name} entrou em campo.`);
+  const armed = loadout?.weaponName ? ` com ${loadout.weaponName}` : "";
+  pushLog(state, side, "evento", `${u.name} entrou em campo${armed}.`);
   return u;
 }
 
@@ -874,6 +894,7 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
   const startSov = Math.max(20, Math.round(SOV_START * diffMult));
   return {
     side,
+    ...(cfg.hero ? { hero: cfg.hero } : {}),
     countryId: cfg.countryId,
     countryName: cfg.countryName,
     flag: cfg.flag,

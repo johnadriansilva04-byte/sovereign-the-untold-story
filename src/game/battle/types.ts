@@ -2,6 +2,8 @@
 // A batalha é um sistema fechado: recebe um BattleConfig (montado a partir da camada
 // geopolítica) e devolve um BattleResult que volta para o mapa. Nada aqui depende de rede.
 
+import type { ChancellorLoadout } from "./chancellor";
+
 export type Side = "blue" | "red";
 
 export type UnitCategory =
@@ -519,6 +521,8 @@ export interface DeckState {
 
 export interface SideState {
   side: Side;
+  /** Chanceler do jogador (identidade + equipamento), copiado do SideConfig. */
+  hero?: ChancellorLoadout;
   countryId: string;
   countryName: string;
   flag: string;
@@ -624,6 +628,9 @@ export interface AiDifficulty {
 }
 
 export interface SideConfig {
+  // CHANCELER DO JOGADOR: identidade criada na campanha e bônus do equipamento. Só o
+  // lado azul recebe; o adversário usa a persona fixa do país (chancellorPersona).
+  hero?: ChancellorLoadout;
   countryId: string;
   countryName: string;
   flag: string;

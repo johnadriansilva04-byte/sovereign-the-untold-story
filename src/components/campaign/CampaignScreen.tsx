@@ -6,6 +6,7 @@ import { CampaignBackdrop } from "@/components/campaign/CampaignBackdrop";
 import { StoryBook, type StoryPage } from "@/components/campaign/StoryBook";
 import { CardFace } from "@/components/campaign/CardFace";
 import { DecisionCard } from "@/components/campaign/DecisionCard";
+import { ChancellorScreen } from "@/components/campaign/ChancellorScreen";
 import { BattleScreen } from "@/components/battle/BattleScreen";
 import { CollectionScreen } from "@/components/progress/CollectionScreen";
 import { chapters } from "@/game/campaign";
@@ -23,12 +24,14 @@ import { accessoryById, difficultyById, techById } from "@/game/progress/catalog
 import type { Reward } from "@/game/progress/catalog";
 import { allCards, cardById } from "@/game/battle/catalog";
 import {
+  chancellorLoadoutFor,
   effectiveDeck,
   effectiveDoctrine,
   effectiveMods,
   ownedCardIds,
   type LevelUpInfo,
 } from "@/game/progress/profile";
+import { gearById } from "@/game/battle/chancellorGear";
 import { useProfile } from "@/game/progress/store";
 import type { BattleResult } from "@/game/battle/types";
 
@@ -56,6 +59,7 @@ const CATEGORY_BAR: Record<string, string> = {
 type View =
   | { kind: "overview" }
   | { kind: "collection" }
+  | { kind: "chanceler" }
   | { kind: "dilemma"; chapterId: string }
   | { kind: "briefing"; chapterId: string }
   | { kind: "battle"; chapterId: string }
@@ -72,7 +76,7 @@ export function CampaignScreen() {
   const [pendingDeck, setPendingDeck] = useState<string[]>([]);
   // Recompensas da batalha atual (carta ganha + níveis subidos), guardadas para as
   // telas de coleta/promoção que vêm logo depois do veredito.
-  const [loot, setLoot] = useState<{ reward: Reward; levelUps: LevelUpInfo[] }>({
+  const [loot, setLoot] = useState<{ reward: Reward; levelUps: LevelUpInfo[]; gearId?: string }>({
     reward: {},
     levelUps: [],
   });
@@ -105,6 +109,8 @@ export function CampaignScreen() {
       // A escolha do capítulo define a doutrina e soma modificadores reais de combate.
       doctrine: effectiveDoctrine(profile, view.chapterId, deck?.doctrine ?? commander.doctrine),
       mods: effectiveMods(profile, view.chapterId),
+      // Chanceler do jogador: identidade criada na campanha + equipamento equipado.
+      hero: chancellorLoadoutFor(profile),
       // Dificuldade automática: um só número (o capítulo) define IA, nível e baralho.
       aiDifficulty: scale.aiDifficulty,
       seed: seedOf(`${mission.id}:${meta.number}:${battleDeck.join(",")}`),
@@ -129,10 +135,27 @@ export function CampaignScreen() {
     openBriefing(chapterId);
   };
 
+  // PRIMEIRA ENTRADA NA CAMPANHA: o jogador monta o próprio chanceler antes de comandar.
+  if (!profile.chancellor?.created && view.kind !== "chanceler") {
+    return (
+      <GameShell full>
+        <ChancellorScreen mode="create" onExit={() => setView({ kind: "overview" })} />
+      </GameShell>
+    );
+  }
+
   if (view.kind === "collection") {
     return (
       <GameShell full>
         <CollectionScreen onExit={() => setView({ kind: "overview" })} />
+      </GameShell>
+    );
+  }
+
+  if (view.kind === "chanceler") {
+    return (
+      <GameShell full>
+        <ChancellorScreen mode="armory" onExit={() => setView({ kind: "overview" })} />
       </GameShell>
     );
   }
@@ -203,12 +226,12 @@ export function CampaignScreen() {
           presetConfig={autoConfig}
           onExit={() => setView({ kind: "overview" })}
           onComplete={(result) => {
-            const { reward, levelUps } = completeChapter({
+            const { reward, levelUps, gearId } = completeChapter({
               chapterId: view.chapterId,
               result,
               difficulty: meta.difficulty,
             });
-            setLoot({ reward, levelUps });
+            setLoot({ reward, levelUps, ...(gearId ? { gearId } : {}) });
             setView({ kind: "reward", chapterId: view.chapterId, result, reward });
           }}
         />
@@ -283,6 +306,7 @@ export function CampaignScreen() {
             decisionOption(view.chapterId, profile.decisions[view.chapterId] ?? "")?.label
           }
           reward={view.reward}
+          gearName={gearById(loot.gearId)?.name}
           onNext={afterVerdict}
           onRetry={() => enterChapter(view.chapterId)}
           onMap={() => setView({ kind: "overview" })}
@@ -357,6 +381,7 @@ export function CampaignScreen() {
         currentMeta={currentMeta}
         onLaunch={() => currentMeta && enterChapter(currentMeta.id)}
         onOpenCollection={() => setView({ kind: "collection" })}
+        onOpenChancellor={() => setView({ kind: "chanceler" })}
       />
     </GameShell>
   );
@@ -383,6 +408,7 @@ function VerdictScreen({
   result,
   decisionLabel,
   reward,
+  gearName,
   onNext,
   onRetry,
   onMap,
@@ -395,6 +421,7 @@ function VerdictScreen({
   result: BattleResult;
   decisionLabel?: string | undefined;
   reward: Reward;
+  gearName?: string | undefined;
   onNext: () => void;
   onRetry: () => void;
   onMap: () => void;
@@ -411,6 +438,7 @@ function VerdictScreen({
     ...(reward.techs ?? []).map((t) => `Tecnologia · ${techById(t)?.name ?? t}`),
     ...(reward.research ? [`+${reward.research} pesquisa`] : []),
     ...(reward.sovereigns ? [`+${reward.sovereigns} Sovereigns`] : []),
+    ...(gearName ? [`Equipamento · ${gearName}`] : []),
   ];
 
   return (
@@ -587,11 +615,13 @@ function CampaignOverview({
   currentMeta,
   onLaunch,
   onOpenCollection,
+  onOpenChancellor,
 }: {
   profile: Profile;
   currentMeta: (typeof chapterMeta)[number] | undefined;
   onLaunch: () => void;
   onOpenCollection: () => void;
+  onOpenChancellor: () => void;
 }) {
   const completed = chapterMeta.filter(
     (m) => profile.chapters[m.id]?.status === "concluido",
@@ -638,6 +668,12 @@ function CampaignOverview({
             <span>
               PESQUISA <b className="text-foreground">{profile.research}</b>
             </span>
+            <button
+              onClick={onOpenChancellor}
+              className="border border-border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary"
+            >
+              Chanceler ›
+            </button>
             <button
               onClick={onOpenCollection}
               className="border border-border px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground transition hover:border-primary hover:text-primary"

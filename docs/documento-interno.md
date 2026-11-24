@@ -383,6 +383,39 @@ leitura de mundo, embalada como obra de ficção.
   comando com cartões redesenhados (tag colorida + efeitos em linhas "rótulo → valor") e
   briefing centralizado no palco.
 
+### Atualização 24/11/2026 (4) — o jogador monta o próprio chanceler e o equipa
+
+- **Criação do chanceler na entrada da campanha** (`src/components/campaign/ChancellorScreen.tsx`):
+  antes da primeira operação, `/campanha` abre a **"Formação de comando"**. O jogador define
+  **nome de guerra** (até 22 caracteres), **uniforme** (5 opções de cor — a cor pinta o retrato
+  do HUD) e **estilo de comando** (5 tons: metódico, impetuoso, prudente, técnico, insurgente),
+  com uma frase própria opcional. O perfil antigo (sem chanceler) passa pelo criador uma vez;
+  quem já criou entra direto no mapa. O botão **"Chanceler ›"** no mapa reabre a tela em modo
+  armaria, com a identidade recolhida atrás de "Editar identidade".
+- **Persistência** (`src/game/progress/profile.ts`): `ProfileState.chancellor` guarda
+  `identity` (nome, uniforme, estilo, bio), `ownedGear` (acervo) e `equipped` (um item por slot).
+  `ensureShape` completa perfis antigos sem perder progresso; `chancellorIdentity` cai na persona
+  padrão (Davi) enquanto o jogador não criou a sua.
+- **Equipamento com efeito real** (`src/game/battle/chancellorGear.ts`, novo): 13 peças em 4
+  slots — **arma**, **proteção**, **mobilidade** e **uniforme** — com bônus de **velocidade,
+  vida, dano, alcance, cadência e velocidade do projétil**. Bônus somam no pacote `mods` do
+  loadout e são aplicados no `spawnChancellor` (`engine.ts`): o herói entra em campo com os
+  atributos já alterados, e o log registra "… entrou em campo com Fuzil FAL 7,62". Nada é só
+  ficha: o ajuste é no motor.
+- **Como se ganha**: cada **vitória** libera a próxima peça que o capítulo já permite
+  (`grantGear` / `nextGearDrop`, deterministicamente pela ordem do catálogo). Peças que faltam
+  podem ser **requisitadas com Sovereigns** na armaria. O veredito passou a listar
+  "Equipamento · <peça>" junto das demais recompensas.
+- **HUD** (`HeroCard.tsx`): o cartão do herói mostra o nome criado, o estilo escolhido, a arma
+  equipada e a bio do jogador; o retrato usa a cor do uniforme escolhido. O chanceler
+  adversário continua usando a persona fixa do país.
+- **Alcance do loadout**: campanha, treino (`BattleScreen`) e configurações de capítulo/PvP
+  (`battleConfigForChapter`) recebem o mesmo loadout — o personagem é o mesmo em todo o jogo.
+- **Testes**: `src/test/chancellor-gear.test.ts` (9 casos) cobre criação/limites de nome,
+  soma de bônus, slot único, compra com saldo, queda por capítulo e o efeito real dos atributos
+  no chanceler em campo; `regressions.test.tsx` passou a atravessar o criador antes do mapa.
+  Suíte completa: **338 passaram / 7 ignorados**; `tsc --noEmit` e `eslint` limpos.
+
 ## 6. Créditos
 
 Desenvolvido por **Variant** — em homenagem à Força Expedicionária Brasileira. A cobra fumou.

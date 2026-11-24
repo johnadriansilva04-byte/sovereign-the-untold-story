@@ -31,20 +31,26 @@ import {
 } from "@/lib/auth";
 import type { Difficulty, Reward, TechDef } from "./catalog";
 import { copiesToLevel } from "@/game/battle/catalog";
+import { chapterMetaById } from "./campaign";
 import { decisionOption } from "./decisions";
 import {
   applyChapterResult,
+  buyGear,
   createProfile,
+  grantGear,
   grantReward,
   loadProfile,
   saveProfile,
   resetProfile,
+  setChancellorIdentity,
   syncUnlocks,
+  toggleGear,
   type BattleRecord,
   type LevelUpInfo,
   type ProfileState,
   type SavedDeck,
 } from "./profile";
+import type { ChancellorIdentity } from "@/game/battle/chancellor";
 import { ensureSession, pushBattleRecord, pushProfile } from "./sync";
 
 // Mensagem usada quando o Supabase não está configurado — offline normal, não é falha.
@@ -83,7 +89,7 @@ export interface ProfileContextValue {
     result: BattleResult;
     difficulty: Difficulty;
     rewards?: Reward;
-  }) => { reward: Reward; levelUps: LevelUpInfo[] };
+  }) => { reward: Reward; levelUps: LevelUpInfo[]; gearId?: string };
   /** Registra um resultado fora da campanha (treino/PvP). */
   recordBattle: (rec: Omit<BattleRecord, "id" | "createdAt">) => void;
   setNation: (nation: NationState) => void;
@@ -91,6 +97,12 @@ export interface ProfileContextValue {
   researchTech: (tech: TechDef) => boolean;
   /** Registra a escolha de um capítulo (dilema), aplicando o bônus único de pesquisa/soberanos. */
   chooseDecision: (chapterId: string, optionId: string) => void;
+  /** Cria/edita o chanceler do jogador (nome, uniforme, estilo de comando). */
+  setChancellor: (identity: ChancellorIdentity) => void;
+  /** Equipa/desequipa uma peça do acervo do chanceler. */
+  toggleChancellorGear: (gearId: string) => void;
+  /** Compra uma peça com Sovereigns. */
+  buyChancellorGear: (gearId: string) => void;
   saveDeck: (deck: SavedDeck) => void;
   setActiveDeck: (deckId: string) => void;
   setDisplayName: (name: string) => void;
@@ -171,7 +183,15 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         { ...applied.nation },
         consequencesOf(result, missionById(result.configId)),
       );
-      const next: ProfileState = { ...applied, nation };
+      let next: ProfileState = { ...applied, nation };
+      // PRÊMIO DE GUERRA: cada vitória libera a próxima peça do acervo do chanceler que
+      // o capítulo já permite — o herói cresce junto com a campanha.
+      let gearId: string | undefined;
+      if (result.outcome === "vitoria") {
+        const dropped = grantGear(next, chapterMetaById(chapterId)?.number ?? 1);
+        next = dropped.profile;
+        gearId = dropped.gearId;
+      }
       persist(next);
       void pushBattleRecord({
         mode: "campanha",
@@ -185,7 +205,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         territorialScore: Math.round(result.territorialScore.blue),
         rewards: (result.outcome === "vitoria" ? reward : {}) as Record<string, unknown>,
       });
-      return { reward, levelUps };
+      return { reward, levelUps, ...(gearId ? { gearId } : {}) };
     },
     [persist],
   );
@@ -265,6 +285,33 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         sovereigns: current.sovereigns + (bonus.sovereigns ?? 0),
       };
       persist(next);
+    },
+    [persist],
+  );
+
+  const setChancellor = useCallback<ProfileContextValue["setChancellor"]>(
+    (identity) => {
+      const current = profileRef.current;
+      if (!current) return;
+      persist(setChancellorIdentity(current, identity));
+    },
+    [persist],
+  );
+
+  const toggleChancellorGear = useCallback<ProfileContextValue["toggleChancellorGear"]>(
+    (gearId) => {
+      const current = profileRef.current;
+      if (!current) return;
+      persist(toggleGear(current, gearId));
+    },
+    [persist],
+  );
+
+  const buyChancellorGear = useCallback<ProfileContextValue["buyChancellorGear"]>(
+    (gearId) => {
+      const current = profileRef.current;
+      if (!current) return;
+      persist(buyGear(current, gearId));
     },
     [persist],
   );
@@ -416,6 +463,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setNation,
       researchTech,
       chooseDecision,
+      setChancellor,
+      toggleChancellorGear,
+      buyChancellorGear,
       saveDeck,
       setActiveDeck,
       setDisplayName,

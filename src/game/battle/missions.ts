@@ -2,6 +2,7 @@
 // É aqui que "o que o país construiu" define "o que o jogador consegue fazer no campo".
 // A economia dá vantagens marginais (regeneração, teto de comando), nunca vitória comprada.
 
+import type { ChancellorLoadout } from "./chancellor";
 import {
   allCards,
   allDoctrines,
@@ -1181,6 +1182,7 @@ export function sideFromNation(
   doctrine: Doctrine,
   mods?: SideModifiers,
   cardLevels?: Record<string, number>,
+  hero?: ChancellorLoadout,
 ): SideConfig {
   const cfg: SideConfig = {
     countryId: nation.countryId,
@@ -1195,6 +1197,7 @@ export function sideFromNation(
   };
   if (mods) cfg.mods = mods;
   if (cardLevels) cfg.cardLevels = cardLevels;
+  if (hero) cfg.hero = hero;
   return cfg;
 }
 
@@ -1393,6 +1396,8 @@ export interface BuildBattleOptions {
   // lista viram ESPÓLIO: as tropas azuis as reconhecem em campo e priorizam abatê-las
   // para capturar a carta (inteligência de captura real, ligada ao progresso).
   ownedCardIds?: string[];
+  /** Chanceler do jogador (identidade + equipamento). Sem ele, o azul usa a persona padrão. */
+  hero?: ChancellorLoadout;
 }
 
 // MODO do chanceler da missão. Cada batalha tem UM único chanceler em campo: o NOSSO
@@ -1470,6 +1475,7 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
       opts.doctrine,
       opts.mods,
       opts.cardLevels,
+      opts.hero,
     ),
     red,
     seed: opts.seed ?? 20260101,

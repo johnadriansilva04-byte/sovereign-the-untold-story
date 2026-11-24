@@ -3,6 +3,9 @@
 // sessão no Supabase, sincroniza em segundo plano. Nada aqui quebra se a rede faltar.
 
 import { allCards, levelFromCopies, startingDeck } from "@/game/battle/catalog";
+import { defaultIdentity, traitById, type ChancellorIdentity } from "@/game/battle/chancellor";
+import { chancellorLoadout, gearById, nextGearDrop } from "@/game/battle/chancellorGear";
+import type { ChancellorLoadout } from "@/game/battle/chancellor";
 import type { NationState } from "@/game/battle/missions";
 import { defaultNation } from "@/game/battle/missions";
 import type { BattleResult, Doctrine, SideModifiers } from "@/game/battle/types";
@@ -49,6 +52,17 @@ export interface BattleRecord {
   createdAt: string;
 }
 
+// O CHANCELER DO JOGADOR: criado na entrada da campanha (nome, uniforme, estilo de
+// comando) e evoluído com equipamento. `identity` ausente = ainda não criado, e a
+// campanha abre o criador antes da primeira operação.
+export interface ChancellorState {
+  identity: ChancellorIdentity;
+  ownedGear: string[];
+  equipped: string[];
+  /** Falso enquanto o jogador não passou pelo criador (prêmios podem existir antes). */
+  created: boolean;
+}
+
 export interface ProfileState {
   version: number;
   displayName: string;
@@ -66,6 +80,8 @@ export interface ProfileState {
   cardLevels: Record<string, number>;
   // escolha feita em cada capítulo (id da opção). Alimenta doutrina e modificadores reais.
   decisions: Record<string, string>;
+  // chanceler pessoal do jogador (undefined = ainda não criado)
+  chancellor?: ChancellorState;
   createdAt: string;
 }
 
@@ -179,6 +195,109 @@ function ensureShape(p: ProfileState): ProfileState {
     records: p.records ?? [],
     cardLevels: p.cardLevels ?? {},
     decisions: p.decisions ?? {},
+    ...(p.chancellor
+      ? {
+          chancellor: {
+            identity: { ...defaultIdentity(), ...p.chancellor.identity },
+            ownedGear: p.chancellor.ownedGear ?? [],
+            equipped: p.chancellor.equipped ?? [],
+            created: p.chancellor.created ?? true,
+          },
+        }
+      : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Chanceler do jogador
+// ---------------------------------------------------------------------------
+
+/** Identidade ativa: a criada pelo jogador ou a persona padrão (Davi), ainda não criada. */
+export function chancellorIdentity(profile: ProfileState): ChancellorIdentity {
+  return profile.chancellor?.identity ?? defaultIdentity();
+}
+
+/** Loadout que vai para a batalha (identidade + peças equipadas somadas). */
+export function chancellorLoadoutFor(profile: ProfileState): ChancellorLoadout {
+  return chancellorLoadout(chancellorIdentity(profile), profile.chancellor?.equipped ?? []);
+}
+
+/** Cria (ou reescreve) o chanceler do jogador. */
+export function setChancellorIdentity(
+  profile: ProfileState,
+  identity: ChancellorIdentity,
+): ProfileState {
+  const current = profile.chancellor;
+  return {
+    ...profile,
+    chancellor: {
+      identity: cleanIdentity(identity),
+      ownedGear: current?.ownedGear ?? [],
+      equipped: current?.equipped ?? [],
+      created: true,
+    },
+  };
+}
+
+function emptyChancellor(): ChancellorState {
+  return { identity: defaultIdentity(), ownedGear: [], equipped: [], created: false };
+}
+
+function cleanIdentity(identity: ChancellorIdentity): ChancellorIdentity {
+  const name = identity.name.trim().slice(0, 22) || defaultIdentity().name;
+  return {
+    name,
+    traitId: identity.traitId,
+    uniformId: identity.uniformId,
+    bio: (identity.bio.trim() || traitById(identity.traitId).bio).slice(0, 160),
+  };
+}
+
+/**
+ * Equipa/desequipa uma peça. O slot é único: equipar uma arma nova substitui a antiga
+ * (sem consumir nada — o acervo é permanente).
+ */
+export function toggleGear(profile: ProfileState, gearId: string): ProfileState {
+  const gear = gearById(gearId);
+  if (!gear) return profile;
+  const state = profile.chancellor ?? emptyChancellor();
+  if (!state.ownedGear.includes(gearId)) return profile;
+  const equipped = state.equipped.includes(gearId)
+    ? state.equipped.filter((id) => id !== gearId)
+    : [...state.equipped.filter((id) => gearById(id)?.slot !== gear.slot), gearId];
+  return { ...profile, chancellor: { ...state, equipped } };
+}
+
+/** Compra uma peça com Sovereigns (já possui? devolve o perfil intacto). */
+export function buyGear(profile: ProfileState, gearId: string): ProfileState {
+  const gear = gearById(gearId);
+  if (!gear) return profile;
+  const state = profile.chancellor ?? emptyChancellor();
+  if (state.ownedGear.includes(gearId) || profile.sovereigns < gear.cost) return profile;
+  return {
+    ...profile,
+    sovereigns: profile.sovereigns - gear.cost,
+    chancellor: { ...state, ownedGear: [...state.ownedGear, gearId] },
+  };
+}
+
+/**
+ * Prêmio de vitória: libera a próxima peça que o capítulo já permite. Devolve o perfil
+ * novo e a peça ganha (ou undefined quando o acervo do capítulo já está completo).
+ */
+export function grantGear(
+  profile: ProfileState,
+  chapterNumber: number,
+): { profile: ProfileState; gearId?: string } {
+  const state = profile.chancellor ?? emptyChancellor();
+  const drop = nextGearDrop(state.ownedGear, chapterNumber);
+  if (!drop) return { profile };
+  return {
+    profile: {
+      ...profile,
+      chancellor: { ...state, ownedGear: [...state.ownedGear, drop.id] },
+    },
+    gearId: drop.id,
   };
 }
 

@@ -47,6 +47,7 @@ import type {
 import { modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
 import { activeAccessories, cardLevelsForDeck, type ProfileState } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
+import { chancellorLoadoutFor } from "@/game/progress/profile";
 
 type Phase = "preparacao" | "batalha" | "resultado";
 
@@ -96,6 +97,8 @@ export function BattleScreen(props: BattleScreenProps) {
       doctrine: setup.doctrine,
       mods,
       cardLevels: cardLevelsForDeck(profile),
+      // O chanceler do jogador (identidade + equipamento) vale também no treino.
+      hero: chancellorLoadoutFor(profile),
       aiDifficulty: scale.aiDifficulty,
       seed: hashSeed(`${setup.mission.id}:${setup.deck.join(",")}:${chapterNumber}`),
     });

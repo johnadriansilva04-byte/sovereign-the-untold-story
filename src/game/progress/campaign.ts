@@ -1,6 +1,8 @@
 // Estrutura de progressão da campanha: o que cada capítulo libera e premia.
 // A campanha ensina uma mecânica por vez; o PvP cobra todas ao mesmo tempo.
 
+import { chancellorLoadout } from "@/game/battle/chancellorGear";
+import { defaultIdentity } from "@/game/battle/chancellor";
 import { commanders } from "@/game/battle/catalog";
 import {
   buildBattleConfig,
@@ -901,6 +903,10 @@ export function battleConfigForChapter(
     doctrine: activeDeck?.doctrine ?? commander.doctrine,
     mods: modsFromAccessories(activeAccessories(profile)),
     cardLevels: levels,
+    hero: chancellorLoadout(
+      profile.chancellor?.identity ?? defaultIdentity(),
+      profile.chancellor?.equipped ?? [],
+    ),
     aiDifficulty: scale.aiDifficulty,
     seed,
   });

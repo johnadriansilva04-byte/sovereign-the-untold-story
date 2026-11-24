@@ -53,6 +53,12 @@ describe("fluxo da campanha", () => {
       </ProfileProvider>,
     );
 
+    // criação do chanceler (primeira entrada na campanha) → overview
+    fireEvent.change(screen.getByPlaceholderText(/Como a tropa vai te chamar/), {
+      target: { value: "Teste" },
+    });
+    fireEvent.click(screen.getByText(/^Assumir o comando$/));
+
     // overview → dilema → briefing → batalha → veredito → livro
     fireEvent.click(screen.getByText(/Tomar a decisão|Iniciar operação/));
     fireEvent.click(screen.getAllByText(/Escolher esta opção/)[0]!);

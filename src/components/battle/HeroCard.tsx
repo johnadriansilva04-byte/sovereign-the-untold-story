@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { chancellorPersona } from "@/game/battle/chancellor";
+import { chancellorPersona, traitById, uniformById } from "@/game/battle/chancellor";
 import type { BattleState, Side } from "@/game/battle/types";
 
 // PAINEL DO PERSONAGEM: o chanceler é a peça que decide a batalha, mas no teatro ele é
@@ -36,9 +36,19 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
           : hero.state === "seguro"
             ? "Seguro"
             : "Em campo";
-  const uniform = side === "blue" ? "var(--ally-unit)" : "var(--enemy-unit)";
   const cfg = side === "blue" ? state.blue : state.red;
   const persona = chancellorPersona(cfg.countryId, cfg.countryName);
+  // O NOSSO chanceler é o criado na campanha (nome, uniforme, estilo) com a arma
+  // equipada; o adversário segue a persona fixa do país.
+  const loadout = cfg.hero;
+  const heroName = unit?.name ?? loadout?.name ?? persona.name;
+  const trait = loadout ? traitById(loadout.traitId).name : persona.trait;
+  const bio = loadout?.bio ?? persona.bio;
+  const uniform = loadout
+    ? uniformById(loadout.uniformId).color
+    : side === "blue"
+      ? "var(--ally-unit)"
+      : "var(--enemy-unit)";
 
   return (
     <div
@@ -61,12 +71,12 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
           </p>
           <p
             className="truncate font-display text-sm font-bold uppercase leading-tight"
-            title={persona.bio}
+            title={bio}
           >
-            {unit?.name ?? persona.name}
+            {heroName}
           </p>
           <p className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider">
-            <span className="text-muted-foreground">{persona.trait}</span>
+            <span className="text-muted-foreground">{trait}</span>
             <span className="text-border">·</span>
             <span className={cn(tone)}>{label}</span>
           </p>
@@ -91,22 +101,33 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
           Setas / analógico · comando direto
         </p>
       )}
-      <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground/90">
-        {persona.bio}
-      </p>
+      {loadout?.weaponName && (
+        <p className="mt-1 truncate font-mono text-[8px] uppercase tracking-wider text-primary/90">
+          {loadout.weaponName}
+        </p>
+      )}
+      <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground/90">{bio}</p>
     </div>
   );
 }
 
 // Retrato estilizado de busto: ombreiras, gola, cabeça e quepe. É propositalmente
 // gráfico (sem foto), mas com proporções humanas para o personagem ter presença.
-function ChancellorBust({ uniform, dead }: { uniform: string; dead: boolean }) {
+export function ChancellorBust({
+  uniform,
+  dead = false,
+  className = "h-14 w-14",
+}: {
+  uniform: string;
+  dead?: boolean;
+  className?: string;
+}) {
   const skin = dead ? "oklch(0.55 0.02 60)" : "oklch(0.72 0.06 70)";
   const shadow = "oklch(0 0 0 / 0.55)";
   const cap = "oklch(0.2 0.012 90)";
   const gold = "var(--primary)";
   return (
-    <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden>
+    <svg viewBox="0 0 64 64" className={className} aria-hidden>
       <defs>
         <radialGradient id="heroCardBg" cx="0.35" cy="0.25" r="0.9">
           <stop offset="0%" stopColor="oklch(0.4 0.02 100)" />
