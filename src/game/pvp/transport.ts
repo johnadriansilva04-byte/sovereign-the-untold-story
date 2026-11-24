@@ -9,7 +9,7 @@
 // Supabase diretamente, e os testes usam um transporte em memória (`createFakeTransportPair`).
 
 import { getSupabase } from "@/lib/supabase";
-import type { LiveCommand, Seat } from "./live";
+import type { LiveCommand, LiveRoster, Seat } from "./live";
 
 export type TransportStatus = "connecting" | "open" | "closed" | "error";
 
@@ -24,6 +24,10 @@ export interface TransportHandlers {
   onResyncRequest?: () => void;
   /** Snapshot recebido do host. */
   onSnapshot?: (state: unknown) => void;
+  /** Escalação do adversário (baralho, chanceler, doutrina). */
+  onRoster?: (roster: LiveRoster) => void;
+  /** Alguém entrou na sala e pediu as escalações: responda com `sendRoster`. */
+  onHello?: () => void;
 }
 
 export interface LiveTransport {
@@ -33,6 +37,10 @@ export interface LiveTransport {
   sendHash(hash: number, tick: number): void;
   requestResync(): void;
   sendSnapshot(state: unknown): void;
+  /** Anuncia a própria escalação; os dois clientes montam a MESMA config com ela. */
+  sendRoster(roster: LiveRoster): void;
+  /** Avisa que entrei na sala; quem já estava responde com a escalação dele. */
+  sendHello(): void;
   close(): void;
 }
 
@@ -42,6 +50,8 @@ const EV = {
   hash: "hash",
   resyncReq: "resync-req",
   snapshot: "snapshot",
+  roster: "roster",
+  hello: "hello",
 } as const;
 
 export function roomTopic(code: string): string {
@@ -84,18 +94,25 @@ export function createSupabaseTransport(
   });
   bind(EV.resyncReq, () => handlers.onResyncRequest?.());
   bind(EV.snapshot, (p) => handlers.onSnapshot?.(p));
-
-  channel.subscribe((status) => {
-    if (status === "SUBSCRIBED") handlers.onStatus?.("open");
-    else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
-      handlers.onStatus?.("error", status);
-    else if (status === "CLOSED") handlers.onStatus?.("closed");
-    else handlers.onStatus?.("connecting");
+  bind(EV.roster, (p) => {
+    const roster = p as LiveRoster;
+    if (roster && Array.isArray(roster.deck)) handlers.onRoster?.(roster);
   });
+  bind(EV.hello, () => handlers.onHello?.());
 
   const post = (event: string, payload: unknown) => {
     void channel.send({ type: "broadcast", event, payload });
   };
+
+  channel.subscribe((status) => {
+    if (status === "SUBSCRIBED") {
+      handlers.onStatus?.("open");
+      post(EV.hello, {});
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
+      handlers.onStatus?.("error", status);
+    else if (status === "CLOSED") handlers.onStatus?.("closed");
+    else handlers.onStatus?.("connecting");
+  });
 
   return {
     topic,
@@ -104,6 +121,8 @@ export function createSupabaseTransport(
     sendHash: (hash, tick) => post(EV.hash, { hash, tick }),
     requestResync: () => post(EV.resyncReq, {}),
     sendSnapshot: (state) => post(EV.snapshot, state),
+    sendRoster: (roster) => post(EV.roster, roster),
+    sendHello: () => post(EV.hello, {}),
     close: () => {
       void sb.removeChannel(channel);
     },
@@ -118,6 +137,8 @@ function noopTransport(topic: string): LiveTransport {
     sendHash: () => {},
     requestResync: () => {},
     sendSnapshot: () => {},
+    sendRoster: () => {},
+    sendHello: () => {},
     close: () => {},
   };
 }
@@ -164,6 +185,12 @@ export function createFakeTransportPair(
         case EV.snapshot:
           target.onSnapshot?.(w.payload);
           break;
+        case EV.roster:
+          target.onRoster?.(w.payload as LiveRoster);
+          break;
+        case EV.hello:
+          target.onHello?.();
+          break;
       }
     };
     return {
@@ -173,6 +200,8 @@ export function createFakeTransportPair(
       sendHash: (hash, tick) => outbox.push({ event: EV.hash, payload: { hash, tick } }),
       requestResync: () => outbox.push({ event: EV.resyncReq, payload: {} }),
       sendSnapshot: (state) => outbox.push({ event: EV.snapshot, payload: state }),
+      sendRoster: (roster) => outbox.push({ event: EV.roster, payload: roster }),
+      sendHello: () => outbox.push({ event: EV.hello, payload: {} }),
       close: () => {},
       pending: () => outbox.length,
       flush: () => {

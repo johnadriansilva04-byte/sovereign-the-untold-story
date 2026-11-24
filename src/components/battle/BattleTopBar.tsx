@@ -25,7 +25,7 @@ export function BattleTopBar({
 
   return (
     <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 py-1.5 sm:gap-3 sm:px-4">
-      <SideBadge state={state} side={me} align="left" />
+      <SideBadge state={state} side={me} align="left" role="me" />
 
       <div className="text-center">
         <p
@@ -47,7 +47,7 @@ export function BattleTopBar({
         <PrizeBadge state={state} />
       </div>
 
-      <SideBadge state={state} side={foe} align="right" />
+      <SideBadge state={state} side={foe} align="right" role="foe" />
     </div>
   );
 }
@@ -94,14 +94,19 @@ function SideBadge({
   state,
   side,
   align,
+  role,
 }: {
   state: BattleState;
   side: Side;
   align: "left" | "right";
+  role?: "me" | "foe";
 }) {
   const cfg = side === "blue" ? state.blue : state.red;
   const base = state.structures.find((s) => s.side === side && s.kind === "base-principal");
   const tone = side === "blue" ? "bg-ally" : "bg-enemy";
+  // PvP: os dois lados são jogadores e podem ter o MESMO nome de perfil (duas abas do
+  // mesmo navegador). A etiqueta de assento diz de quem é a base sem depender do nome.
+  const seat = cfg.countryId.startsWith("pvp-") ? (role === "me" ? "Você" : "Adversário") : null;
   return (
     <div className={cn("flex items-center gap-2 sm:gap-3", align === "right" && "justify-end")}>
       {align === "right" && <BaseBar base={base} tone={tone} />}
@@ -111,6 +116,12 @@ function SideBadge({
           <span className="truncate">{cfg.countryName}</span>
         </p>
         <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+          {seat && (
+            <>
+              <span className={side === "blue" ? "text-ally" : "text-enemy"}>{seat}</span>
+              <span className="text-border"> · </span>
+            </>
+          )}
           Base {base ? `${Math.round((base.hp / base.maxHp) * 100)}%` : "destruída"}
         </p>
       </div>

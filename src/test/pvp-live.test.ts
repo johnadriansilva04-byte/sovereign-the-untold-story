@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { trackedChancellorSide } from "@/game/battle/chancellor";
 import { commanders } from "@/game/battle/catalog";
-import { deploy } from "@/game/battle/engine";
+import { createBattle, deploy } from "@/game/battle/engine";
 import type { BattleAction, BattleConfig } from "@/game/battle/types";
 import {
   buildLiveConfig,
   compareCommands,
+  decodeRoom,
+  encodeRoom,
   LiveSim,
   LIVE_DT,
   makeRoomCode,
@@ -180,5 +183,28 @@ describe("PvP online: núcleo", () => {
 
   it("randomSeed é estável para a mesma fonte", () => {
     expect(randomSeed(() => 0.5)).toBe(randomSeed(() => 0.5));
+  });
+
+  it("a semente do host sai do código da sala, não do sorteio original", () => {
+    // `encodeRoom` reduz a semente para caber no código: quem cria a sala precisa jogar
+    // com a semente LIDA do código, senão os dois clientes simulam partidas diferentes.
+    for (const raw of [randomSeed(() => 0.123), randomSeed(() => 0.987), 0xffffffff]) {
+      const code = encodeRoom(raw, "Campo aberto");
+      const decoded = decodeRoom(code)!;
+      expect(decoded.terrain).toBe("Campo aberto");
+      expect(encodeRoom(decoded.seed, "Campo aberto")).toBe(code);
+    }
+  });
+
+  it("os dois assentos acompanham o MESMO chanceler", () => {
+    // Cada cliente monta a config com a mesma semente; o chanceler é de um dos lados e
+    // o HUD só muda a etiqueta ("seu" × "inimigo"). Sem isso o convidado via o próprio
+    // chanceler no lugar do chanceler do host.
+    for (const seed of [1234, 1235, 777, 4096]) {
+      const cfg = buildLiveConfig({ seed, terrain: "Campo aberto", host: HOST, guest: GUEST });
+      const state = createBattle(cfg);
+      expect(trackedChancellorSide(state, "blue")).toBe(trackedChancellorSide(state, "red"));
+      expect(trackedChancellorSide(state, "blue")).toBe(cfg.heroSetup![0]!.side);
+    }
   });
 });

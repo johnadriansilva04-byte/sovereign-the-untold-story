@@ -1,7 +1,12 @@
 import { useId } from "react";
 
 import { cn } from "@/lib/utils";
-import { chancellorPersona, traitById, uniformById } from "@/game/battle/chancellor";
+import {
+  chancellorPersona,
+  trackedChancellorSide,
+  traitById,
+  uniformById,
+} from "@/game/battle/chancellor";
 import type { BattleState, Side } from "@/game/battle/types";
 
 // PAINEL DO PERSONAGEM: o chanceler é a peça que decide a batalha, mas no teatro ele é
@@ -10,9 +15,8 @@ import type { BattleState, Side } from "@/game/battle/types";
 export function HeroCard({ state, localSide }: { state: BattleState; localSide: Side }) {
   if ((state.config.heroSetup?.length ?? 0) === 0) return null;
 
-  const mode = state.config.chancellorMode ?? "defender";
-  const foe: Side = localSide === "blue" ? "red" : "blue";
-  const side: Side = mode === "defender" ? localSide : foe;
+  const side = trackedChancellorSide(state, localSide);
+  const own = side === localSide;
   const hero = state.heroes[side];
   const unit = (side === "blue" ? state.blue : state.red).units.find(
     (u) => u.id === hero.unitId && u.alive,
@@ -69,7 +73,7 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
         </div>
         <div className="min-w-0">
           <p className="font-mono text-[8px] uppercase tracking-[0.22em] text-primary">
-            {mode === "defender" ? "Seu chanceler" : "Chanceler inimigo"}
+            {own ? "Seu chanceler" : "Chanceler inimigo"}
           </p>
           <p
             className="truncate font-display text-sm font-bold uppercase leading-tight"
@@ -85,22 +89,33 @@ export function HeroCard({ state, localSide }: { state: BattleState; localSide: 
         </div>
       </div>
 
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden border border-border bg-muted">
-        <div
-          className={cn(
-            "h-full transition-[width] duration-200",
-            pct > 40 ? "bg-fact" : "bg-destructive",
-          )}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="mt-0.5 flex items-center justify-between font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
-        <span>Vida</span>
-        <span className="tabular-nums">{Math.round(pct)}%</span>
-      </div>
-      {mode === "defender" && hero.state === "livre" && (
+      {/* Fora de campo (cativo, preso ou abatido) não há vida para medir: mostrar 0%
+          faria parecer que ele está morto. A barra só aparece com o personagem em campo. */}
+      {unit && (
+        <>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden border border-border bg-muted">
+            <div
+              className={cn(
+                "h-full transition-[width] duration-200",
+                pct > 40 ? "bg-fact" : "bg-destructive",
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="mt-0.5 flex items-center justify-between font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
+            <span>Vida</span>
+            <span className="tabular-nums">{Math.round(pct)}%</span>
+          </div>
+        </>
+      )}
+      {own && hero.state === "livre" && (
         <p className="mt-1 border-t border-border/60 pt-1 font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
           Setas / analógico · comando direto
+        </p>
+      )}
+      {!own && hero.state === "livre" && (
+        <p className="mt-1 border-t border-border/60 pt-1 font-mono text-[8px] uppercase tracking-wider text-muted-foreground">
+          Cerque e use ⛓ Capturar
         </p>
       )}
       {loadout?.weaponName && (

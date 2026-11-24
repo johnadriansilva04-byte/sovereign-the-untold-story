@@ -1,27 +1,33 @@
-// PvP ONLINE em tempo real: o jogador cria uma sala (código compartilhável) ou entra com
-// o código do adversário. Os dois clientes rodam a MESMA simulação (lockstep determinístico)
-// e trocam apenas comandos pelo Realtime do Supabase — sem servidor de jogo.
+// PvP ONLINE em tempo real: o jogador monta a escalação (cartas + chanceler), cria uma
+// sala (código compartilhável) ou entra com o código do adversário. Os dois clientes rodam
+// a MESMA simulação (lockstep determinístico) e trocam apenas comandos e escalações.
 //
-// Esta tela cuida só do FLUXO (criar/entrar → esperar → jogar). A batalha em si é a
-// `BattleView` compartilhada, alimentada pelo `useLivePvp`.
+// Esta tela cuida só do FLUXO (escalar → criar/entrar → esperar → jogar). A batalha em si
+// é a `BattleView` compartilhada, alimentada pelo `useLivePvp`.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { GameButton, GameShell, Panel } from "@/components/game/shell";
 import { BattleView } from "@/components/battle/BattleScreen";
-import { commanders, arenaByTerrain } from "@/game/battle/catalog";
-import type { BattleConfig, BattleResult, TerrainKind } from "@/game/battle/types";
-import { effectiveDeck } from "@/game/progress/profile";
+import { arenaByTerrain, cardById, commanders } from "@/game/battle/catalog";
+import type { BattleResult, TerrainKind } from "@/game/battle/types";
+import {
+  chancellorLoadoutFor,
+  effectiveDeck,
+  ownedCardIds,
+  type ProfileState,
+} from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
-  buildLiveConfig,
   decodeRoom,
   encodeRoom,
   normalizeRoomCode,
+  outcomeForSeat,
   randomSeed,
   PVP_TERRAINS,
+  type LiveRoster,
   type Seat,
 } from "@/game/pvp/live";
 import { useLivePvp } from "@/game/pvp/useLivePvp";
@@ -43,7 +49,9 @@ type View =
       kind: "playing";
       code: string;
       seat: Seat;
-      config: BattleConfig;
+      seed: number;
+      terrain: TerrainKind;
+      roster: LiveRoster;
       transportMode: TransportMode;
     }
   | { kind: "result"; result: BattleResult; seat: Seat };
@@ -57,15 +65,17 @@ export function OnlineBattle({ onExit }: { onExit: () => void }) {
       <OnlineMatch
         code={view.code}
         seat={view.seat}
-        config={view.config}
+        seed={view.seed}
+        terrain={view.terrain}
+        roster={view.roster}
         transportMode={view.transportMode}
         onExit={() => setView({ kind: "menu" })}
         onEnd={(result) => {
           recordBattle({
             mode: "pvp",
-            missionId: view.config.id,
-            missionName: view.config.missionName,
-            outcome: result.outcome,
+            missionId: `pvp-live-${view.seed}`,
+            missionName: `PvP online · sala ${view.code}`,
+            outcome: outcomeForSeat(result.outcome, view.seat),
             difficulty: "veterano",
             duration: result.duration,
             kills: result.kills[view.seat === "host" ? "blue" : "red"],
@@ -81,14 +91,15 @@ export function OnlineBattle({ onExit }: { onExit: () => void }) {
   }
 
   if (view.kind === "result") {
+    const seatOutcome = outcomeForSeat(view.result.outcome, view.seat);
     return (
       <GameShell full>
         <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center gap-3 px-4 text-center">
           <p className="label-mono text-primary">Resultado PvP · online</p>
           <h1 className="font-display text-5xl font-black uppercase leading-none">
-            {view.result.outcome === "vitoria"
+            {seatOutcome === "vitoria"
               ? "Vitória"
-              : view.result.outcome === "empate"
+              : seatOutcome === "empate"
                 ? "Empate"
                 : "Derrota"}
           </h1>
@@ -101,28 +112,38 @@ export function OnlineBattle({ onExit }: { onExit: () => void }) {
 
   return (
     <OnlineMenu
-      deck={effectiveDeck(profile)}
+      profile={profile}
       onExit={onExit}
-      onStart={(code, seat, config, transportMode) =>
-        setView({ kind: "playing", code, seat, config, transportMode })
+      onStart={(code, seat, seed, terrain, roster, transportMode) =>
+        setView({ kind: "playing", code, seat, seed, terrain, roster, transportMode })
       }
     />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Menu: criar sala, entrar por código e a LISTA de salas criadas
+// Menu: escalação (cartas + chanceler no mesmo painel), criar sala, entrar, lista
 // ---------------------------------------------------------------------------
 
 function OnlineMenu({
-  deck,
+  profile,
   onExit,
   onStart,
 }: {
-  deck: string[];
+  profile: ProfileState;
   onExit: () => void;
-  onStart: (code: string, seat: Seat, config: BattleConfig, mode: TransportMode) => void;
+  onStart: (
+    code: string,
+    seat: Seat,
+    seed: number,
+    terrain: TerrainKind,
+    roster: LiveRoster,
+    mode: TransportMode,
+  ) => void;
 }) {
+  const owned = useMemo(() => ownedCardIds(profile), [profile]);
+  const [deck, setDeck] = useState<string[]>(() => effectiveDeck(profile).slice(0, 8));
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [terrain, setTerrain] = useState<TerrainKind>("Cidade");
   const [joinCode, setJoinCode] = useState(() => readInviteCode());
   const [mode, setMode] = useState<TransportMode>(isSupabaseConfigured ? "online" : "local");
@@ -130,6 +151,29 @@ function OnlineMenu({
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const localOnly = !isSupabaseConfigured;
+
+  const chancellor = useMemo(() => chancellorLoadoutFor(profile), [profile]);
+  const commander = commanders[0]!;
+
+  // Escalação que vai para a sala. Cada cliente anuncia a sua e os dois montam a MESMA
+  // config — baralhos diferentes divergiam a simulação já no primeiro tick.
+  const roster = useMemo<LiveRoster>(
+    () => ({
+      deck: deck.slice(0, 8),
+      commanderId: commander.id,
+      doctrine: commander.doctrine,
+      name: chancellor.name || "Comandante",
+      flag: "🇧🇷",
+      hero: chancellor,
+    }),
+    [chancellor, commander, deck],
+  );
+
+  const toggleCard = (id: string) =>
+    setDeck((d) => {
+      if (d.includes(id)) return d.filter((x) => x !== id);
+      return d.length >= 8 ? d : [...d, id];
+    });
 
   const copy = useCallback(async (label: string, text: string) => {
     try {
@@ -141,33 +185,16 @@ function OnlineMenu({
     }
   }, []);
 
-  // Cria a sala: este cliente é o HOST (comanda o azul). A config sai da semente, então
-  // o convidado reconstrói exatamente a mesma partida a partir do código.
   const createRoom = useCallback(() => {
     setError(null);
-    const seed = randomSeed();
-    const code = encodeRoom(seed, terrain);
+    const code = encodeRoom(randomSeed(), terrain);
+    // O código é a ÚNICA fonte da semente: o convidado a lê de lá. Se o host usasse a
+    // semente original, os dois lados simulariam partidas diferentes (a semente é
+    // reduzida para caber no código).
+    const seed = decodeRoom(code)!.seed;
     setRooms(saveRoom({ code, terrain, createdAt: Date.now(), guestJoined: false, seed }));
-    const config = buildLiveConfig({
-      seed,
-      terrain,
-      host: {
-        deck,
-        commanderId: commanders[0]!.id,
-        doctrine: commanders[0]!.doctrine,
-        name: "Você",
-        flag: "🇧🇷",
-      },
-      guest: {
-        deck,
-        commanderId: commanders[1]!.id,
-        doctrine: commanders[1]!.doctrine,
-        name: "Adversário",
-        flag: "🏳️",
-      },
-    });
-    onStart(code, "host", config, mode);
-  }, [deck, mode, onStart, terrain]);
+    onStart(code, "host", seed, terrain, roster, mode);
+  }, [mode, onStart, roster, terrain]);
 
   const joinRoom = useCallback(
     (rawCode?: string) => {
@@ -176,35 +203,26 @@ function OnlineMenu({
         setError("Informe o código da sala (4 caracteres).");
         return;
       }
-      setError(null);
       const found = decodeRoom(code);
       if (found === null) {
         setError("Código inválido. Confira com o adversário.");
         return;
       }
-      const config = buildLiveConfig({
-        seed: found.seed,
-        terrain: found.terrain,
-        host: {
-          deck,
-          commanderId: commanders[0]!.id,
-          doctrine: commanders[0]!.doctrine,
-          name: "Adversário",
-          flag: "🏳️",
-        },
-        guest: {
-          deck,
-          commanderId: commanders[1]!.id,
-          doctrine: commanders[1]!.doctrine,
-          name: "Você",
-          flag: "🇧🇷",
-        },
-      });
+      setError(null);
       setRooms(markGuestJoined(code));
-      onStart(code, "guest", config, mode);
+      onStart(code, "guest", found.seed, found.terrain, roster, mode);
     },
-    [deck, joinCode, mode, onStart],
+    [joinCode, mode, onStart, roster],
   );
+
+  // Convite (`?sala=XXXX`): o link já abre a sala. Sem isso o convidado caía no lobby
+  // com o código preenchido e precisava clicar em "Entrar na sala" para a partida existir.
+  const autoJoined = useRef(false);
+  useEffect(() => {
+    if (autoJoined.current || !joinCode || decodeRoom(joinCode) === null) return;
+    autoJoined.current = true;
+    joinRoom(joinCode);
+  }, [joinCode, joinRoom]);
 
   return (
     <GameShell full>
@@ -213,13 +231,85 @@ function OnlineMenu({
           <p className="label-mono text-primary">PvP · tempo real</p>
           <h1 className="font-display text-3xl font-black uppercase leading-none">Sala online</h1>
           <p className="mt-1 max-w-2xl font-mono text-[11px] text-muted-foreground">
-            Os dois lados rodam a mesma batalha e trocam só comandos. Abra a sala, mande o código
-            (ou o convite) e jogue.
+            Monte a escalação, abra a sala e mande o código. Os dois lados rodam a mesma batalha e
+            trocam só comandos.
           </p>
         </div>
 
-        {/* Onde a sala roda. Sem servidor configurado, a opção online some em vez de
-            aparecer desligada e sem explicação. */}
+        <Panel title={`Escalação · ${deck.length}/8 cartas`}>
+          <div className="grid gap-3 md:grid-cols-[230px_1fr]">
+            <div className="hud-panel hud-corners flex flex-col gap-1 p-3">
+              <p className="label-mono text-[9px] text-muted-foreground">Seu chanceler</p>
+              <p className="font-display text-lg font-black uppercase leading-tight">
+                {chancellor.name || "Comandante"}
+              </p>
+              <p className="font-mono text-[10px] text-ai">{commander.name}</p>
+              <p className="font-mono text-[10px] text-muted-foreground">{commander.doctrine}</p>
+              <p className="mt-1 font-mono text-[9px] text-muted-foreground">
+                {chancellor.gearIds.length} peça(s)
+                {chancellor.weaponName ? ` · ${chancellor.weaponName}` : ""}
+              </p>
+              <button
+                onClick={() => setPickerOpen((v) => !v)}
+                className="mt-auto border border-primary px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider text-primary hover:bg-accent"
+              >
+                {pickerOpen ? "Fechar cartas" : "Escolher cartas"}
+              </button>
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex flex-wrap gap-1">
+                {deck.map((id) => (
+                  <span
+                    key={id}
+                    className="border border-primary/60 bg-accent px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-primary"
+                  >
+                    {cardById(id).name}
+                  </span>
+                ))}
+                {Array.from({ length: Math.max(0, 8 - deck.length) }).map((_, i) => (
+                  <span
+                    key={`vazio-${i}`}
+                    className="border border-dashed border-border px-2 py-1 font-mono text-[10px] text-muted-foreground"
+                  >
+                    vazio
+                  </span>
+                ))}
+              </div>
+
+              {pickerOpen && (
+                <div className="mt-2 max-h-60 overflow-y-auto border-t border-border pt-2">
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+                    {owned.map((id) => {
+                      const card = cardById(id);
+                      const on = deck.includes(id);
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => toggleCard(id)}
+                          className={cn(
+                            "border p-1.5 text-left transition",
+                            on
+                              ? "border-primary bg-accent"
+                              : "border-border hover:border-primary/50",
+                          )}
+                        >
+                          <p className="font-display text-[11px] font-bold uppercase leading-tight">
+                            {card.name}
+                          </p>
+                          <p className="font-mono text-[9px] text-muted-foreground">
+                            {card.category}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </Panel>
+
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             Conexão
@@ -248,12 +338,12 @@ function OnlineMenu({
               Online · servidor
             </button>
           )}
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {mode === "local"
+              ? "entre abas do mesmo navegador — sem servidor"
+              : "Realtime do Supabase, cada um no seu computador"}
+          </span>
         </div>
-        <p className="font-mono text-[10px] text-muted-foreground">
-          {mode === "local"
-            ? "A sala vale entre abas do mesmo navegador — sem servidor, sem conta."
-            : "A sala usa o Realtime do Supabase: cada jogador no seu computador."}
-        </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Panel title="Criar sala">
@@ -274,11 +364,12 @@ function OnlineMenu({
               ))}
             </div>
             <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-              {arenaByTerrain(terrain).name} · baralho de {Math.min(deck.length, 8)} cartas
+              {arenaByTerrain(terrain).name} · {deck.length} cartas
             </p>
             <button
               onClick={createRoom}
-              className="mt-3 w-full bg-primary px-4 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110"
+              disabled={deck.length === 0}
+              className="mt-3 w-full bg-primary px-4 py-2.5 font-mono text-sm uppercase tracking-[0.2em] text-primary-foreground shadow-brass hover:brightness-110 disabled:opacity-50"
             >
               Criar sala
             </button>
@@ -376,34 +467,40 @@ function readInviteCode(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Partida online: espera o adversário e joga pela BattleView compartilhada
+// Partida online: espera a escalação do adversário e joga pela BattleView compartilhada
 // ---------------------------------------------------------------------------
 
 function OnlineMatch({
   code,
   seat,
-  config,
+  seed,
+  terrain,
+  roster,
   transportMode,
   onEnd,
   onExit,
 }: {
   code: string;
   seat: Seat;
-  config: BattleConfig;
+  seed: number;
+  terrain: TerrainKind;
+  roster: LiveRoster;
   transportMode: TransportMode;
   onEnd: (result: BattleResult) => void;
   onExit: () => void;
 }) {
-  const live = useLivePvp({ config, code, seat, transportMode, onEnd });
+  const live = useLivePvp({ seed, terrain, roster, code, seat, transportMode, onEnd });
   const source = useMemo(() => ({ useBattle: live.useBattle }), [live.useBattle]);
 
-  if (!live.peerSeen) {
+  if (!live.config) {
     return (
       <WaitingRoom
         code={code}
         status={live.status}
         seat={seat}
         transportMode={transportMode}
+        peerRoster={live.peerRoster}
+        deckSize={roster.deck.length}
         onExit={onExit}
       />
     );
@@ -413,7 +510,7 @@ function OnlineMatch({
     <GameShell full bare>
       <div className="flex h-full w-full flex-col">
         <BattleView
-          config={config}
+          config={live.config}
           source={source}
           localSide={live.localSide}
           onComplete={() => {}}
@@ -430,12 +527,16 @@ function WaitingRoom({
   status,
   seat,
   transportMode,
+  peerRoster,
+  deckSize,
   onExit,
 }: {
   code: string;
   status: TransportStatus;
   seat: Seat;
   transportMode: TransportMode;
+  peerRoster: LiveRoster | null;
+  deckSize: number;
   onExit: () => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -453,7 +554,7 @@ function WaitingRoom({
 
   const statusText =
     status === "open"
-      ? "Sala aberta. Mande o convite e a partida começa quando o outro lado entrar."
+      ? "Sala aberta. Mande o convite: a partida começa quando o outro lado entrar."
       : status === "connecting"
         ? "Abrindo a sala…"
         : status === "error"
@@ -482,13 +583,17 @@ function WaitingRoom({
               <span className="text-muted-foreground">
                 {seat === "host" ? "Você · azul" : "Você · vermelho"}
               </span>
-              <span className="text-fact">em campo</span>
+              <span className="text-fact">{deckSize} cartas</span>
             </p>
             <p className="flex justify-between">
               <span className="text-muted-foreground">
                 {seat === "host" ? "Convidado · vermelho" : "Host · azul"}
               </span>
-              <span className="text-ai">aguardando entrar</span>
+              <span className={peerRoster ? "text-fact" : "text-ai"}>
+                {peerRoster
+                  ? `${peerRoster.name} · ${peerRoster.deck.length} cartas`
+                  : "aguardando entrar"}
+              </span>
             </p>
           </div>
           <p className="mt-3 border-t border-border pt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">

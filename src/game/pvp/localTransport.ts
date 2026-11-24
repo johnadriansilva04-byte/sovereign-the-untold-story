@@ -6,7 +6,7 @@
 // "falha na conexão" quando o servidor não está configurado.
 
 import { roomTopic, type LiveTransport, type TransportHandlers } from "./transport";
-import type { LiveCommand, Seat } from "./live";
+import type { LiveCommand, LiveRoster, Seat } from "./live";
 
 const EV = {
   cmd: "cmd",
@@ -14,6 +14,7 @@ const EV = {
   hash: "hash",
   resyncReq: "resync-req",
   snapshot: "snapshot",
+  roster: "roster",
   hello: "hello",
 } as const;
 
@@ -34,6 +35,8 @@ export function createLocalTransport(
       sendHash: () => {},
       requestResync: () => {},
       sendSnapshot: () => {},
+      sendRoster: () => {},
+      sendHello: () => {},
       close: () => {},
     };
   }
@@ -66,7 +69,13 @@ export function createLocalTransport(
       case EV.snapshot:
         handlers.onSnapshot?.(payload);
         break;
+      case EV.roster: {
+        const roster = payload as LiveRoster;
+        if (roster && Array.isArray(roster.deck)) handlers.onRoster?.(roster);
+        break;
+      }
       case EV.hello:
+        handlers.onHello?.();
         break;
     }
   };
@@ -83,6 +92,8 @@ export function createLocalTransport(
     sendHash: (hash, tick) => post(EV.hash, { hash, tick }),
     requestResync: () => post(EV.resyncReq, {}),
     sendSnapshot: (state) => post(EV.snapshot, state),
+    sendRoster: (roster) => post(EV.roster, roster),
+    sendHello: () => post(EV.hello, { seat }),
     close: () => {
       channel.close();
     },

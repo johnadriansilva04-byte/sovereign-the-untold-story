@@ -18,19 +18,23 @@ import type {
   DeployTarget,
   Order,
   Side,
+  TerrainKind,
 } from "@/game/battle/types";
 import { cardById } from "@/game/battle/catalog";
 import { applyAction, effectiveCost } from "@/game/battle/engine";
 import type { DeployBatchResult, DeployRequest } from "@/game/battle/engine";
 import type { UseBattle } from "@/game/battle/useBattle";
-import { sideForSeat, type Seat } from "./live";
+import { buildLiveConfig, sideForSeat, type LiveRoster, type Seat } from "./live";
 import { LiveMatch } from "./match";
 import type { TransportStatus } from "./transport";
 import { createTransport, type TransportMode } from "./transportFactory";
 
 export interface UseLivePvpOptions {
-  /** Config ÚNICA da partida (mesma nos dois clientes, via `buildLiveConfig`). */
-  config: BattleConfig;
+  /** Semente e terreno da sala (vêm do código); a config sai das duas escalações. */
+  seed: number;
+  terrain: TerrainKind;
+  /** Minha escalação — anunciada ao adversário, como a dele chega até mim. */
+  roster: LiveRoster;
   code: string;
   seat: Seat;
   /** "local" = duas abas do mesmo navegador (BroadcastChannel); "online" = Supabase. */
@@ -40,6 +44,9 @@ export interface UseLivePvpOptions {
 
 export interface UseLivePvp {
   state: BattleState | null;
+  /** Config montada com as DUAS escalações. `null` até a escalação do adversário chegar. */
+  config: BattleConfig | null;
+  peerRoster: LiveRoster | null;
   localSide: Side;
   status: TransportStatus;
   peerSeen: boolean;
@@ -68,12 +75,13 @@ export interface UseLivePvp {
 }
 
 export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
-  const { config } = opts;
   const localSide = sideForSeat(opts.seat);
 
   const [, force] = useState(0);
   const [status, setStatus] = useState<TransportStatus>("connecting");
   const [peerSeen, setPeerSeen] = useState(false);
+  const [config, setConfig] = useState<BattleConfig | null>(null);
+  const [peerRoster, setPeerRoster] = useState<LiveRoster | null>(null);
   const [paused, setPausedState] = useState(false);
   const [result, setResult] = useState<BattleResult | null>(null);
   const matchRef = useRef<LiveMatch | null>(null);
@@ -87,9 +95,32 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
   }, []);
 
   useEffect(() => {
-    // Handlers delegados: o transporte é criado ANTES do match (ele é injetado no
-    // construtor), então ele entrega os eventos a um invólucro que só existe depois.
+    // O transporte nasce primeiro: é por ele que a escalação do adversário chega. A
+    // partida só é montada quando as DUAS escalações existem — baralhos diferentes nos
+    // dois clientes divergiriam a simulação já no primeiro tick.
     let match: LiveMatch | null = null;
+    let closed = false;
+
+    const startMatch = (peer: LiveRoster) => {
+      if (match || closed) return;
+      const host = opts.seat === "host" ? opts.roster : peer;
+      const guest = opts.seat === "host" ? peer : opts.roster;
+      const built = buildLiveConfig({ seed: opts.seed, terrain: opts.terrain, host, guest });
+      setConfig(built);
+      match = new LiveMatch({
+        config: built,
+        seat: opts.seat,
+        transport,
+        onTick: () => force((n) => (n + 1) % 1_000_000),
+        onPeerSeen: () => setPeerSeen(true),
+        onEnd: (r) => {
+          setResult(r);
+          onEndRef.current?.(r);
+        },
+      });
+      matchRef.current = match;
+    };
+
     const transport = createTransport(opts.transportMode ?? "local", opts.code, opts.seat, {
       onStatus: (s) => setStatus(s),
       onCommand: (cmd) => match?.handlers().onCommand(cmd),
@@ -97,19 +128,32 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
       onHash: (h, t) => match?.handlers().onHash(h, t),
       onResyncRequest: () => match?.handlers().onResyncRequest(),
       onSnapshot: (s) => match?.handlers().onSnapshot(s),
-    });
-    match = new LiveMatch({
-      config,
-      seat: opts.seat,
-      transport,
-      onTick: () => force((n) => (n + 1) % 1_000_000),
-      onPeerSeen: () => setPeerSeen(true),
-      onEnd: (r) => {
-        setResult(r);
-        onEndRef.current?.(r);
+      onRoster: (roster) => {
+        setPeerRoster(roster);
+        startMatch(roster);
       },
+      // Resposta imediata ao "entrei na sala": com as abas em segundo plano os
+      // temporizadores são estrangulados, então quem chega depois precisa pedir.
+      onHello: () => transport.sendRoster(opts.roster),
     });
-    matchRef.current = match;
+
+    // Anúncio repetido: o BroadcastChannel não guarda mensagens para quem chega depois,
+    // e o Realtime pode abrir o canal do outro lado mais tarde. Repetir até a escalação do
+    // adversário chegar resolve os dois casos sem protocolo de retransmissão.
+    // Anúncio periódico como rede de segurança (o caminho normal é o hello acima).
+    transport.sendRoster(opts.roster);
+    transport.sendHello();
+    let announces = 0;
+    const announce = setInterval(() => {
+      announces += 1;
+      if (announces > 12) {
+        clearInterval(announce);
+        return;
+      }
+      transport.sendRoster(opts.roster);
+      transport.sendHello();
+    }, 900);
+    const heartbeat = setInterval(() => transport.sendHello(), 4000);
 
     let raf = 0;
     let last = performance.now();
@@ -123,11 +167,14 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
     raf = requestAnimationFrame(loop);
 
     return () => {
+      closed = true;
+      clearInterval(announce);
+      clearInterval(heartbeat);
       cancelAnimationFrame(raf);
       transport.close();
       matchRef.current = null;
     };
-  }, [config, opts.code, opts.seat, opts.transportMode]);
+  }, [opts.code, opts.seat, opts.transportMode, opts.seed, opts.terrain, opts.roster]);
 
   const dispatch = useCallback((action: BattleAction) => {
     matchRef.current?.dispatch(action);
@@ -268,8 +315,8 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
   const costOf = useCallback(
     (cardId: string) => {
       const m = matchRef.current;
-      const doctrine = (m?.sim.state[localSide] ?? config[localSide]).doctrine;
-      return effectiveCost(cardById(cardId), doctrine);
+      const doctrine = (m?.sim.state[localSide] ?? config?.[localSide])?.doctrine;
+      return doctrine ? effectiveCost(cardById(cardId), doctrine) : 0;
     },
     [config, localSide],
   );
@@ -306,6 +353,8 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
 
   return {
     state,
+    config,
+    peerRoster,
     localSide,
     status,
     peerSeen,

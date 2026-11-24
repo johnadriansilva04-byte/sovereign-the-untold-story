@@ -48,6 +48,7 @@ import type {
 import { modsFromAccessories, type Difficulty } from "@/game/progress/catalog";
 import { activeAccessories, cardLevelsForDeck, type ProfileState } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
+import { trackedChancellorSide } from "@/game/battle/chancellor";
 import { chancellorLoadoutFor } from "@/game/progress/profile";
 
 type Phase = "preparacao" | "batalha" | "resultado";
@@ -810,12 +811,11 @@ export function BattleView({
 // Estado do objetivo central: onde está cada chanceler. Traduz o `heroes` do motor em
 // uma leitura direta — PRESO / EM CAMPO / MORTO — com a vida do nosso quando exposto.
 function HeroObjective({ state, localSide }: { state: BattleState; localSide: Side }) {
-  // Cada batalha tem UM único chanceler: o nosso (modo "defender") ou o adversário
-  // (modo "capturar"). O HUD mostra apenas esse, com o seu estado. O lado "nosso"
-  // segue o lado local — no PvP o convidado joga de vermelho.
-  const mode = state.config.chancellorMode ?? "defender";
-  const foe: Side = localSide === "blue" ? "red" : "blue";
-  const side: Side = mode === "defender" ? localSide : foe;
+  // Cada batalha tem UM único chanceler. O HUD mostra esse personagem e diz de quem
+  // ele é em relação ao lado local — no PvP o convidado joga de vermelho e vê o mesmo
+  // chanceler do host, apenas como "inimigo".
+  const side = trackedChancellorSide(state, localSide);
+  const own = side === localSide;
   const h = state.heroes[side];
   const unit = (side === "blue" ? state.blue : state.red).units.find(
     (u) => u.id === h.unitId && u.alive,
@@ -828,7 +828,7 @@ function HeroObjective({ state, localSide }: { state: BattleState; localSide: Si
     return h.state === "seguro" ? `${pct} seguro` : pct;
   };
   const tone = () => {
-    if (h.state === "morto") return mode === "defender" ? "text-enemy" : "text-ally";
+    if (h.state === "morto") return own ? "text-enemy" : "text-ally";
     if (h.state === "preso" || h.state === "fugindo") return "text-primary";
     return "text-foreground";
   };
@@ -838,7 +838,7 @@ function HeroObjective({ state, localSide }: { state: BattleState; localSide: Si
         <circle cx="6" cy="3.4" r="2.2" fill="currentColor" />
         <path d="M1.6 11.4 Q2 6.9 6 6.9 Q10 6.9 10.4 11.4 Z" fill="currentColor" />
       </svg>
-      {mode === "defender" ? "Seu chanceler" : "Chanceler inimigo"}
+      {own ? "Seu chanceler" : "Chanceler inimigo"}
       <span className={cn("tabular-nums", tone())}>{label()}</span>
     </span>
   );
@@ -969,9 +969,8 @@ function heroAlertFor(
   state: BattleState,
   localSide: Side = "blue",
 ): { key: string; text: string } | null {
-  const mode = state.config.chancellorMode ?? "defender";
-  const foe: Side = localSide === "blue" ? "red" : "blue";
-  const side: Side = mode === "defender" ? localSide : foe;
+  const side = trackedChancellorSide(state, localSide);
+  const own = side === localSide;
   const h = state.heroes[side];
   const carFor = (captiveSide: "blue" | "red") =>
     (state.prisonCars ?? []).find(
@@ -979,17 +978,17 @@ function heroAlertFor(
         c.captiveSide === captiveSide && c.captiveKind === "chanceler" && !c.captured && !c.lost,
     );
   if (h.state === "morto")
-    return mode === "defender"
-      ? { key: "blue-morto", text: "SEU CHANCELER MORREU — A GUERRA ESTÁ PERDIDA." }
-      : { key: "red-morto", text: "CHANCELER INIMIGO ELIMINADO — A GUERRA ESTÁ VENCIDA." };
+    return own
+      ? { key: `${side}-morto`, text: "SEU CHANCELER MORREU — A GUERRA ESTÁ PERDIDA." }
+      : { key: `${side}-morto`, text: "CHANCELER INIMIGO ELIMINADO — A GUERRA ESTÁ VENCIDA." };
   if (carFor(side))
-    return mode === "defender"
-      ? { key: "blue-preso", text: "SEU CHANCELER FOI CAPTURADO — SENDO LEVADO À BASE INIMIGA!" }
-      : { key: "red-preso", text: "CHANCELER INIMIGO CAPTURADO — CONDUZINDO-O À SUA BASE." };
+    return own
+      ? { key: `${side}-preso`, text: "SEU CHANCELER FOI CAPTURADO — SENDO LEVADO À BASE INIMIGA!" }
+      : { key: `${side}-preso`, text: "CHANCELER INIMIGO CAPTURADO — CONDUZINDO-O À SUA BASE." };
   if (h.state === "preso")
-    return mode === "defender"
-      ? { key: "blue-cativo", text: "SEU CHANCELER ESTÁ CATIVO — RESGATE-O ANTES QUE O LEVEM." }
-      : { key: "red-cativo", text: "CHANCELER INIMIGO CATIVO — CONDUZA-O À SUA BASE." };
+    return own
+      ? { key: `${side}-cativo`, text: "SEU CHANCELER ESTÁ CATIVO — RESGATE-O ANTES QUE O LEVEM." }
+      : { key: `${side}-cativo`, text: "CHANCELER INIMIGO CATIVO — CONDUZA-O À SUA BASE." };
   return null;
 }
 

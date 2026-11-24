@@ -516,6 +516,35 @@ leitura de mundo, embalada como obra de ficção.
   Verificado no navegador: criar sala → convite em outra aba → as duas abas entram na
   batalha no mesmo tick.
 
+### 5.z Chanceler no PvP: um só personagem, dois pontos de vista (24/11/2026)
+
+- **A semente agora vem do código da sala.** `encodeRoom` reduz a semente para caber no
+  código (~4,7 milhões de faixas); o host sorteava `randomSeed()` (até 2^32) e jogava com
+  ela, enquanto o convidado lia a semente reduzida do código. Os dois simulavam partidas
+  diferentes: RNG, IA e o lado do chanceler divergiam. Agora quem cria a sala lê a semente
+  de volta do código (`decodeRoom(code).seed`) — o código é a única fonte.
+- **Sintoma que revelou o defeito**: cada aba mostrava o chanceler como "seu" (o modo
+  `defender`/`capturar` é escolhido pela paridade da semente, e as paridades eram outras).
+- **`trackedChancellorSide`** (`src/game/battle/chancellor.ts`) é a única fonte de "de quem
+  é o chanceler": o cenário (`heroSetup`) manda; sem cenário, o modo decide. `HeroCard`,
+  `HeroObjective` e o HUD usam a mesma função, então host e convidado veem o MESMO
+  personagem, mudando só o rótulo ("Seu chanceler" / "Chanceler inimigo").
+- **Escalação leva o chanceler** (`LiveRoster.hero`): o adversário vê nome, estilo, uniforme,
+  arma e bio do personagem do outro jogador, em vez da persona genérica do país.
+- **Resultado por assento**: `outcomeForSeat` traduz o resultado do motor (azul/vermelho)
+  para a perspectiva de quem está olhando; vitória e derrota aparecem certas nos dois lados.
+- **Convite abre a sala**: `?sala=CODE` entra sozinho (guarda contra dupla entrada no
+  StrictMode). Antes o convidado caía no lobby com o código preenchido e precisava clicar.
+- **Assento no placar**: no PvP os dois lados podem ter o mesmo nome de perfil (duas abas do
+  mesmo navegador). A barra superior passou a marcar "Você" e "Adversário" na linha da base.
+- **Ficha do chanceler**: a barra de vida só aparece com o personagem em campo (cativo,
+  preso ou abatido não tem vida para medir — antes mostrava 0% e parecia morto); quando o
+  chanceler é do adversário, a ficha lembra o comando "Cerque e use ⛓ Capturar".
+- **Testes**: `src/test/pvp-live.test.ts` ganhou a ida-e-volta do código (semente e terreno)
+  e a garantia de que os dois assentos acompanham o mesmo chanceler. Suíte: **358 passaram /
+  7 ignorados**. O teste de curva de dificuldade (`ai-difficulty`) ganhou timeout explícito:
+  80 partidas passam dos 30 s padrão quando a suíte roda em paralelo.
+
 ## 6. Créditos
 
 Desenvolvido por **Variant** — em homenagem à Força Expedicionária Brasileira. A cobra fumou.

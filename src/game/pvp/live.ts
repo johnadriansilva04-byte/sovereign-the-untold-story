@@ -12,10 +12,12 @@ import { arenaByTerrain, commanderById, commanders } from "@/game/battle/catalog
 import { commandCapacity, defaultNation, economyBonus, regenRate } from "@/game/battle/missions";
 import { applyAction, createBattle, stepBattle } from "@/game/battle/engine";
 import { HOME_POINT } from "@/game/battle/world";
+import type { ChancellorLoadout } from "@/game/battle/chancellor";
 import type {
   Arena,
   BattleAction,
   BattleConfig,
+  BattleOutcome,
   BattleState,
   ChancellorMode,
   Doctrine,
@@ -162,6 +164,22 @@ export interface LiveSideInput {
   name: string;
   flag: string;
   cardLevels?: Record<string, number>;
+  /** Chanceler do jogador: rosto, nome e estilo aparecem no campo para os dois lados. */
+  hero?: ChancellorLoadout;
+}
+
+/**
+ * ESCALAÇÃO de um lado na sala: o que precisa ser IGUAL nos dois clientes. Cada jogador
+ * anuncia a sua pelo transporte; os dois montam a config com as duas e a partida nasce
+ * idêntica — sem isso, baralhos diferentes divergiam no primeiro tick.
+ */
+export interface LiveRoster {
+  deck: string[];
+  commanderId: string;
+  doctrine: Doctrine;
+  name: string;
+  flag: string;
+  hero?: ChancellorLoadout;
 }
 
 export interface LiveConfigInput {
@@ -186,7 +204,11 @@ function sideConfig(input: LiveSideInput) {
     regen: regenRate(defaultNation),
     economyBonus: economyBonus(defaultNation),
   };
-  return input.cardLevels ? { ...cfg, cardLevels: input.cardLevels } : cfg;
+  return {
+    ...cfg,
+    ...(input.cardLevels ? { cardLevels: input.cardLevels } : {}),
+    ...(input.hero ? { hero: input.hero } : {}),
+  };
 }
 
 function cloneArena(arena: Arena): Arena {
@@ -236,6 +258,15 @@ export function buildLiveConfig(input: LiveConfigInput): BattleConfig {
     chancellorMode: mode,
     heroDecisive: true,
   };
+}
+
+/**
+ * O resultado do motor é sempre do ponto de vista do AZUL. Numa sala cada cliente tem
+ * o seu assento, então o convidado (vermelho) lê o resultado invertido.
+ */
+export function outcomeForSeat(outcome: BattleOutcome, seat: Seat): BattleOutcome {
+  if (seat === "host" || outcome === "empate") return outcome;
+  return outcome === "vitoria" ? "derrota" : "vitoria";
 }
 
 // ---------------------------------------------------------------------------

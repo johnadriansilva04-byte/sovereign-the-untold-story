@@ -2,6 +2,8 @@
 // um nome próprio com um tempero claro faz o jogador tratá-lo como personagem — não como
 // mais um ícone. A persona é derivada do país da facção; forças irregulares têm a sua.
 
+import type { BattleState, Side } from "./types";
+
 export interface ChancellorPersona {
   name: string;
   title: string;
@@ -142,4 +144,17 @@ export function defaultIdentity(): ChancellorIdentity {
     uniformId: "oliva",
     bio: PERSONAS["br"]!.bio,
   };
+}
+
+/**
+ * Lado cujo chanceler a batalha acompanha. O cenário (`heroSetup`) manda: no PvP o
+ * chanceler é de UM dos lados, e cada cliente vê o mesmo personagem — só muda se ele é
+ * "seu" ou "inimigo". Sem cenário, o modo decide (defender = o nosso, capturar = o outro).
+ */
+export function trackedChancellorSide(state: BattleState, localSide: Side): Side {
+  const setup = state.config.heroSetup?.[0]?.side;
+  if (setup) return setup;
+  const mode = state.config.chancellorMode ?? "defender";
+  if (mode === "defender") return localSide;
+  return localSide === "blue" ? "red" : "blue";
 }

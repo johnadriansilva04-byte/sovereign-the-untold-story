@@ -51,6 +51,8 @@ function nullTransport(): LiveTransport {
     sendHash: () => {},
     requestResync: () => {},
     sendSnapshot: () => {},
+    sendRoster: () => {},
+    sendHello: () => {},
     close: () => {},
   };
 }

@@ -59,7 +59,8 @@ describe("IA: curva de dificuldade", () => {
     for (const d of ["recruta", "veterano", "elite", "soberano"] as Difficulty[]) {
       expect(winRateVs(d, 20, 1000)).toBeGreaterThan(0);
     }
-  });
+    // 80 partidas completas: passa dos 30 s padrão quando a suíte roda em paralelo.
+  }, 120_000);
 
   it("Soberano é um adversário competitivo (o azul não domina)", () => {
     const rate = winRateVs("soberano", 20, 40000);
