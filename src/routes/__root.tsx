@@ -10,7 +10,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ProfileProvider, useProfile } from "@/game/progress/store";
 
@@ -152,31 +152,50 @@ function titleOfMeta(meta: unknown): string | null {
 
 function DocumentTitle() {
   const router = useRouter();
-  const title = useRouterState({
-    select: (s) => {
-      for (let i = s.matches.length - 1; i >= 0; i--) {
-        const match = s.matches[i];
-        if (!match) continue;
-        const resolved = titleOfMeta(match.meta);
-        if (resolved) return resolved;
-        const route = router.routesById[match.routeId] as
-          { options?: { head?: unknown } } | undefined;
-        // O `head` recebe o contexto resolvido da rota; aqui só o título interessa.
-        const head = route?.options?.head as ((ctx: never) => unknown) | undefined;
-        if (typeof head === "function") {
-          const generated = titleOfMeta((head({} as never) as { meta?: unknown }).meta);
-          if (generated) return generated;
-        }
-      }
-      return "SOVEREIGN — A história que não te contaram";
-    },
-  });
+  const title = useRouterState({ select: (s) => titleForState(router, s.matches) });
+  const titleRef = useRef(title);
+  titleRef.current = title;
 
+  // O <HeadContent /> cobre o SSR, mas na navegação do cliente nada repinta a aba — e
+  // o React 19 não atualiza o <title> içado depois do primeiro render. O efeito
+  // reaplica o título a cada rota e sempre que algo mexe no <head>.
   useEffect(() => {
-    if (typeof document !== "undefined" && document.title !== title) document.title = title;
+    if (typeof document === "undefined") return;
+    const apply = () => {
+      const next = titleRef.current;
+      if (next && document.title !== next) document.title = next;
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
   }, [title]);
 
   return null;
+}
+
+function titleForState(
+  router: ReturnType<typeof useRouter>,
+  matches: Array<{ routeId: string; meta?: unknown }>,
+): string {
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const match = matches[i];
+    if (!match) continue;
+    const resolved = titleOfMeta((match as { meta?: unknown }).meta);
+    if (resolved) return resolved;
+    const route = router.routesById[match.routeId] as { options?: { head?: unknown } } | undefined;
+    const head = route?.options?.head as ((ctx: never) => unknown) | undefined;
+    if (typeof head !== "function") continue;
+    try {
+      // Só o título interessa; rotas cujo `head` depende de params/loader caem no catch.
+      const generated = head({} as never) as { meta?: unknown } | undefined;
+      const fromHead = titleOfMeta(generated?.meta);
+      if (fromHead) return fromHead;
+    } catch {
+      /* segue para a rota anterior */
+    }
+  }
+  return "SOVEREIGN — A história que não te contaram";
 }
 
 function Connecting() {

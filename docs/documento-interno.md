@@ -267,6 +267,11 @@ leitura de mundo, embalada como obra de ficção.
   `id` era repetido em cada instância do componente.
 - **Verificação**: `tsc --noEmit` e `eslint` limpos; suíte completa **338 passaram / 7
   ignorados**.
+- **Título da aba** (`__root.tsx`): o `<HeadContent />` resolvia o título só no SSR; na
+  navegação do cliente a aba ficava presa na primeira rota e o React 19 não repinta o
+  `<title>` içado depois do primeiro render. `DocumentTitle` agora deriva o título do estado
+  do roteador (`titleForState`), escreve em `document.title` a cada rota e mantém um
+  `MutationObserver` no `<head>` para reaplicar se algo o sobrescrever.
 
 ### Atualização 24/11/2026 — campo de batalha, personagem e entrada da campanha
 
