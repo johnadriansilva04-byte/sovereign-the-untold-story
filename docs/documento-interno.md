@@ -403,7 +403,9 @@ leitura de mundo, embalada como obra de ficção.
   atributos já alterados, e o log registra "… entrou em campo com Fuzil FAL 7,62". Nada é só
   ficha: o ajuste é no motor.
 - **Como se ganha**: cada **vitória** libera a próxima peça que o capítulo já permite
-  (`grantGear` / `nextGearDrop`, deterministicamente pela ordem do catálogo). Peças que faltam
+  (`grantGear` / `nextGearDrop`). A ordem de queda **alterna os slots** — mobilidade, arma,
+  proteção, uniforme — então a primeira vitória entrega as botas de assalto e o chanceler já
+  anda mais rápido. Peças que faltam
   podem ser **requisitadas com Sovereigns** na armaria. O veredito passou a listar
   "Equipamento · <peça>" junto das demais recompensas.
 - **HUD** (`HeroCard.tsx`): o cartão do herói mostra o nome criado, o estilo escolhido, a arma

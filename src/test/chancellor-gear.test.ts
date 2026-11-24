@@ -5,6 +5,7 @@ import {
   CHANCELLOR_GEAR,
   chancellorLoadout,
   gearMods,
+  gearById,
   nextGearDrop,
 } from "@/game/battle/chancellorGear";
 import { CHANCELLOR_TRAITS, CHANCELLOR_UNIFORMS, defaultIdentity } from "@/game/battle/chancellor";
@@ -100,9 +101,12 @@ describe("chanceler: equipamento", () => {
   it("a vitória libera a próxima peça que o capítulo permite, sem repetir", () => {
     const profile = createProfile("Teste");
     const first = grantGear(profile, 1);
-    expect(first.gearId).toBe("gear-fal");
+    // a primeira vitória entrega mobilidade: o chanceler fica mais rápido já no cap. 1
+    expect(first.gearId).toBe("gear-botas");
+    expect(gearById(first.gearId!)!.slot).toBe("mobilidade");
     const second = grantGear(first.profile, 1);
     expect(second.gearId).not.toBe(first.gearId);
+    expect(gearById(second.gearId!)!.slot).toBe("arma");
     // capítulo 1 não libera peça de elite
     expect(nextGearDrop([], 1)!.dropFrom).toBeLessThanOrEqual(1);
     expect(CHANCELLOR_GEAR.some((g) => g.dropFrom > 1)).toBe(true);

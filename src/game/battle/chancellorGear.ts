@@ -259,7 +259,15 @@ export function chancellorLoadout(
  * Próxima peça de prêmio: a primeira ainda não possuída que já pode cair no capítulo
  * atual. Determinístico (ordem do catálogo) — o jogador sabe o que a vitória libera.
  */
+// A ordem de queda percorre os slots em vez de seguir o catálogo: assim a primeira
+// vitória já entrega mobilidade (o chanceler anda mais rápido) e as seguintes
+// alternam arma, proteção e uniforme, sem o jogador passar dez missões sem pé novo.
+const DROP_ROTATION: GearSlot[] = ["mobilidade", "arma", "protecao", "uniforme"];
+
 export function nextGearDrop(owned: string[], chapterNumber: number): ChancellorGear | undefined {
   const have = new Set(owned);
-  return CHANCELLOR_GEAR.find((g) => g.dropFrom <= chapterNumber && !have.has(g.id));
+  const pool = CHANCELLOR_GEAR.filter((g) => g.dropFrom <= chapterNumber && !have.has(g.id));
+  if (pool.length === 0) return undefined;
+  const wanted = DROP_ROTATION[have.size % DROP_ROTATION.length]!;
+  return pool.find((g) => g.slot === wanted) ?? pool[0];
 }
