@@ -3722,14 +3722,20 @@ function checkVictory(state: BattleState, dt: number): void {
   // sem como agir. Um lado é declarado falido quando NÃO consegue mais jogar: sem Sov
   // para nenhuma carta da mão, sem tropas vivas em campo e sem base avançada pagando
   // renda. Se um lado faliu e o outro não, o que ainda joga vence a guerra de atrito.
-  const blueStuck = sideIsBankrupt(state, "blue");
-  const redStuck = sideIsBankrupt(state, "red");
-  if (blueStuck && !redStuck)
-    return finish(state, "derrota", "Recursos esgotados: sem Sov nem tropas, a operação parou.");
-  if (redStuck && !blueStuck)
-    return finish(state, "vitoria", "Recursos esgotados: o adversário ficou sem como reagir.");
-  if (blueStuck && redStuck)
-    return finish(state, "empate", "Recursos esgotados nos dois lados: a guerra travou.");
+  // A regra só vale depois da mobilização e para lados que já entraram em campo: no
+  // instante zero os dois lados têm zero tropa, zero território e a mão ainda não foi
+  // comprada, então a checagem declarava falência (e encerrava a partida) antes do
+  // primeiro tiro. Quem ainda não jogou não pode ter perdido por não jogar.
+  if (state.t >= MOBILIZACAO_SECONDS && state.blue.deployed > 0 && state.red.deployed > 0) {
+    const blueStuck = sideIsBankrupt(state, "blue");
+    const redStuck = sideIsBankrupt(state, "red");
+    if (blueStuck && !redStuck)
+      return finish(state, "derrota", "Recursos esgotados: sem Sov nem tropas, a operação parou.");
+    if (redStuck && !blueStuck)
+      return finish(state, "vitoria", "Recursos esgotados: o adversário ficou sem como reagir.");
+    if (blueStuck && redStuck)
+      return finish(state, "empate", "Recursos esgotados nos dois lados: a guerra travou.");
+  }
 
   const op = state.config.operationalTarget;
   if (op) {

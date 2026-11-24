@@ -215,3 +215,25 @@ describe("motor de batalha", () => {
     expect(dificil.red.deployed).toBeGreaterThanOrEqual(facil.red.deployed);
   });
 });
+
+describe("fim de partida prematuro", () => {
+  it("não encerra a batalha na mobilização, antes de qualquer tropa entrar em campo", () => {
+    // Regressão: no instante zero os dois lados têm zero tropa, zero território e a
+    // mão ainda não foi comprada. A checagem de exaustão declarava falência dos dois
+    // lados e a partida terminava em "empate" antes do primeiro tiro.
+    const state = createBattle(testConfig());
+    for (let i = 0; i < 160; i++) stepBattle(state, 0.1); // além dos 15 s de mobilização
+
+    expect(state.t).toBeGreaterThan(15);
+    expect(state.running).toBe(true);
+    expect(state.phase).not.toBe("resultado");
+  });
+
+  it("não declara falência de quem ainda não jogou", () => {
+    const state = createBattle(testConfig());
+    for (let i = 0; i < 400; i++) stepBattle(state, 0.1); // 40 s, ninguém recruta
+
+    expect(state.running).toBe(true);
+    expect(state.reason).not.toMatch(/Recursos esgotados/);
+  });
+});

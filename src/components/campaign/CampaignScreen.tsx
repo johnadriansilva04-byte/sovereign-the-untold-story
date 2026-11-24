@@ -138,27 +138,17 @@ export function CampaignScreen() {
 
   // PRIMEIRA ENTRADA NA CAMPANHA: o jogador monta o próprio chanceler antes de comandar.
   if (!profile.chancellor?.created && view.kind !== "chanceler") {
-    return (
-      <GameShell full>
-        <ChancellorScreen mode="create" onExit={() => setView({ kind: "overview" })} />
-      </GameShell>
-    );
+    return <ChancellorScreen mode="create" onExit={() => setView({ kind: "overview" })} />;
   }
 
+  // CollectionScreen e ChancellorScreen já montam o próprio GameShell: embrulhar de
+  // novo duplicava a barra de navegação e o rodapé na mesma tela.
   if (view.kind === "collection") {
-    return (
-      <GameShell full>
-        <CollectionScreen onExit={() => setView({ kind: "overview" })} />
-      </GameShell>
-    );
+    return <CollectionScreen onExit={() => setView({ kind: "overview" })} />;
   }
 
   if (view.kind === "chanceler") {
-    return (
-      <GameShell full>
-        <ChancellorScreen mode="armory" onExit={() => setView({ kind: "overview" })} />
-      </GameShell>
-    );
+    return <ChancellorScreen mode="armory" onExit={() => setView({ kind: "overview" })} />;
   }
 
   if (view.kind === "dilemma") {
