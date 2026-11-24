@@ -18,8 +18,11 @@ import {
   chancellorLoadout,
   describeMods,
   equippedBySlot,
+  nextGearDrop,
   type GearSlot,
 } from "@/game/battle/chancellorGear";
+import { militaryById } from "@/game/battle/catalog";
+import { chapterMeta } from "@/game/progress/campaign";
 import { chancellorIdentity } from "@/game/progress/profile";
 import { useProfile } from "@/game/progress/store";
 
@@ -50,6 +53,17 @@ export function ChancellorScreen({
   const loadout = chancellorLoadout(draft, equipped);
   const uniform = uniformById(draft.uniformId);
   const trait = traitById(draft.traitId);
+  const base = militaryById("hero-chanceler");
+  const speed = base.speed + (loadout.mods.speed ?? 0);
+  const hp = base.hp + (loadout.mods.hp ?? 0);
+  const { speed: _speed, hp: _hp, ...otherMods } = loadout.mods;
+  const extras = describeMods(otherMods);
+  // Prêmio da próxima vitória: o jogador vê o que vai ganhar antes de entrar em campo.
+  const reachedChapter = chapterMeta.reduce(
+    (max, c) => (profile.chapters[c.id]?.status === "bloqueado" ? max : Math.max(max, c.number)),
+    1,
+  );
+  const nextPrize = nextGearDrop(ownedGear, reachedChapter);
 
   const save = () => {
     setChancellor(draft);
@@ -113,17 +127,13 @@ export function ChancellorScreen({
               </p>
               <ul className="mt-1 space-y-0.5">
                 <Stat label="Arma" value={loadout.weaponName ?? "Fuzil de dotação"} />
-                {Object.entries(loadout.mods).length === 0 ? (
-                  <li className="font-mono text-[10px] uppercase text-muted-foreground">
-                    Sem equipamento — o herói entra com a dotação básica.
+                <Stat label="Passo" value={decimal(speed)} />
+                <Stat label="Vida" value={Math.round(hp).toLocaleString("pt-BR")} />
+                {extras.map((line) => (
+                  <li key={line} className="font-mono text-[10px] uppercase text-fact">
+                    {line}
                   </li>
-                ) : (
-                  describeMods(loadout.mods).map((line) => (
-                    <li key={line} className="font-mono text-[10px] uppercase text-fact">
-                      {line}
-                    </li>
-                  ))
-                )}
+                ))}
               </ul>
             </div>
           </aside>
@@ -262,6 +272,14 @@ export function ChancellorScreen({
                 owned={ownedGear}
                 equipped={equipped}
                 sovereigns={profile.sovereigns}
+                nextPrize={
+                  nextPrize
+                    ? {
+                        name: nextPrize.name,
+                        bonuses: describeMods(nextPrize.mods).join(" · "),
+                      }
+                    : null
+                }
                 onToggle={toggleChancellorGear}
                 onBuy={buyChancellorGear}
               />
@@ -271,6 +289,10 @@ export function ChancellorScreen({
       </div>
     </div>
   );
+}
+
+function decimal(value: number): string {
+  return value.toFixed(1).replace(".", ",");
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -288,6 +310,7 @@ function GearSection({
   owned,
   equipped,
   sovereigns,
+  nextPrize,
   onToggle,
   onBuy,
 }: {
@@ -296,6 +319,7 @@ function GearSection({
   owned: string[];
   equipped: string[];
   sovereigns: number;
+  nextPrize: { name: string; bonuses: string } | null;
   onToggle: (gearId: string) => void;
   onBuy: (gearId: string) => void;
 }) {
@@ -362,6 +386,11 @@ function GearSection({
               <button
                 onClick={() => (has ? onToggle(gear.id) : onBuy(gear.id))}
                 disabled={!has && sovereigns < gear.cost}
+                title={
+                  !has && sovereigns < gear.cost
+                    ? `Faltam ${gear.cost - sovereigns} Sovereigns`
+                    : (gear.desc ?? undefined)
+                }
                 className={cn(
                   "shrink-0 border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition",
                   isOn
@@ -378,8 +407,24 @@ function GearSection({
         })}
       </ul>
 
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-border/60 pt-2">
+        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary">
+          Próxima vitória
+        </span>
+        {nextPrize ? (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-foreground">
+            {nextPrize.name}
+            <span className="ml-2 text-fact">{nextPrize.bonuses}</span>
+          </span>
+        ) : (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Acervo completo — todas as peças liberadas já caíram
+          </span>
+        )}
+      </div>
       <p className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
-        Peças caem como prêmio de vitória; as que faltam podem ser requisitadas com Sovereigns.
+        Peças caem como prêmio de vitória; as que faltam podem ser requisitadas com Sovereigns
+        ganhos nas operações.
       </p>
     </section>
   );

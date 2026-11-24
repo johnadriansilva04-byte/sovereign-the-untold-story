@@ -310,6 +310,7 @@ export function CampaignScreen() {
           onNext={afterVerdict}
           onRetry={() => enterChapter(view.chapterId)}
           onMap={() => setView({ kind: "overview" })}
+          onArmory={() => setView({ kind: "chanceler" })}
         />
       </GameShell>
     );
@@ -412,6 +413,7 @@ function VerdictScreen({
   onNext,
   onRetry,
   onMap,
+  onArmory,
 }: {
   won: boolean;
   draw: boolean;
@@ -425,6 +427,7 @@ function VerdictScreen({
   onNext: () => void;
   onRetry: () => void;
   onMap: () => void;
+  onArmory: () => void;
 }) {
   const headline = won ? "Vitória" : draw ? "Empate" : "Derrota";
   const tone = won
@@ -438,7 +441,6 @@ function VerdictScreen({
     ...(reward.techs ?? []).map((t) => `Tecnologia · ${techById(t)?.name ?? t}`),
     ...(reward.research ? [`+${reward.research} pesquisa`] : []),
     ...(reward.sovereigns ? [`+${reward.sovereigns} Sovereigns`] : []),
-    ...(gearName ? [`Equipamento · ${gearName}`] : []),
   ];
 
   return (
@@ -487,6 +489,21 @@ function VerdictScreen({
           Espólio de guerra:{" "}
           <span className="text-foreground">{result.capturedCards!.map(cardName).join(" · ")}</span>
         </p>
+      )}
+
+      {won && gearName && (
+        <button
+          onClick={onArmory}
+          className="group flex max-w-md flex-wrap items-center justify-center gap-x-3 gap-y-1 border border-primary/60 bg-primary/10 px-4 py-2 transition hover:border-primary hover:bg-primary/15"
+        >
+          <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-primary">
+            Equipamento novo
+          </span>
+          <span className="font-display text-sm font-bold uppercase leading-none">{gearName}</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground transition group-hover:text-foreground">
+            Equipar ›
+          </span>
+        </button>
       )}
 
       {won && loot.length > 0 && (

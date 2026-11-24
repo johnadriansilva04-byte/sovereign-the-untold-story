@@ -64,6 +64,8 @@ describe("fluxo da campanha", () => {
     fireEvent.click(screen.getAllByText(/Escolher esta opção/)[0]!);
     fireEvent.click(screen.getByText(/^Iniciar operação$/));
     await settle();
+    // A vitória entrega equipamento do chanceler e o veredito oferece equipá-lo na hora.
+    expect(screen.getByText(/Equipamento novo/i)).toBeInTheDocument();
     const advance = screen.queryByText(/^Continuar$/) ?? screen.queryByText(/^Coletar$/);
     if (advance) {
       fireEvent.click(advance);
