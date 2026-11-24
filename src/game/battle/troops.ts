@@ -85,18 +85,21 @@ export interface Signature {
   text: string;
   // Categoria que a derruba com vantagem — nunca ela mesma.
   weakTo: UnitCategory;
+  // Habilidade ATIVA (efeito no motor), quando a carta tem uma.
+  active?: ActiveSignature;
 }
 
 // Assinatura de cada carta: a habilidade que SÓ ela tem. Quando o catálogo já declara
 // `ability`, ela é a assinatura; senão, a doutrina da carta (role) é a assinatura.
 export function signatureOf(card: Card): Signature {
   const weakTo = predatorOf(card.category);
+  const active = card.kind === "militar" ? activeSignature(card.id) : null;
   const name = (card.ability ?? card.role).split(/[.;]/)[0]!.trim();
   const text =
     card.kind === "militar"
       ? `${card.role} — vence ${preyOf(card.category)}, perde para ${weakTo}.`
       : `${card.role} — apoio tático; não segura linha sozinho.`;
-  return { name, text, weakTo };
+  return { name, text, weakTo, ...(active ? { active } : {}) };
 }
 
 // Efetivo é finito e igual para os dois: o que sobra de um lado é a conta que ele
@@ -105,4 +108,63 @@ export function troopFraction(troops: number, cap: number): number {
   if (!Number.isFinite(troops)) return 1;
   if (cap <= 0) return 0;
   return Math.max(0, Math.min(1, troops / cap));
+}
+
+// ---------------------------------------------------------------------------
+// HABILIDADE ATIVA: o que a carta FAZ além do multiplicador do ciclo
+// ---------------------------------------------------------------------------
+// Cada carta de combate tem uma única habilidade que só ela executa no motor. As que
+// estão aqui têm efeito mecânico real (não são só texto de ficha): rajada, explosão em
+// área, marca de alvo, demolição, emboscada, perfuração de blindagem e cadência de
+// supressão. As demais cartas não têm efeito ativo — combatem pelo ciclo e pela arma.
+export type ActiveSignatureId =
+  "supressao" | "granada" | "rajada" | "marca" | "demolicao" | "emboscada" | "perfuracao";
+
+export interface ActiveSignature {
+  id: ActiveSignatureId;
+  name: string;
+  text: string;
+}
+
+export const ACTIVE_SIGNATURES: Record<string, ActiveSignature> = {
+  "inf-fuzileiros": {
+    id: "supressao",
+    name: "Fogo de supressão",
+    text: "Parado e engajado, a cadência sobe 40% sem perder alcance.",
+  },
+  "inf-assalto": {
+    id: "granada",
+    name: "Granada de assalto",
+    text: "A cada 4º disparo, uma explosão atinge o grupo inimigo ao redor do alvo.",
+  },
+  "inf-antitanque": {
+    id: "perfuracao",
+    name: "Perfuração de blindagem",
+    text: "Ignora metade da blindagem do alvo — o foguete não para na chapa.",
+  },
+  "inf-engenheiro": {
+    id: "demolicao",
+    name: "Demolição",
+    text: "Dano dobrado em estruturas: obra parada cai na metade do tempo.",
+  },
+  "bld-caca-tanques": {
+    id: "emboscada",
+    name: "Emboscada",
+    text: "O primeiro disparo contra um blindado causa o dobro do dano.",
+  },
+  "art-canhao": {
+    id: "rajada",
+    name: "Rajada de três",
+    text: "A cada 5º disparo, três granadas em leque.",
+  },
+  "rec-drone-combate": {
+    id: "marca",
+    name: "Marca alvo",
+    text: "O alvo marcado recebe +25% de dano de toda a sua força por 6 s.",
+  },
+};
+
+/** Habilidade ativa da carta, se ela tiver uma. */
+export function activeSignature(cardId: string): ActiveSignature | null {
+  return ACTIVE_SIGNATURES[cardId] ?? null;
 }

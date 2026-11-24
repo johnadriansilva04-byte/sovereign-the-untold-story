@@ -22,7 +22,13 @@ import {
   unitsPerDeploy,
 } from "./catalog";
 import { chancellorPersona } from "./chancellor";
-import { counterMultiplier, MEN_PER_UNIT, TROOP_POOL } from "./troops";
+import {
+  activeSignature,
+  counterMultiplier,
+  MEN_PER_UNIT,
+  TROOP_POOL,
+  type ActiveSignatureId,
+} from "./troops";
 import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
@@ -2303,6 +2309,7 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
   if (u.jammed > 0) u.jammed = Math.max(0, u.jammed - dt);
   if (u.readyIn > 0) u.readyIn = Math.max(0, u.readyIn - dt);
   if (u.recoil > 0) u.recoil = Math.max(0, u.recoil - dt * 4);
+  if ((u.markTimer ?? 0) > 0) u.markTimer = Math.max(0, (u.markTimer ?? 0) - dt);
 
   const friendlySmoke = state.zones.some(
     (z) =>
@@ -2357,7 +2364,8 @@ function updateUnit(state: BattleState, u: BattleUnit, dt: number): void {
     // entra em alcance, senão gastaria tiros que nunca acertariam.
     if (distToTarget <= u.range + (target.radius ?? 0) && u.readyIn <= 0) {
       fireWeapon(state, u, target);
-      u.readyIn = u.cooldown;
+      // FOGO DE SUPRESSÃO (fuzileiros): engajado e no lugar, a cadência sobe 40%.
+      u.readyIn = signatureOf(state, u) === "supressao" ? u.cooldown * 0.6 : u.cooldown;
     }
     // ZONA DE ALCANCE COM FOLGA: a unidade avança até ficar a ENGAGE_STANDOFF do
     // alcance e PARA ali para atirar — não encosta no alvo. O alcance é medido até a
@@ -2881,18 +2889,53 @@ function targetsDomain(profile: string, domain: string): boolean {
 // Sistema universal de armas: cada disparo gera projétil real + efeitos
 // ---------------------------------------------------------------------------
 
+// Habilidade ativa da unidade (definida em troops.ts). Só vale no teatro de soldados:
+// as simulações antigas de balanceamento continuam rodando com o motor clássico.
+function signatureOf(state: BattleState, u: BattleUnit): ActiveSignatureId | null {
+  if (!(state.config.troopRules ?? false)) return null;
+  return activeSignature(u.cardId)?.id ?? null;
+}
+
 function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void {
   const w = u.weapon;
   const angle = Math.atan2(target.y - u.y, target.x - u.x);
   const mx = u.x + Math.cos(angle) * (u.radius + w.muzzle);
   const my = u.y + Math.sin(angle) * (u.radius + w.muzzle);
-  const dmg = u.dmg * combinedArmsMultiplier(state, u);
+  let dmg = u.dmg * combinedArmsMultiplier(state, u);
+  u.shots = (u.shots ?? 0) + 1;
+  const sig = signatureOf(state, u);
+  // EMBOSCADA (caça-tanques): o primeiro disparo contra blindado é o dobro — quem
+  // entrou no ângulo preparado paga o preço de uma vez.
+  if (sig === "emboscada" && u.shots === 1 && target.kind === "unit") {
+    const first = findUnit(state, target.id);
+    if (first?.category === "blindado") dmg *= 2;
+  }
   u.recoil = 1;
   addEffect(state, "muzzle", mx, my, u.radius * 0.8, { side: u.side });
 
   if (w.tracer) {
     addEffect(state, "tracer", mx, my, 0, { x2: target.x, y2: target.y, side: u.side });
     applyHit(state, u, target, dmg, target.x, target.y, u.dmgVs);
+    // GRANADA DE ASSALTO: a cada 4º disparo a explosão atinge o grupo inimigo ao redor
+    // do alvo, não só a unidade mirada.
+    if (sig === "granada" && u.shots % 4 === 0) {
+      const foes = u.side === "blue" ? state.red : state.blue;
+      const blast = u.radius + 4;
+      for (const e of foes.units) {
+        if (!e.alive || e.id === target.id) continue;
+        if (dist(e.x, e.y, target.x, target.y) > blast) continue;
+        applyHit(
+          state,
+          u,
+          { x: e.x, y: e.y, id: e.id, kind: "unit", radius: e.radius },
+          dmg * 0.7,
+          e.x,
+          e.y,
+          u.dmgVs,
+        );
+      }
+      addEffect(state, "explosion", target.x, target.y, blast);
+    }
     return;
   }
 
@@ -2938,6 +2981,11 @@ function fireWeapon(state: BattleState, u: BattleUnit, target: TargetRef): void 
       const jitter = (nextRng(state) - 0.5) * 2;
       create(target.x + spread + jitter, target.y + jitter, shotDmg);
     }
+  } else if (sig === "rajada" && u.shots % 5 === 0) {
+    // RAJADA DE TRÊS (canhão de campanha): a cada 5º disparo, três granadas em leque.
+    for (let i = -1; i <= 1; i++) {
+      create(target.x + i * 2.8, target.y + Math.abs(i) * 1.6, dmg * 0.6);
+    }
   } else {
     create(target.x, target.y, dmg);
   }
@@ -2952,16 +3000,20 @@ function applyHit(
   hy: number,
   dmgVs?: Partial<Record<UnitCategory, number>>,
 ): void {
+  const sig = signatureOf(state, source);
   if (target.kind === "unit") {
     const e = findUnit(state, target.id);
     if (e && e.alive) {
       damageUnit(state, e, dmg, source, dmgVs);
+      // MARCA ALVO (drone de combate): o marcado leva +25% de toda a força por 6 s.
+      if (sig === "marca") e.markTimer = 6;
       addEffect(state, "impact", e.x, e.y, e.radius * 0.6);
     }
   } else {
     const s = state.structures.find((x) => x.id === target.id);
     if (s && s.alive) {
-      damageStructure(state, s, dmg, source);
+      // DEMOLIÇÃO (engenheiros): obra parada cai na metade do tempo.
+      damageStructure(state, s, sig === "demolicao" ? dmg * 2 : dmg, source);
       addEffect(state, "impact", hx, hy, 2);
     }
   }
@@ -3242,12 +3294,17 @@ function damageUnit(
   const cover = target.domain === "aereo" ? 0 : Math.min(0.6, (ob?.cover ?? 0) + fort);
   // Resistência de veterano: a unidade de nível alto ignora parte do dano. Combinada
   // com a cobertura, o dano final nunca fica negativo.
-  let final = dmg * (1 - cover) * (1 - Math.min(0.6, target.armor));
+  // PERFURAÇÃO DE BLINDAGEM (antitanque): metade da blindagem do alvo não conta.
+  const armor =
+    from && signatureOf(state, from) === "perfuracao" ? target.armor * 0.5 : target.armor;
+  let final = dmg * (1 - cover) * (1 - Math.min(0.6, armor));
   // Contrapesos: multiplicador do atirador contra a CATEGORIA do alvo. Vale para armas
   // de projétil (canhão, míssil, foguete) e para o fuzil, além da regra de ouro do
   // antitanque contra blindado.
   const vs = dmgVs?.[target.category];
   if (vs) final *= vs;
+  // Alvo marcado por drone: +25% de dano de qualquer fonte, por 6 s.
+  if ((target.markTimer ?? 0) > 0) final *= 1.25;
   // CICLO DE CONTRAPESOS: no teatro de soldados, a categoria do atirador vence uma e
   // perde para outra, sempre. Canhão contra fuzileiro é vitória do canhão; canhão
   // contra reconhecimento é derrota. Ninguém é imbatível e ninguém é inútil.

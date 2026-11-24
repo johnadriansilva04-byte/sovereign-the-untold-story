@@ -459,6 +459,38 @@ leitura de mundo, embalada como obra de ficção.
   no chanceler em campo; `regressions.test.tsx` passou a atravessar o criador antes do mapa.
   Suíte completa: **338 passaram / 7 ignorados**; `tsc --noEmit` e `eslint` limpos.
 
+### 5.x Guerra em soldados: efetivo, ciclo de contrapesos e habilidade ativa
+
+- **Fonte única**: `src/game/battle/troops.ts`. Nada de custo de homem espalhado pelo motor
+  ou pela interface — todos leem as mesmas tabelas.
+- **Efetivo igual**: os dois chanceleres entram com **500 soldados** (`TROOP_POOL`). Enviar
+  carta consome **homens** = `MEN_PER_UNIT[categoria] × squad × unidades`. Sem efetivo a
+  carta não sai, mesmo com Sov sobrando: o **Sov paga material** (apoio, obra, recarga), os
+  **soldados pagam a guerra**.
+- **Território é posição, não direito**: conquista não devolve um único soldado (há teste
+  explícito de que o efetivo continua o que sobrou do envio depois de 20 s de captura).
+- **Ciclo de contrapesos** (6 pontas, fecha em anel):
+  `artilharia ▶ infantaria ▶ apoio ▶ defesa ▶ reconhecimento ▶ blindado ▶ artilharia`.
+  Quem ataca a presa bate **×1,5**; quem ataca o predador bate **×0,7**. Entra no
+  `damageUnit` **depois** dos multiplicadores que a carta já declara, então soma com eles.
+- **Assinatura**: `signatureOf(card)` devolve nome, texto e `weakTo` (o nemesis — a categoria
+  que a derruba com vantagem). Nenhuma carta fica sem nemesis e nenhuma é imune.
+- **Habilidade ativa** (`ACTIVE_SIGNATURES`): sete cartas têm efeito mecânico próprio —
+  fuzileiros (cadência +40% engajado), assalto (granada em área a cada 4º tiro), antitanque
+  (ignora metade da blindagem), engenheiro (dano dobrado em estrutura), caça-tanques
+  (primeiro tiro contra blindado em dobro), canhão (rajada de três a cada 5º tiro) e drone
+  de combate (marca o alvo: +25% de dano por 6 s).
+- **Ligado onde o jogador joga**: tela de batalha e campanha passam `troopRules: true`.
+  As simulações antigas de balanceamento continuam no motor clássico para não recalibrar a
+  curva de dificuldade de uma vez — calibrar a campanha inteira sob as regras novas é a
+  próxima tarefa e exige jogo real.
+- **Interface**: barra **Efetivo** no HUD (número absoluto e vermelha abaixo de 20%), custo
+  em homens no canto de cada carta do dock, efetivo do adversário no topo, e ficha rápida no
+  hover com Sov, homens, assinatura ativa e "vence/teme".
+- **Testes**: `src/test/troops.test.ts` cobre efetivo igual, custo em homens, bloqueio sem
+  efetivo, território sem reposição, anel fechado, nemesis de toda carta e a ligação das
+  habilidades ativas. Suíte completa: **350 passaram / 7 ignorados**.
+
 ## 6. Créditos
 
 Desenvolvido por **Variant** — em homenagem à Força Expedicionária Brasileira. A cobra fumou.

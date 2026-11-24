@@ -21,6 +21,7 @@ import {
   SelectedUnitStrip,
 } from "./BattleHud";
 import { launchBases } from "@/game/battle/engine";
+import { MEN_PER_UNIT, predatorOf, preyOf, signatureOf } from "@/game/battle/troops";
 import {
   buildBattleConfig,
   chapterMission,
@@ -782,8 +783,20 @@ export function BattleView({
               />
             ) : (
               hovered && (
-                <span className="hidden font-mono text-[10px] text-muted-foreground sm:block">
-                  {hovered.name} · {hovered.role}
+                // FICHA RÁPIDA: custo em Sov e em homens, assinatura ativa e o ciclo de
+                // contrapesos — é o que decide o envio, então fica onde o olho já está.
+                <span className="hidden max-w-[52ch] truncate font-mono text-[10px] text-muted-foreground sm:block">
+                  {hovered.name} · {hovered.cost} Sov
+                  {hovered.kind === "militar" && (
+                    <>
+                      {` · ${
+                        (MEN_PER_UNIT[hovered.category] ?? 10) *
+                        Math.max(1, hovered.squad?.base ?? 1)
+                      }h`}
+                      {` · vence ${preyOf(hovered.category)} / teme ${predatorOf(hovered.category)}`}
+                      {signatureOf(hovered).active ? ` · ${signatureOf(hovered).active!.name}` : ""}
+                    </>
+                  )}
                 </span>
               )
             )}
@@ -909,6 +922,17 @@ function FrontLineScore({ state, localSide }: { state: BattleState; localSide: S
         >
           {Math.floor(foeState.command)}
         </span>
+        {Number.isFinite(foeState.troops) && (
+          <span
+            className={cn(
+              "tabular-nums",
+              foeState.troops <= foeState.troopCap * 0.2 ? "text-enemy" : "text-muted-foreground",
+            )}
+            title="Efetivo do adversário (soldados)"
+          >
+            · {Math.floor(foeState.troops)}h
+          </span>
+        )}
       </span>
     </div>
   );

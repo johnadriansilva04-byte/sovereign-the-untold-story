@@ -4,6 +4,7 @@ import { allCards, cardById, unitsPerDeploy } from "@/game/battle/catalog";
 import { createBattle, deploy, stepBattle } from "@/game/battle/engine";
 import { buildBattleConfig, defaultNation, missionById } from "@/game/battle/missions";
 import {
+  activeSignature,
   COUNTER_BONUS,
   COUNTER_PENALTY,
   COUNTER_RING,
@@ -112,5 +113,47 @@ describe("ciclo de contrapesos", () => {
       // O nemesis existe no catálogo e vence a carta no anel.
       expect(counterMultiplier(signature.weakTo, card.category)).toBe(COUNTER_BONUS);
     }
+  });
+});
+
+describe("habilidade ativa da carta", () => {
+  // A assinatura tem duas camadas: o NOME/nemesis (texto de ficha, já testado acima) e
+  // a HABILIDADE ATIVA, que muda o comportamento no motor. Aqui cobramos a ligação: as
+  // cartas que declaram efeito ativo são únicas, têm id válido e o resto continua sem
+  // efeito (não existe carta "meio ativa").
+  const WITH_ACTIVE = [
+    "inf-fuzileiros",
+    "inf-assalto",
+    "inf-antitanque",
+    "inf-engenheiro",
+    "bld-caca-tanques",
+    "art-canhao",
+    "rec-drone-combate",
+  ];
+
+  it("cada habilidade ativa tem id, nome e texto, sem repetir id", () => {
+    const ids = new Set<string>();
+    for (const cardId of WITH_ACTIVE) {
+      const active = activeSignature(cardId);
+      expect(active, cardId).toBeTruthy();
+      expect(active!.name.length).toBeGreaterThan(0);
+      expect(active!.text.length).toBeGreaterThan(0);
+      expect(ids.has(active!.id)).toBe(false);
+      ids.add(active!.id);
+    }
+    expect(ids.size).toBe(WITH_ACTIVE.length);
+  });
+
+  it("a carta expõe a habilidade ativa dentro da assinatura", () => {
+    const cannon = signatureOf(cardById("art-canhao"));
+    expect(cannon.active?.id).toBe("rajada");
+    expect(cannon.active?.name).toBe("Rajada de três");
+    // O nemesis continua sendo a categoria que a vence no ciclo.
+    expect(cannon.weakTo).toBe(predatorOf("artilharia"));
+  });
+
+  it("carta fora do mapa não ganha habilidade ativa inventada", () => {
+    expect(activeSignature("bld-tanque")).toBeNull();
+    expect(signatureOf(cardById("bld-tanque")).active).toBeUndefined();
   });
 });

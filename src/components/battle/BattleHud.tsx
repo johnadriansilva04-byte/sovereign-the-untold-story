@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { NationFlag } from "./NationFlag";
+import { MEN_PER_UNIT } from "@/game/battle/troops";
 import type { BattleUnit, Card, Order, SideState, Structure } from "@/game/battle/types";
 
 const CATEGORY_TONE: Record<string, string> = {
@@ -43,6 +44,13 @@ const CATEGORY_BG: Record<string, string> = {
 // Barra de Sov: recurso FINITO de guerra. Sem renda passiva — só bases avançadas
 // pagam (lote a cada 45 s) e abates devolvem o valor do alvo + 50%. Quando zera e o
 // lado não tem mais tropas nem renda, ele quebra e a guerra acaba.
+// Homens que a carta tira do efetivo (mesma conta do motor: homens por categoria ×
+// tamanho do pelotão).
+function menForCard(card: Card): number {
+  if (card.kind !== "militar") return 0;
+  return (MEN_PER_UNIT[card.category] ?? 10) * Math.max(1, card.squad?.base ?? 1);
+}
+
 export function CommandBar({
   side,
   compact = false,
@@ -193,15 +201,24 @@ export function HandBar({
                     </span>
                   )}
                 </span>
-                <span
-                  className={cn(
-                    "flex h-5 w-5 items-center justify-center font-mono text-[11px] font-bold",
-                    affordable && ready
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {cost}
+                <span className="flex items-center gap-1">
+                  {/* Homens que a carta consome: o limite real é o efetivo, não o Sov. */}
+                  <span
+                    className="border border-border px-1 font-mono text-[9px] font-bold text-muted-foreground"
+                    title={`${menForCard(card)} soldados de efetivo`}
+                  >
+                    {menForCard(card)}h
+                  </span>
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 items-center justify-center font-mono text-[11px] font-bold",
+                      affordable && ready
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {cost}
+                  </span>
                 </span>
               </span>
               <span className="line-clamp-1 font-display text-[11px] font-bold uppercase leading-tight">

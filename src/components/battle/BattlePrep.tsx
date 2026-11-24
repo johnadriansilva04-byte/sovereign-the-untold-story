@@ -5,6 +5,7 @@ import heroSovereign from "@/assets/hero-sovereign.jpg";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cardById, commanders, doctrineList, doctrines } from "@/game/battle/catalog";
+import { MEN_PER_UNIT, predatorOf, preyOf, signatureOf } from "@/game/battle/troops";
 import { TERRAIN_LABEL } from "@/game/battle/labels";
 import {
   chapterNumberForMission,
@@ -213,7 +214,29 @@ export function BattlePrep({
                     <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
                       {card.name}
                     </p>
-                    <p className="font-mono text-[9px] text-muted-foreground">custo {card.cost}</p>
+                    <p className="font-mono text-[9px] text-muted-foreground">
+                      {card.cost} Sov
+                      {card.kind === "militar" && (
+                        <>
+                          {" · "}
+                          {(MEN_PER_UNIT[card.category] ?? 10) * Math.max(1, card.squad?.base ?? 1)}
+                          h
+                        </>
+                      )}
+                    </p>
+                    {card.kind === "militar" && (
+                      <p
+                        className="font-mono text-[8px] uppercase leading-tight text-primary/80"
+                        title={signatureOf(card).text}
+                      >
+                        {signatureOf(card).active?.name ?? signatureOf(card).name}
+                      </p>
+                    )}
+                    {card.kind === "militar" && (
+                      <p className="font-mono text-[8px] leading-tight text-muted-foreground">
+                        vence {preyOf(card.category)} · teme {predatorOf(card.category)}
+                      </p>
+                    )}
                   </button>
                 );
               })}

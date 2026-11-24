@@ -338,6 +338,10 @@ export interface BattleUnit {
   // multiplicadores de dano contra cada categoria (ciclo de contrapesos). Copiado da
   // carta no lançamento; aplicado em damageUnit conforme a categoria do alvo.
   dmgVs?: Partial<Record<UnitCategory, number>>;
+  // Disparos já feitos (rajada, granada a cada N, emboscada no primeiro tiro).
+  shots?: number;
+  // MARCA ALVO: segundos restantes de marcação — quem está marcado leva +25% de dano.
+  markTimer?: number;
   order: Order;
   objectiveId?: string;
   /** Alvos de navegação FIXOS do motor (território e ponto de controle) quando não há
