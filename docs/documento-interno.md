@@ -267,6 +267,11 @@ leitura de mundo, embalada como obra de ficção.
   `id` era repetido em cada instância do componente.
 - **Verificação**: `tsc --noEmit` e `eslint` limpos; suíte completa **338 passaram / 7
   ignorados**.
+- **Dica de mobilização** (`BattleScreen.tsx`, `DeployCoach`): o combate já corre e o dock de
+  cartas fica no rodapé, então a primeira tropa custava a sair. Chip de dois passos
+  (`1 Escolha uma carta` → `2 Toque no mapa`) no rodapé do teatro, some na primeira unidade
+  em campo (fora o chanceler) ou ao dispensar. **Não mexe em tempo, pressão ou dificuldade** —
+  a pressão é a graça do jogo.
 - **Título da aba** (`__root.tsx`): o `<HeadContent />` resolvia o título só no SSR; na
   navegação do cliente a aba ficava presa na primeira rota e o React 19 não repinta o
   `<title>` içado depois do primeiro render. `DocumentTitle` agora deriva o título do estado

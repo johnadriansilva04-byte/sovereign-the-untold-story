@@ -270,6 +270,7 @@ export function BattleView({
   const [hovered, setHovered] = useState<Card | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [coachDismissed, setCoachDismissed] = useState(false);
   const completedRef = useRef(false);
 
   useEffect(() => {
@@ -596,6 +597,13 @@ export function BattleView({
           onPickOrigin={setOriginId}
           onPickDestination={handlePickDestination}
         />
+
+        {/* Primeira mobilização: o combate já corre e o dock de cartas fica no rodapé.
+            A dica some na primeira tropa em campo (fora o chanceler) ou se for dispensada;
+            ela não mexe em tempo, pressão nem dificuldade. */}
+        {!coachDismissed && !state[me].units.some((u) => u.alive && !u.hero) && (
+          <DeployCoach step={totalUnits > 0 ? 2 : 1} onDismiss={() => setCoachDismissed(true)} />
+        )}
 
         {/* HUD SOBREPOSTO (tela cheia): relógio/bases e comandos flutuam sobre a arena, que
             ocupa a tela inteira. Só as cartas ficam no dock de baixo. */}
@@ -973,6 +981,54 @@ function hashSeed(s: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+// Dica de mobilização: dois passos, um por vez, no estilo do HUD. Fica no rodapé do
+// teatro para não competir com relógio, objetivos e cartas.
+function DeployCoach({ step, onDismiss }: { step: number; onDismiss: () => void }) {
+  const steps = ["Escolha uma carta", "Toque no mapa"];
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center px-2">
+      <div className="hud-panel hud-corners pointer-events-auto flex items-center gap-2 px-2.5 py-1.5 shadow-lg shadow-black/40">
+        <span className="label-mono text-primary">Mobilizar</span>
+        {steps.map((label, i) => {
+          const n = i + 1;
+          const done = n < step;
+          const now = n === step;
+          return (
+            <span key={label} className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "flex h-4 w-4 items-center justify-center border font-mono text-[9px] font-bold",
+                  done && "border-primary/60 bg-primary/15 text-primary",
+                  now && "animate-pulse border-primary bg-primary text-primary-foreground",
+                  !done && !now && "border-border text-muted-foreground",
+                )}
+              >
+                {done ? "✓" : n}
+              </span>
+              <span
+                className={cn(
+                  "font-mono text-[10px] uppercase tracking-wider",
+                  now ? "text-primary" : done ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </span>
+              {n < steps.length && <span className="text-[10px] text-border">›</span>}
+            </span>
+          );
+        })}
+        <button
+          onClick={onDismiss}
+          aria-label="Dispensar dica"
+          className="ml-1 border border-border px-1 font-mono text-[10px] text-muted-foreground transition hover:border-primary hover:text-primary"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export type { ProfileState };
