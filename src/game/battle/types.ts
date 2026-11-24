@@ -548,6 +548,10 @@ export interface SideState {
   losses: number;
   structuresDestroyed: number;
   deployed: number;
+  // Efetivo restante e teto do efetivo deste lado (soldados). Com troopRules, enviar
+  // tropa consome homens e conquistar território NÃO devolve nenhum.
+  troops: number;
+  troopCap: number;
   score: number;
   // Prisioneiros feitos (inimigos rendidos capturados por este lado) e baixas
   // capturadas do próprio lado. Alimenta o relatório da operação.
@@ -594,6 +598,10 @@ export interface BattleConfig {
   // carta; capturá-la e conduzi-la à base rende a carta ao arsenal — junto com o chanceler
   // adversário, é objetivo da ordem "capturar".
   prizeCardId?: string;
+  // EFETIVO: a guerra medida em soldados. Cada lado entra com o mesmo pool e cada
+  // envio consome homens. Desligado, o motor volta ao Sov puro das partidas antigas.
+  troopRules?: boolean;
+  troopPool?: number; // soldados por lado (padrão TROOP_POOL)
   // CARTAS-ESPÓLIO: cartas do arsenal adversário que o jogador ainda não possui. As
   // tropas azuis as reconhecem em campo e priorizam abatê-las para capturar a carta.
   bountyCardIds?: string[];

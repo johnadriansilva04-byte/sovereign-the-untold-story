@@ -54,6 +54,10 @@ export function CommandBar({
 }) {
   const pct = (side.command / side.commandMax) * 100;
   const low = pct <= 20;
+  // Efetivo em soldados: é o limite real da guerra. Território dá posição, nunca gente.
+  const troops = Number.isFinite(side.troops) ? Math.floor(side.troops) : null;
+  const troopPct =
+    Number.isFinite(side.troops) && side.troopCap > 0 ? (side.troops / side.troopCap) * 100 : 100;
   const right = align === "right";
   return (
     <div className={cn("flex items-center gap-3", right && "flex-row-reverse")}>
@@ -76,6 +80,27 @@ export function CommandBar({
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
+        {troops !== null && (
+          <div className="mt-1">
+            <div className="flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span>Efetivo</span>
+              <span
+                className={cn(
+                  "tabular-nums",
+                  troopPct <= 20 ? "text-destructive" : "text-foreground",
+                )}
+              >
+                {troops} / {side.troopCap}
+              </span>
+            </div>
+            <div className="h-1 w-full border border-border bg-muted">
+              <div
+                className={cn("h-full", troopPct <= 20 ? "bg-destructive" : "bg-foreground/70")}
+                style={{ width: `${Math.min(100, troopPct)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
       {side.income > 0 && (
         <span className="hidden font-mono text-[10px] text-primary sm:inline">

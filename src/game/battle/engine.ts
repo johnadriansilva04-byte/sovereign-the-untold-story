@@ -22,6 +22,7 @@ import {
   unitsPerDeploy,
 } from "./catalog";
 import { chancellorPersona } from "./chancellor";
+import { counterMultiplier, MEN_PER_UNIT, TROOP_POOL } from "./troops";
 import { HOME_AIM, HOME_POINT, WORLD_X_MAX, WORLD_X_MIN, WORLD_Y_MAX, WORLD_Y_MIN } from "./world";
 import type {
   Arena,
@@ -881,6 +882,8 @@ export function cloneArena(arena: Arena): Arena {
 }
 
 function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState {
+  const troopRules = config.troopRules ?? false;
+  const troopPool = config.troopPool ?? TROOP_POOL;
   // Baralho EQUIPADO (1 a 8 cartas), na ordem exata escolhida pelo jogador. Sem mão
   // rotativa: todas as cartas ficam disponíveis e a posição é fixa. O freio contra o
   // spam é a RECARGA por carta (Sov finito é o limite de longo prazo).
@@ -915,6 +918,10 @@ function makeSide(side: Side, cfg: SideConfig, config: BattleConfig): SideState 
     losses: 0,
     structuresDestroyed: 0,
     deployed: 0,
+    // Efetivo igual para os dois lados: 500 soldados, nem um a mais para o azul.
+    ...(troopRules
+      ? { troops: troopPool, troopCap: troopPool }
+      : { troops: Number.POSITIVE_INFINITY, troopCap: TROOP_POOL }),
     score: 0,
     prisonersTaken: 0,
     prisonersLost: 0,
@@ -1148,9 +1155,18 @@ function deployOne(
     // de nível máximo lança 2, então o teto é checado pelo tamanho real da força).
     const forceCount = unitsPerDeploy(cfg.cardLevels?.[cardId] ?? 1);
     if (aliveUnits(state, side) + forceCount > MAX_UNITS_PER_SIDE) return false;
+    // EFETIVO: a força custa homens. O tanque custa 4 por unidade, o fuzileiro 10 —
+    // material caro gasta Sov, gente gasta soldado. Sem efetivo, a carta não sai.
+    const troopRules = state.config.troopRules ?? false;
+    const men =
+      (MEN_PER_UNIT[card.category] ?? 10) *
+      Math.max(1, card.squad?.base ?? 1) *
+      Math.max(1, forceCount);
+    if (troopRules && cfg.troops < men) return false;
     const force = deployForce(state, side, card.id, order);
     if (force === 0) return false;
     cfg.command -= cost;
+    if (troopRules) cfg.troops = Math.max(0, cfg.troops - men);
     if (!order.skipRecharge) advanceDeck(cfg, cardId);
     pushLog(
       state,
@@ -1248,6 +1264,19 @@ export function deployBatch(
   }
   if (cfg.command < cost)
     return { ok: false, deployed: 0, spent: 0, error: "Sov insuficiente para o envio." };
+
+  // EFETIVO: com a regra de soldados, o envio também GASTA HOMENS. O efetivo é o
+  // limite real da partida e é idêntico nos dois lados; o Sov paga o material
+  // (apoio, obra), os soldados pagam a guerra.
+  const troopRules = state.config.troopRules ?? false;
+  const men = requests.reduce((a, r) => {
+    const card = cardById(r.cardId);
+    if (card.kind !== "militar") return a;
+    const force = Math.max(1, unitsPerDeploy(cfg.cardLevels?.[r.cardId] ?? 1));
+    return a + (MEN_PER_UNIT[card.category] ?? 10) * force * Math.max(0, Math.floor(r.count));
+  }, 0);
+  if (troopRules && men > cfg.troops)
+    return { ok: false, deployed: 0, spent: 0, error: "Efetivo insuficiente para o envio." };
 
   const military = requests.reduce(
     (a, r) =>
@@ -3219,6 +3248,11 @@ function damageUnit(
   // antitanque contra blindado.
   const vs = dmgVs?.[target.category];
   if (vs) final *= vs;
+  // CICLO DE CONTRAPESOS: no teatro de soldados, a categoria do atirador vence uma e
+  // perde para outra, sempre. Canhão contra fuzileiro é vitória do canhão; canhão
+  // contra reconhecimento é derrota. Ninguém é imbatível e ninguém é inútil.
+  if (from && (state.config.troopRules ?? false))
+    final *= counterMultiplier(from.category, target.category);
   if (
     from &&
     from.category === "infantaria" &&

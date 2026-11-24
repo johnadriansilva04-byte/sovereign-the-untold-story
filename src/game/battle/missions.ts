@@ -12,6 +12,7 @@ import {
   startingDeck,
 } from "./catalog";
 import { aiParamsAt } from "@/game/progress/catalog";
+import { TROOP_POOL } from "./troops";
 import type {
   AiDifficulty,
   Arena,
@@ -1383,6 +1384,9 @@ export interface BuildBattleOptions {
   commander: Commander;
   doctrine: Doctrine;
   seed?: number;
+  // EfEITIVO em soldados (padrão: desligado — a tela de batalha liga).
+  troopRules?: boolean;
+  troopPool?: number;
   mods?: SideModifiers;
   aiDifficulty?: AiDifficulty;
   /** Carta que o inimigo traz a campo para ser CAPTURADA nesta operação. */
@@ -1479,6 +1483,10 @@ export function buildBattleConfig(opts: BuildBattleOptions): BattleConfig {
     ),
     red,
     seed: opts.seed ?? 20260101,
+    // EFETIVO: ligado pela tela de batalha (padrão da campanha). Fica fora do
+    // `buildBattleConfig` puro para não recalibrar de uma vez as simulações de
+    // balanceamento que rodam com o Sov clássico.
+    ...(opts.troopRules ? { troopRules: true, troopPool: opts.troopPool ?? TROOP_POOL } : {}),
     ...(bountyCardIds.length > 0 ? { bountyCardIds } : {}),
   };
   if (opts.mission.militaryThreshold !== undefined)

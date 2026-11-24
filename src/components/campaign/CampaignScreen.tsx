@@ -115,6 +115,8 @@ export function CampaignScreen() {
       // Dificuldade automática: um só número (o capítulo) define IA, nível e baralho.
       aiDifficulty: scale.aiDifficulty,
       seed: seedOf(`${mission.id}:${meta.number}:${battleDeck.join(",")}`),
+      // Efetivo: os dois chanceleres entram com 500 soldados; cada envio gasta homens.
+      troopRules: true,
     });
   }, [view, profile, pendingDeck]);
 

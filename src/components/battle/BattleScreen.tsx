@@ -101,6 +101,8 @@ export function BattleScreen(props: BattleScreenProps) {
       hero: chancellorLoadoutFor(profile),
       aiDifficulty: scale.aiDifficulty,
       seed: hashSeed(`${setup.mission.id}:${setup.deck.join(",")}:${chapterNumber}`),
+      // Efetivo: os dois chanceleres entram com 500 soldados; cada envio gasta homens.
+      troopRules: true,
     });
   }, [setup, props.presetConfig, profile]);
 
