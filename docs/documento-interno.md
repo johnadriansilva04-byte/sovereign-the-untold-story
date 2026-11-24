@@ -345,6 +345,20 @@ leitura de mundo, embalada como obra de ficção.
 
 ---
 
+### Atualização 24/11/2026 (2) — continuidade visual da campanha
+
+- `CampaignBackdrop`: a arte de fundo (`hero-sovereign.jpg` + vinheta + scanlines) saiu do
+  componente da visão geral e virou componente próprio, usado também na **decisão de comando**
+  e no **briefing**. A campanha inteira passa a ter um só palco visual.
+- Cabeçalho da decisão em painel com fundo translúcido: sobre a arte, o ato/capítulo e a
+  pergunta ficavam ilegíveis nas áreas claras do céu.
+- Briefing: os painéis deixaram de esticar até o rodapé (a lista de cartas ocupava só o topo
+  de uma caixa alta e vazia); "Composição da força" agora fica logo abaixo do baralho e o
+  "Iniciar operação" segue ancorado na coluna da direita.
+- HUD da batalha: os separadores `×` e o total `/{n}` de "Neutras a tomar" usavam
+  `text-border` (quase invisíveis) e pareciam valores cortados; agora usam
+  `text-muted-foreground`.
+
 ## 6. Créditos
 
 Desenvolvido por **Variant** — em homenagem à Força Expedicionária Brasileira. A cobra fumou.

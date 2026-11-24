@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { GameShell } from "@/components/game/shell";
-import heroSovereign from "@/assets/hero-sovereign.jpg";
+import { CampaignBackdrop } from "@/components/campaign/CampaignBackdrop";
 import { StoryBook, type StoryPage } from "@/components/campaign/StoryBook";
 import { CardFace } from "@/components/campaign/CardFace";
 import { DecisionCard } from "@/components/campaign/DecisionCard";
@@ -135,6 +135,7 @@ export function CampaignScreen() {
     if (decision) {
       return (
         <GameShell full>
+          <CampaignBackdrop />
           <DecisionCard
             chapterNumber={meta.number}
             act={chapter?.act ?? ""}
@@ -604,13 +605,7 @@ function CampaignOverview({
 
   return (
     <>
-      {/* ATMOSFERA: a arte da campanha ao fundo, apagada sob vinheta — o teatro da
-          guerra preenche a tela em vez de um preto chapado. */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-0">
-        <img src={heroSovereign} alt="" className="h-full w-full object-cover opacity-30" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_42%,oklch(0.16_0.012_120/0.12)_0%,oklch(0.16_0.012_120/0.9)_74%)]" />
-        <div className="scanlines absolute inset-0 opacity-30" />
-      </div>
+      <CampaignBackdrop />
 
       <div className="relative z-10 mx-auto flex h-full w-full max-w-6xl flex-col justify-center gap-4 px-4 py-4 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1">
         {/* Progresso da guerra */}
@@ -828,187 +823,194 @@ function CampaignBriefing({
   }, {});
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-2 overflow-hidden px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-2 [@media(max-height:560px)]:pb-1.5">
-        <div className="min-w-0">
-          <p className="label-mono text-primary">
-            {act} · Capítulo {number}
-          </p>
-          <h2 className="truncate font-display text-2xl font-black uppercase leading-none [@media(max-height:560px)]:text-xl">
-            {chapterTitle}
-          </h2>
+    <>
+      <CampaignBackdrop />
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-2 overflow-hidden px-4 py-3 [@media(max-height:560px)]:gap-1.5 [@media(max-height:560px)]:py-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border pb-2 [@media(max-height:560px)]:pb-1.5">
+          <div className="min-w-0">
+            <p className="label-mono text-primary">
+              {act} · Capítulo {number}
+            </p>
+            <h2 className="truncate font-display text-2xl font-black uppercase leading-none [@media(max-height:560px)]:text-xl">
+              {chapterTitle}
+            </h2>
+          </div>
+          <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
+            <span>{terrain}</span>
+            <span>{durationMin} min</span>
+            <span>{difficulty}</span>
+          </div>
         </div>
-        <div className="ml-auto flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
-          <span>{terrain}</span>
-          <span>{durationMin} min</span>
-          <span>{difficulty}</span>
-        </div>
-      </div>
 
-      {/* Texto do briefing — limitado em altura para nunca empurrar a tela */}
-      <p className="line-clamp-2 max-w-3xl shrink-0 font-serif text-sm italic leading-snug text-foreground/85 [@media(max-height:560px)]:text-xs">
-        {intro}
-      </p>
-      {objective && (
-        <p className="shrink-0 border-l-2 border-fact/70 pl-2 font-mono text-[10px] uppercase tracking-wider text-fact">
-          Objetivo · {objective}
+        {/* Texto do briefing — limitado em altura para nunca empurrar a tela */}
+        <p className="line-clamp-2 max-w-3xl shrink-0 font-serif text-sm italic leading-snug text-foreground/85 [@media(max-height:560px)]:text-xs">
+          {intro}
         </p>
-      )}
+        {objective && (
+          <p className="shrink-0 border-l-2 border-fact/70 pl-2 font-mono text-[10px] uppercase tracking-wider text-fact">
+            Objetivo · {objective}
+          </p>
+        )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3 [@media(max-height:560px)]:gap-1.5">
-        <section className="hud-panel hud-corners flex min-h-0 flex-1 flex-col p-3 [@media(max-height:560px)]:p-2">
-          <div className="flex shrink-0 items-center justify-between">
-            <p className="label-mono">Cartas desta operação</p>
-            <span className={cn("font-mono text-[11px]", full ? "text-fact" : "text-destructive")}>
-              {deck.length}/8
-            </span>
-          </div>
-          <div className="mt-2 grid min-h-0 flex-1 grid-cols-3 content-start gap-1.5 overflow-y-auto pr-1 sm:grid-cols-4">
-            {owned.map((id) => {
-              const card = cardById(id);
-              const on = deck.includes(id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => toggle(id)}
-                  className={cn(
-                    "border p-1.5 text-left transition",
-                    on ? "border-primary bg-accent" : "border-border hover:border-primary/50",
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={cn(
-                        "border px-1 font-mono text-[8px] uppercase",
-                        CATEGORY_TONE[card.category],
-                      )}
-                    >
-                      {card.short}
-                    </span>
-                    <span className="font-mono text-[9px] text-muted-foreground">{card.cost}</span>
-                  </div>
-                  <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
-                    {card.name}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-          {/* Leitura rápida da força montada: composição e custo total de lançamento. */}
-          <div className="mt-auto shrink-0 border-t border-border/60 pt-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="label-mono">Composição da força</p>
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                Custo de lançamento <b className="text-foreground">{deckCost}</b>
+        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3 [@media(max-height:560px)]:gap-1.5">
+          <section className="hud-panel hud-corners flex min-h-0 flex-col p-3 lg:self-start [@media(max-height:560px)]:p-2">
+            <div className="flex shrink-0 items-center justify-between">
+              <p className="label-mono">Cartas desta operação</p>
+              <span
+                className={cn("font-mono text-[11px]", full ? "text-fact" : "text-destructive")}
+              >
+                {deck.length}/8
               </span>
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {Object.entries(composition).map(([cat, n]) => (
-                <span
-                  key={cat}
-                  className={cn(
-                    "border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
-                    CATEGORY_TONE[cat] ?? "border-border text-muted-foreground",
-                  )}
-                >
-                  {n}× {cat}
-                </span>
-              ))}
-              {deck.length === 0 && (
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  Toque nas cartas para montar a força.
-                </span>
-              )}
+            <div className="mt-2 grid min-h-0 grid-cols-3 content-start gap-1.5 overflow-y-auto pr-1 sm:grid-cols-4">
+              {owned.map((id) => {
+                const card = cardById(id);
+                const on = deck.includes(id);
+                return (
+                  <button
+                    key={id}
+                    onClick={() => toggle(id)}
+                    className={cn(
+                      "border p-2 text-left transition [@media(max-height:560px)]:p-1.5",
+                      on ? "border-primary bg-accent" : "border-border hover:border-primary/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={cn(
+                          "border px-1 font-mono text-[8px] uppercase",
+                          CATEGORY_TONE[card.category],
+                        )}
+                      >
+                        {card.short}
+                      </span>
+                      <span className="font-mono text-[9px] text-muted-foreground">
+                        {card.cost}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 font-display text-[10px] font-bold uppercase leading-tight">
+                      {card.name}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        </section>
-
-        <aside className="flex min-h-0 w-full shrink-0 flex-col gap-1.5 lg:w-[300px] lg:gap-2">
-          <div className="hud-panel hud-corners shrink-0 p-2.5 [@media(max-height:560px)]:p-2">
-            <p className="label-mono mb-1.5">Sequência de lançamento</p>
-            <div className="flex flex-wrap gap-1">
-              {deck.map((id, i) => (
-                <span
-                  key={`${id}-${i}`}
-                  className="border border-primary/60 px-1.5 py-0.5 font-mono text-[9px] uppercase text-primary"
-                >
-                  {i + 1}·{cardById(id).short}
+            {/* Leitura rápida da força montada: composição e custo total de lançamento. */}
+            <div className="mt-2 shrink-0 border-t border-border/60 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="label-mono">Composição da força</p>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Custo de lançamento <b className="text-foreground">{deckCost}</b>
                 </span>
-              ))}
-              {Array.from({ length: 8 - deck.length }).map((_, i) => (
-                <span
-                  key={`e${i}`}
-                  className="border border-dashed border-border px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted-foreground/50"
-                >
-                  —
-                </span>
-              ))}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {Object.entries(composition).map(([cat, n]) => (
+                  <span
+                    key={cat}
+                    className={cn(
+                      "border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+                      CATEGORY_TONE[cat] ?? "border-border text-muted-foreground",
+                    )}
+                  >
+                    {n}× {cat}
+                  </span>
+                ))}
+                {deck.length === 0 && (
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    Toque nas cartas para montar a força.
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="flex shrink-0 gap-1.5">
-            <button
-              onClick={onOpenCollection}
-              className="flex-1 border border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground transition hover:border-primary hover:text-primary [@media(max-height:560px)]:py-1.5"
-            >
-              Coleção ›
-            </button>
-            <button
-              disabled={!dirty || !full}
-              onClick={onSaveDeck}
-              className={cn(
-                "flex-1 border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] transition [@media(max-height:560px)]:py-1.5",
-                dirty && full
-                  ? "border-primary text-primary hover:bg-accent"
-                  : "cursor-not-allowed border-border text-muted-foreground/50",
-              )}
-            >
-              Salvar baralho
-            </button>
-          </div>
-
-          {number === 1 && (
-            <div className="border border-dashed border-border/70 p-2.5">
-              <p className="label-mono text-primary">Como funciona</p>
-              <ol className="mt-1.5 space-y-1 text-[10px] leading-snug text-muted-foreground">
-                <li>
-                  <b className="text-foreground">1.</b> Até 8 cartas por operação — a ordem vira a
-                  sequência de lançamento.
-                </li>
-                <li>
-                  <b className="text-foreground">2.</b> No mapa, escolha a base, monte a força e
-                  envie ao destino.
-                </li>
-                <li>
-                  <b className="text-foreground">3.</b> Cumpra o objetivo no prazo para liberar o
-                  próximo capítulo.
-                </li>
-              </ol>
+          <aside className="flex min-h-0 w-full shrink-0 flex-col gap-1.5 lg:w-[300px] lg:gap-2">
+            <div className="hud-panel hud-corners shrink-0 p-2.5 [@media(max-height:560px)]:p-2">
+              <p className="label-mono mb-1.5">Sequência de lançamento</p>
+              <div className="flex flex-wrap gap-1">
+                {deck.map((id, i) => (
+                  <span
+                    key={`${id}-${i}`}
+                    className="border border-primary/60 px-1.5 py-0.5 font-mono text-[9px] uppercase text-primary"
+                  >
+                    {i + 1}·{cardById(id).short}
+                  </span>
+                ))}
+                {Array.from({ length: 8 - deck.length }).map((_, i) => (
+                  <span
+                    key={`e${i}`}
+                    className="border border-dashed border-border px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted-foreground/50"
+                  >
+                    —
+                  </span>
+                ))}
+              </div>
             </div>
-          )}
 
-          <div className="mt-auto flex shrink-0 flex-col gap-1.5 lg:gap-2">
-            <button
-              disabled={!full}
-              onClick={onStart}
-              className={cn(
-                "px-6 py-3 font-mono text-sm uppercase tracking-[0.2em] transition [@media(max-height:560px)]:py-2",
-                full
-                  ? "bg-primary text-primary-foreground shadow-brass hover:brightness-110"
-                  : "cursor-not-allowed border border-border text-muted-foreground",
-              )}
-            >
-              Iniciar operação
-            </button>
-            <button
-              onClick={onBack}
-              className="border border-border px-6 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1.5"
-            >
-              Voltar
-            </button>
-          </div>
-        </aside>
+            <div className="flex shrink-0 gap-1.5">
+              <button
+                onClick={onOpenCollection}
+                className="flex-1 border border-border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground transition hover:border-primary hover:text-primary [@media(max-height:560px)]:py-1.5"
+              >
+                Coleção ›
+              </button>
+              <button
+                disabled={!dirty || !full}
+                onClick={onSaveDeck}
+                className={cn(
+                  "flex-1 border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] transition [@media(max-height:560px)]:py-1.5",
+                  dirty && full
+                    ? "border-primary text-primary hover:bg-accent"
+                    : "cursor-not-allowed border-border text-muted-foreground/50",
+                )}
+              >
+                Salvar baralho
+              </button>
+            </div>
+
+            {number === 1 && (
+              <div className="border border-dashed border-border/70 p-2.5">
+                <p className="label-mono text-primary">Como funciona</p>
+                <ol className="mt-1.5 space-y-1 text-[10px] leading-snug text-muted-foreground">
+                  <li>
+                    <b className="text-foreground">1.</b> Até 8 cartas por operação — a ordem vira a
+                    sequência de lançamento.
+                  </li>
+                  <li>
+                    <b className="text-foreground">2.</b> No mapa, escolha a base, monte a força e
+                    envie ao destino.
+                  </li>
+                  <li>
+                    <b className="text-foreground">3.</b> Cumpra o objetivo no prazo para liberar o
+                    próximo capítulo.
+                  </li>
+                </ol>
+              </div>
+            )}
+
+            <div className="mt-auto flex shrink-0 flex-col gap-1.5 lg:gap-2">
+              <button
+                disabled={!full}
+                onClick={onStart}
+                className={cn(
+                  "px-6 py-3 font-mono text-sm uppercase tracking-[0.2em] transition [@media(max-height:560px)]:py-2",
+                  full
+                    ? "bg-primary text-primary-foreground shadow-brass hover:brightness-110"
+                    : "cursor-not-allowed border border-border text-muted-foreground",
+                )}
+              >
+                Iniciar operação
+              </button>
+              <button
+                onClick={onBack}
+                className="border border-border px-6 py-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1.5"
+              >
+                Voltar
+              </button>
+            </div>
+          </aside>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -36,23 +36,26 @@ export function DecisionCard({
 }) {
   return (
     <div className="mx-auto flex h-full w-full max-w-5xl flex-col justify-center gap-4 px-4 py-4 [@media(max-height:560px)]:gap-1 [@media(max-height:560px)]:py-1">
-      <div className="flex items-baseline justify-between gap-4">
-        <div>
-          <p className="label-mono text-primary">
-            {act} · Capítulo {chapterNumber}
-          </p>
-          <h1 className="font-display text-3xl font-black uppercase leading-none sm:text-4xl [@media(max-height:560px)]:text-xl">
-            {title}
-          </h1>
+      {/* O cabeçalho fica sobre a arte do fundo: o painel escuro garante leitura. */}
+      <div className="border border-border bg-background/80 p-3 backdrop-blur-sm [@media(max-height:560px)]:p-2">
+        <div className="flex items-baseline justify-between gap-4">
+          <div>
+            <p className="label-mono text-primary">
+              {act} · Capítulo {chapterNumber}
+            </p>
+            <h1 className="font-display text-3xl font-black uppercase leading-none sm:text-4xl [@media(max-height:560px)]:text-xl">
+              {title}
+            </h1>
+          </div>
+          <span className="hidden shrink-0 border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:block">
+            Decisão de comando
+          </span>
         </div>
-        <span className="hidden shrink-0 border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground sm:block">
-          Decisão de comando
-        </span>
-      </div>
 
-      <p className="max-w-3xl font-serif text-base italic leading-snug text-foreground/90 [@media(max-height:560px)]:text-xs">
-        {decision.prompt}
-      </p>
+        <p className="mt-2 max-w-3xl font-serif text-base italic leading-snug text-foreground/90 [@media(max-height:560px)]:mt-1 [@media(max-height:560px)]:text-xs">
+          {decision.prompt}
+        </p>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 [@media(max-height:560px)]:grid-cols-2 [@media(max-height:560px)]:gap-1.5">
         {decision.options.map((opt) => {
@@ -99,7 +102,7 @@ export function DecisionCard({
       {onCancel && (
         <button
           onClick={onCancel}
-          className="mx-auto border border-border px-6 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground [@media(max-height:560px)]:py-1"
+          className="mx-auto border border-border bg-background/80 px-6 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground backdrop-blur-sm transition hover:text-foreground [@media(max-height:560px)]:py-1"
         >
           Voltar ao mapa
         </button>

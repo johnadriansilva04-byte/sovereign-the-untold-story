@@ -852,14 +852,14 @@ function FrontLineScore({ state, localSide }: { state: BattleState; localSide: S
       <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         Território
         {cell(terrMine, terrFoe, "ally")}
-        <span className="text-border">×</span>
+        <span className="text-muted-foreground/60">×</span>
         {cell(terrFoe, terrMine, "enemy")}
       </span>
       <span className="h-3 w-px bg-border" />
       <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         Bases
         {cell(advMine, advFoe, "ally")}
-        <span className="text-border">×</span>
+        <span className="text-muted-foreground/60">×</span>
         {cell(advFoe, advMine, "enemy")}
       </span>
       {neutralBases.length > 0 && (
@@ -872,7 +872,7 @@ function FrontLineScore({ state, localSide }: { state: BattleState; localSide: S
             >
               {neutralLeft}
             </span>
-            <span className="text-border">/{neutralBases.length}</span>
+            <span className="text-muted-foreground">/{neutralBases.length}</span>
           </span>
         </>
       )}
