@@ -247,6 +247,27 @@ leitura de mundo, embalada como obra de ficção.
 
 ## 5. Estado atual verificado (13/11/2026)
 
+### Atualização 24/11/2026 — cidade construída, cartas com silhueta, retrato do chanceler
+
+- **Terreno de cidade deixa de ser mato**: `terrainDetails` passou a gerar **quarteirões**
+  (`cityBlocks`) — 2 a 4 prédios por quadra, mesma rotação, alguns em escombro e outros com
+  janela acesa — em vez de tufos de grama e pedras soltas. O desenho do prédio
+  (`TerrainDetailGlyph`, tipo `block`) tem parede, telhado, cumeeira, caixa d'água e sombra
+  projetada; a paleta de `Cidade` virou concreto frio (croma 0,006, matiz 245).
+- **Malha viária** (`CityStreets`): avenidas ortogonais de 7 × 5 quadras com asfalto, meio-fio
+  e faixa central tracejada, desenhadas depois das manchas de solo e antes do relevo. Sem elas
+  os prédios flutuavam soltos sobre o chão; com elas o mapa lê como cidade vista de cima.
+- **Cartas de unidade** (`src/components/battle/CardArt.tsx`, novo): cada categoria tem
+  silhueta própria (soldado, blindado, obus, drone, caixa de suprimento, escudo). A carta da
+  campanha estampava o código em `text-[38px]` que o `overflow-hidden` cortava ("ALTO",
+  "BTP"); agora a arte é a silhueta, colorida pelo tom da categoria.
+- **Retrato do chanceler** (`ChancellorBust`): quepe com faixa/pala/distintivo, túnica com
+  gola, gravata, dragonas e botões, rosto em três tons de pele com maçãs, sombra de barba e
+  brilho nos olhos; fundo com linhas topográficas. Os gradientes usam `useId` — antes o mesmo
+  `id` era repetido em cada instância do componente.
+- **Verificação**: `tsc --noEmit` e `eslint` limpos; suíte completa **338 passaram / 7
+  ignorados**.
+
 ### Atualização 24/11/2026 — campo de batalha, personagem e entrada da campanha
 
 - **Arena legível**: preenchimento/traço das regiões reduzidos (0,11/0,07 e 0,45/0,28),

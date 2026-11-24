@@ -5,6 +5,7 @@ import { GameShell } from "@/components/game/shell";
 import { CampaignBackdrop } from "@/components/campaign/CampaignBackdrop";
 import { StoryBook, type StoryPage } from "@/components/campaign/StoryBook";
 import { CardFace } from "@/components/campaign/CardFace";
+import { CardArt } from "@/components/battle/CardArt";
 import { DecisionCard } from "@/components/campaign/DecisionCard";
 import { ChancellorScreen } from "@/components/campaign/ChancellorScreen";
 import { BattleScreen } from "@/components/battle/BattleScreen";
@@ -949,12 +950,15 @@ function CampaignBriefing({
                         CATEGORY_BAR[card.category] ?? "bg-border",
                       )}
                     />
-                    {/* Marca d'água do código: dá relevo ao cartão sem ruído. */}
+                    {/* Silhueta da função: o cartão lê como unidade, não como texto. */}
                     <span
                       aria-hidden
-                      className="pointer-events-none absolute -bottom-0.5 right-0.5 font-display text-[38px] font-black leading-none text-foreground/[0.10]"
+                      className={cn(
+                        "pointer-events-none absolute -right-1 bottom-1 opacity-55",
+                        CATEGORY_TONE[card.category] ?? "text-foreground",
+                      )}
                     >
-                      {card.short}
+                      <CardArt category={card.category} className="h-[62px] w-[62px]" />
                     </span>
                     <span className="relative flex items-center justify-between gap-1">
                       <span

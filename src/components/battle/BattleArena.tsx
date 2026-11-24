@@ -107,12 +107,12 @@ interface GroundPalette {
 }
 const GROUND_BY_TERRAIN: Record<string, GroundPalette> = {
   Cidade: {
-    base: "oklch(0.32 0.008 90)",
-    accent: "oklch(0.37 0.01 92)",
-    patch: "oklch(0.28 0.006 250)",
-    path: "oklch(0.45 0.008 92)",
-    detail: "oklch(0.36 0.03 120)",
-    detailLight: "oklch(0.42 0.04 118)",
+    base: "oklch(0.3 0.006 245)",
+    accent: "oklch(0.35 0.007 245)",
+    patch: "oklch(0.25 0.006 245)",
+    path: "oklch(0.44 0.008 80)",
+    detail: "oklch(0.33 0.008 245)",
+    detailLight: "oklch(0.41 0.009 245)",
   },
   Floresta: {
     base: "oklch(0.3 0.045 140)",
@@ -167,9 +167,132 @@ const DEFAULT_GROUND: GroundPalette = {
 // Detalhes de terreno espalhados pelo campo (tufos de grama, pedras, arbustos):
 // dão identidade ao solo sem "grade" e sem brilho. Posições determinísticas para o
 // mapa não "tremer" a cada quadro. O conjunto de tipos muda por terreno.
-type TerrainDetail = { kind: "tuft" | "rock" | "bush"; x: number; y: number; s: number };
+type TerrainDetail = {
+  kind: "tuft" | "rock" | "bush" | "block" | "rubble";
+  x: number;
+  y: number;
+  s: number;
+  rot?: number;
+  lit?: boolean;
+};
+
+// RUAS: avenidas ortogonais entre os quarteirões. Sem elas os prédios flutuavam
+// soltos sobre o terreno; com elas o mapa lê como malha urbana vista de cima.
+const CITY_COLS = 7;
+const CITY_ROWS = 5;
+
+function CityStreets({ ground }: { ground: GroundPalette }) {
+  const cw = WORLD_W / CITY_COLS;
+  const ch = WORLD_H / CITY_ROWS;
+  const vertical = Array.from({ length: CITY_COLS - 1 }, (_, i) => (i + 1) * cw);
+  const horizontal = Array.from({ length: CITY_ROWS - 1 }, (_, i) => (i + 1) * ch);
+  return (
+    <g pointerEvents="none">
+      {vertical.map((x) => (
+        <g key={`sv${x}`}>
+          <line
+            x1={x}
+            y1={-GROUND_PAD}
+            x2={x}
+            y2={WORLD_H + GROUND_PAD}
+            stroke="oklch(1 0 0 / 0.05)"
+            strokeWidth="4.6"
+          />
+          <line
+            x1={x}
+            y1={-GROUND_PAD}
+            x2={x}
+            y2={WORLD_H + GROUND_PAD}
+            stroke={ground.patch}
+            strokeWidth="4.2"
+          />
+          <line
+            x1={x}
+            y1={-GROUND_PAD}
+            x2={x}
+            y2={WORLD_H + GROUND_PAD}
+            stroke="oklch(0.66 0.02 80 / 0.3)"
+            strokeWidth="0.16"
+            strokeDasharray="1.6 2.6"
+          />
+        </g>
+      ))}
+      {horizontal.map((y) => (
+        <g key={`sh${y}`}>
+          <line
+            x1={-GROUND_PAD}
+            y1={y}
+            x2={WORLD_W + GROUND_PAD}
+            y2={y}
+            stroke="oklch(1 0 0 / 0.05)"
+            strokeWidth="4.6"
+          />
+          <line
+            x1={-GROUND_PAD}
+            y1={y}
+            x2={WORLD_W + GROUND_PAD}
+            y2={y}
+            stroke={ground.patch}
+            strokeWidth="4.2"
+          />
+          <line
+            x1={-GROUND_PAD}
+            y1={y}
+            x2={WORLD_W + GROUND_PAD}
+            y2={y}
+            stroke="oklch(0.66 0.02 80 / 0.3)"
+            strokeWidth="0.16"
+            strokeDasharray="1.6 2.6"
+          />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+// QUARTEIRÕES: em cidade o chão é construído, não mato. A malha é de QUARTEIRÕES
+// (2 a 4 prédios agrupados, mesma quadra, mesma rotação) separados por ruas — sem isso
+// o campo virava uma grade de caixas iguais. Algumas quadras são praça ou escombro.
+function cityBlocks(): TerrainDetail[] {
+  const out: TerrainDetail[] = [];
+  const rand = (n: number) => {
+    const h = Math.sin(n * 12.9898) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const cols = CITY_COLS;
+  const rows = CITY_ROWS;
+  const cw = WORLD_W / cols;
+  const ch = WORLD_H / rows;
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const n = gy * cols + gx;
+      if (rand(n + 3) < 0.1) continue; // praça / terreno vazio
+      const cx = (gx + 0.5) * cw + (rand(n + 9) - 0.5) * cw * 0.1;
+      const cy = (gy + 0.5) * ch + (rand(n + 19) - 0.5) * ch * 0.1;
+      const rot = (rand(n + 11) - 0.5) * 5;
+      const count = 2 + Math.floor(rand(n + 5) * 3);
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2 + rand(n + i * 13) * 0.9;
+        const r = Math.min(cw, ch) * 0.2;
+        const x = cx + Math.cos(a) * r * (0.5 + rand(n + i * 7) * 0.9);
+        const y = cy + Math.sin(a) * r * (0.5 + rand(n + i * 17) * 0.9);
+        if (x < 4 || x > WORLD_W - 4 || y < 4 || y > WORLD_H - 4) continue;
+        out.push({
+          kind: rand(n + i * 23) > 0.88 ? "rubble" : "block",
+          x,
+          y,
+          s: 0.55 + rand(n + i * 29) * 0.55,
+          rot,
+          lit: rand(n + i * 31) > 0.62,
+        });
+      }
+    }
+  }
+  return out;
+}
 
 function terrainDetails(terrain: string): TerrainDetail[] {
+  if (terrain === "Cidade") return cityBlocks();
   const out: TerrainDetail[] = [];
   const jitter = (n: number) => {
     const h = Math.sin(n * 78.233) * 43758.5453;
@@ -273,6 +396,74 @@ function TerrainDetailGlyph({
   detail: TerrainDetail;
   ground: GroundPalette;
 }) {
+  if (d.kind === "block") {
+    const w = 5.4;
+    const dep = 3.4;
+    const hgt = 1.1;
+    return (
+      <g transform={`translate(${d.x} ${d.y}) rotate(${d.rot ?? 0}) scale(${d.s})`}>
+        <ellipse
+          cx="0.9"
+          cy={dep / 2 + 0.9}
+          rx={w * 0.62}
+          ry={dep * 0.42}
+          fill="oklch(0 0 0 / 0.26)"
+        />
+        {/* parede voltada para a luz (noroeste) */}
+        <path
+          d={`M ${-w / 2} ${dep / 2 - hgt} L ${w / 2} ${dep / 2 - hgt} L ${w / 2} ${dep / 2} L ${-w / 2} ${dep / 2} Z`}
+          fill={ground.detail}
+        />
+        {/* telhado */}
+        <path
+          d={`M ${-w / 2} ${-dep / 2 - hgt} L ${w / 2} ${-dep / 2 - hgt} L ${w / 2} ${dep / 2 - hgt} L ${-w / 2} ${dep / 2 - hgt} Z`}
+          fill={ground.detailLight}
+          stroke="oklch(0 0 0 / 0.35)"
+          strokeWidth="0.1"
+        />
+        {/* cumeeira e caixa d'água dão volume ao telhado */}
+        <line
+          x1={-w / 2 + 0.5}
+          y1={-hgt}
+          x2={w / 2 - 0.5}
+          y2={-hgt}
+          stroke="oklch(1 0 0 / 0.07)"
+          strokeWidth="0.12"
+        />
+        <rect
+          x={-w / 2 + 1.1}
+          y={-dep / 2 - hgt + 0.5}
+          width="1"
+          height="0.9"
+          fill="oklch(0 0 0 / 0.28)"
+        />
+        {d.lit && (
+          <rect
+            x={w / 2 - 1.5}
+            y={-hgt + 0.35}
+            width="0.9"
+            height="0.6"
+            fill="oklch(0.82 0.13 82 / 0.5)"
+          />
+        )}
+      </g>
+    );
+  }
+  if (d.kind === "rubble") {
+    return (
+      <g transform={`translate(${d.x} ${d.y}) rotate(${d.rot ?? 0}) scale(${d.s})`}>
+        <ellipse cx="0" cy="0.3" rx="2.6" ry="1.5" fill="oklch(0 0 0 / 0.22)" />
+        <path
+          d="M-2.4 0.4 L-1.1 -0.9 L0.2 -0.3 L1.4 -1.1 L2.5 0.5 Z"
+          fill={ground.patch}
+          stroke="oklch(1 0 0 / 0.06)"
+          strokeWidth="0.1"
+        />
+        <circle cx="-0.6" cy="1" r="0.35" fill={ground.detailLight} opacity="0.7" />
+        <circle cx="1.2" cy="0.9" r="0.26" fill={ground.detailLight} opacity="0.55" />
+      </g>
+    );
+  }
   if (d.kind === "rock") {
     return (
       <g transform={`translate(${d.x} ${d.y}) scale(${d.s})`}>
@@ -618,6 +809,7 @@ export function BattleArena({
         <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundPatches)" />
         <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundTex)" />
         <rect x="0" y="0" width={WORLD_W} height={WORLD_H} fill="url(#groundDepth)" />
+        {arena.terrain === "Cidade" && <CityStreets ground={ground} />}
 
         {/* RELEVO do terreno (montanha/floresta/campo): sombra + realce deslocados
           na direção da luz, com curvas de nível nas elevações. */}
