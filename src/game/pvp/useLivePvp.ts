@@ -25,13 +25,16 @@ import type { DeployBatchResult, DeployRequest } from "@/game/battle/engine";
 import type { UseBattle } from "@/game/battle/useBattle";
 import { sideForSeat, type Seat } from "./live";
 import { LiveMatch } from "./match";
-import { createSupabaseTransport, type TransportStatus } from "./transport";
+import type { TransportStatus } from "./transport";
+import { createTransport, type TransportMode } from "./transportFactory";
 
 export interface UseLivePvpOptions {
   /** Config ÚNICA da partida (mesma nos dois clientes, via `buildLiveConfig`). */
   config: BattleConfig;
   code: string;
   seat: Seat;
+  /** "local" = duas abas do mesmo navegador (BroadcastChannel); "online" = Supabase. */
+  transportMode?: TransportMode;
   onEnd?: (result: BattleResult) => void;
 }
 
@@ -87,7 +90,7 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
     // Handlers delegados: o transporte é criado ANTES do match (ele é injetado no
     // construtor), então ele entrega os eventos a um invólucro que só existe depois.
     let match: LiveMatch | null = null;
-    const transport = createSupabaseTransport(opts.code, opts.seat, {
+    const transport = createTransport(opts.transportMode ?? "local", opts.code, opts.seat, {
       onStatus: (s) => setStatus(s),
       onCommand: (cmd) => match?.handlers().onCommand(cmd),
       onProgress: (t) => match?.handlers().onProgress(t),
@@ -124,7 +127,7 @@ export function useLivePvp(opts: UseLivePvpOptions): UseLivePvp {
       transport.close();
       matchRef.current = null;
     };
-  }, [config, opts.code, opts.seat]);
+  }, [config, opts.code, opts.seat, opts.transportMode]);
 
   const dispatch = useCallback((action: BattleAction) => {
     matchRef.current?.dispatch(action);

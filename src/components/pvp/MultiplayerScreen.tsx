@@ -36,7 +36,13 @@ type View =
 export function MultiplayerScreen() {
   const { profile, recordBattle, removeCards } = useProfile();
   const opponents = useMemo(() => localOpponents(profile), [profile]);
-  const [view, setView] = useState<View>({ kind: "lobby" });
+  // Convite (`?sala=CODE`) abre direto a sala online: o link que o anfitrião manda tem
+  // de cair na sala, não no lobby.
+  const [view, setView] = useState<View>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("sala")
+      ? { kind: "online" }
+      : { kind: "lobby" },
+  );
   const [mode, setMode] = useState<PvpMode>("equilibrado");
   const [opponentId, setOpponentId] = useState(opponents[0]!.id);
   const [stakes, setStakes] = useState<string[]>([]);

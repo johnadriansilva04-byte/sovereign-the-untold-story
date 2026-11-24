@@ -491,6 +491,31 @@ leitura de mundo, embalada como obra de ficção.
   efetivo, território sem reposição, anel fechado, nemesis de toda carta e a ligação das
   habilidades ativas. Suíte completa: **350 passaram / 7 ignorados**.
 
+### 5.y PvP em tempo real: sala de verdade e lista de salas
+
+- **O problema**: a sala online só existia se `VITE_SUPABASE_URL` estivesse configurada.
+  Sem servidor, o botão criava a sala e caía em "Falha na conexão" — uma tela morta com um
+  código e nada para fazer.
+- **Sala nesta máquina** (`src/game/pvp/localTransport.ts`): transporte por `BroadcastChannel`.
+  Como o motor é determinístico e os clientes só trocam comandos, duas abas do mesmo
+  navegador jogam a partida inteira, sem servidor e sem conta. É escolhido em "Conexão".
+- **Online por servidor** continua existindo e só aparece quando o Supabase está
+  configurado — não há mais botão desligado sem explicação. A escolha vive em
+  `transportFactory.ts` (`local` | `online`), e o `useLivePvp` recebe `transportMode`.
+- **Lista de salas** (`src/game/pvp/rooms.ts`): painel "Salas criadas" em lugar próprio,
+  com código, terreno, idade ("agora", "há 5 min"), assentos e ações — copiar código,
+  copiar convite, entrar, excluir. É honesta: mostra as salas abertas neste navegador, não
+  finge ser um servidor de lobby.
+- **Convite**: `inviteLink` gera `/multiplayer?sala=CODE`; quem abre o link cai direto na
+  sala online com o código preenchido.
+- **Sala de espera**: cartão da sala (código grande, assentos "você"/"convidado", status em
+  texto claro), botões Copiar código / Copiar convite / Abrir 2ª aba / Cancelar. Nada de
+  "falha na conexão" sem saída.
+- **Testes**: `src/test/pvp-rooms.test.ts` cobre lista, substituição por código, entrada do
+  convidado, exclusão, link e idade da sala. Suíte: **356 passaram / 7 ignorados**.
+  Verificado no navegador: criar sala → convite em outra aba → as duas abas entram na
+  batalha no mesmo tick.
+
 ## 6. Créditos
 
 Desenvolvido por **Variant** — em homenagem à Força Expedicionária Brasileira. A cobra fumou.
